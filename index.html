@@ -144,6 +144,25 @@ a{color:var(--blue);text-decoration:none}
 .field textarea{height:auto;padding:12px 13px;resize:vertical}
 .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.13)}
 .field .fh{font-size:12px;color:var(--mut2)}
+/* ตารางกรอกรายการสินค้าในฟอร์ม */
+.itbl{display:flex;flex-direction:column;gap:9px}
+.ithead,.itrow{display:grid;grid-template-columns:116px minmax(0,1fr) 74px 96px 106px 108px 34px;gap:8px;align-items:center}
+.ithead{font-size:12px;color:var(--mut2);font-weight:600}
+.itrow input,.itrow select{height:42px;padding:0 10px;border:1px solid #d3ddec;border-radius:9px;width:100%;outline:0;background:#fff}
+.itrow input:focus,.itrow select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.13)}
+.itrow .itamt{font-weight:700;text-align:right;font-size:14px;padding-right:2px}
+.itrow .itdel{height:34px;width:34px;border:1px solid #fbcaca;background:#fff;color:#b91c1c;border-radius:9px;cursor:pointer;font-size:15px;line-height:1}
+.itrow .itdel:hover{background:#fef2f2}
+.itsum{display:flex;flex-direction:column;gap:7px;align-items:flex-end;border-top:1px solid var(--bd2);padding-top:12px;margin-top:4px;font-size:14px}
+.itsum .rw{display:flex;gap:34px}
+.itsum .rw b{width:130px;text-align:right}
+@media(max-width:780px){
+  .ithead{display:none}
+  .itrow{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;border:1px solid var(--bd2);border-radius:10px;padding:10px;position:relative}
+  .itrow .itname{grid-column:1/-1}
+  .itrow .itamt{grid-column:1/-1;text-align:left}
+  .itrow .itdel{position:absolute;top:8px;right:8px}
+}
 
 /* ---------- upload ---------- */
 .drop{border:2px dashed #bfd3f5;background:#f6f9ff;border-radius:12px;padding:26px 16px;display:flex;
@@ -521,8 +540,9 @@ function quoteSheet(d){
   const adr=(cust&&cust.address||'').split(/\n|,\s*/).filter(Boolean).slice(0,3);
   const rowsHtml=(d.items.length?d.items:[{name:'',qty:'',unit:'',price:0}]).map((it,i)=>{
     const amt=(+it.qty||0)*(+it.price||0);
-    return `<tr><td class="no">${it.name?i+1:''}</td>
-      <td class="dt">${esc(it.name||'')}</td>
+    const detail=[it.code,it.name].filter(Boolean).join('\n');
+    return `<tr><td class="no">${detail?i+1:''}</td>
+      <td class="dt">${esc(detail)}</td>
       <td class="qt">${it.qty!==''&&it.qty!=null?num(it.qty)+' '+esc(it.unit||''):''}</td>
       <td class="pr">${it.price?Number(it.price).toLocaleString('th-TH',{minimumFractionDigits:3,maximumFractionDigits:3}):''}</td>
       <td class="am">${amt?num(amt):''}</td></tr>`;}).join('');
@@ -906,14 +926,68 @@ async function handleHash(){
 }
 
 /* ================= form ================= */
+const UNITS=['ม้วน','ใบ','กก.','แผ่น','ชิ้น','กล่อง','ลัง','ถุง','ถัง','เมตร','ชุด','อัน','รายการ'];
+/* ตารางกรอกรายการสินค้า — ใช้ในฟอร์มสร้าง/แก้ไขใบเสนอราคาและ PO */
+function itemsEditor(initial){
+  const box=el(`<div class="itbl">
+    <div class="ithead"><div>รหัสสินค้า</div><div>รายละเอียดสินค้า</div><div>จำนวน</div><div>หน่วย</div><div>ราคา/หน่วย</div><div style="text-align:right">จำนวนเงิน</div><div></div></div>
+    <div class="itrows"></div></div>`);
+  const rowsEl=box.querySelector('.itrows');
+  const sum=el(`<div class="itsum">
+    <div class="rw"><span class="mut">ยอดก่อนภาษี</span><b id="s1">0.00</b></div>
+    <div class="rw"><span class="mut">ภาษีมูลค่าเพิ่ม 7%</span><b id="s2">0.00</b></div>
+    <div class="rw" style="font-size:16px"><span style="font-weight:600">รวมทั้งสิ้น</span><b id="s3" style="color:var(--blue-d)">0.00</b></div></div>`);
+  const add=el(`<button type="button" class="btn gh sm" style="align-self:flex-start;margin-top:2px">+ เพิ่มรายการ</button>`);
+  function calc(){
+    let t=0;
+    rowsEl.querySelectorAll('.itrow').forEach(r=>{
+      const q=parseFloat(r.querySelector('.itqty').value)||0,p=parseFloat(r.querySelector('.itprice').value)||0;
+      const a=q*p;t+=a;r.querySelector('.itamt').textContent=num(a);});
+    sum.querySelector('#s1').textContent=num(t);
+    sum.querySelector('#s2').textContent=num(t*.07);
+    sum.querySelector('#s3').textContent=num(t*1.07)+' ฿';
+  }
+  function addRow(it){
+    it=it||{};
+    const r=el(`<div class="itrow">
+      <input class="itcode" placeholder="รหัสสินค้า" value="${esc(it.code||'')}">
+      <input class="itname" placeholder="รายละเอียดสินค้า เช่น stretch film 250 mm. x 300 m." value="${esc(it.name||'')}">
+      <input class="itqty" type="number" step="0.01" inputmode="decimal" placeholder="0" value="${it.qty??''}">
+      <select class="itunit">${UNITS.map(u=>`<option ${u===(it.unit||'ม้วน')?'selected':''}>${u}</option>`).join('')}</select>
+      <input class="itprice" type="number" step="0.001" inputmode="decimal" placeholder="0.00" value="${it.price??''}">
+      <div class="itamt">0.00</div>
+      <button type="button" class="itdel" title="ลบรายการ">✕</button></div>`);
+    r.querySelector('.itqty').oninput=calc;r.querySelector('.itprice').oninput=calc;
+    r.querySelector('.itdel').onclick=()=>{r.remove();if(!rowsEl.children.length)addRow();calc();};
+    rowsEl.append(r);calc();return r;
+  }
+  (initial&&initial.length?initial:[{}]).forEach(addRow);
+  add.onclick=()=>{addRow().querySelector('.itcode').focus();};
+  box.append(add,sum);
+  return {el:box,
+    value:()=>[...rowsEl.querySelectorAll('.itrow')].map(r=>({
+      code:r.querySelector('.itcode').value.trim(),
+      name:r.querySelector('.itname').value.trim(),
+      qty:parseFloat(r.querySelector('.itqty').value)||0,
+      unit:r.querySelector('.itunit').value,
+      price:parseFloat(r.querySelector('.itprice').value)||0
+    })).filter(i=>i.name||i.code||i.qty||i.price)};
+}
 function openForm(title,fields,values,onSubmit){
   const ov=el('<div class="ov"></div>');
   const m=el(`<div class="modal"><header><b>${esc(title)}</b><button class="close" title="ปิด (Esc)">✕</button></header>
     <div class="mb"><div class="grid g2" id="ff" style="gap:16px"></div></div>
     <footer><button class="btn gh" id="c">ยกเลิก</button><button class="btn" id="s">${svg('check','ic s')}บันทึก</button></footer></div>`);
   const ff=m.querySelector('#ff');
+  const custom={};
   fields.forEach(f=>{
     if(f.group){ff.append(el(`<div class="fgroup">${esc(f.group)}</div>`));return;}
+    if(f.type==='items'){
+      const ed=itemsEditor(values[f.key]);
+      custom[f.key]=ed.value;
+      const w=el(`<div class="field" style="grid-column:1/-1"><label>${esc(f.label)}</label></div>`);
+      w.append(ed.el);ff.append(w);return;
+    }
     const v=values[f.key]??f.def??'';
     let inp;
     if(f.type==='select')inp=`<select name="${f.key}">${(f.options||[]).map(o=>`<option value="${esc(o)}" ${String(o)===String(v)?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
@@ -926,13 +1000,15 @@ function openForm(title,fields,values,onSubmit){
   const close=()=>{ov.remove();document.removeEventListener('keydown',key);};
   const submit=()=>{
     const out={};let bad=null;
-    fields.filter(f=>!f.group).forEach(f=>{const n=ff.querySelector(`[name="${f.key}"]`);let v=n.value.trim();
+    Object.keys(custom).forEach(k=>out[k]=custom[k]());
+    fields.filter(f=>!f.group&&f.type!=='items').forEach(f=>{const n=ff.querySelector(`[name="${f.key}"]`);let v=n.value.trim();
       if(f.type==='number')v=parseFloat(v||0)||0;
       if(f.req&&!v&&!bad)bad=[f.label,n];out[f.key]=v;});
     if(bad){toast('กรุณากรอก: '+bad[0]);bad[1].focus();bad[1].style.borderColor='#dc2626';return;}
     onSubmit(out);close();
   };
-  const key=e=>{if(e.key==='Escape')close();if(e.key==='Enter'&&e.target.tagName!=='TEXTAREA')submit();};
+  const key=e=>{if(e.key==='Escape')close();
+    if(e.key==='Enter'&&e.target.tagName!=='TEXTAREA'&&!e.target.closest('.itbl'))submit();};
   document.addEventListener('keydown',key);
   m.querySelector('.close').onclick=close;m.querySelector('#c').onclick=close;m.querySelector('#s').onclick=submit;
   ov.onclick=e=>{if(e.target===ov)close();};
@@ -1347,6 +1423,8 @@ function docFields(type){
     {key:'payment',label:'เงื่อนไขการชำระเงิน',type:'select',options:['เงินสด','เครดิต 30 วัน','เครดิต 45 วัน','เครดิต 60 วัน'],def:'เงินสด'},
     {key:'validDays',label:'ยืนราคา (วัน)',type:'number',def:7},
     {key:'salesperson',label:'พนักงานขาย'},
+    {group:'รายการสินค้า'},
+    {key:'items',type:'items',label:'กรอกสินค้าที่จะเสนอราคา — เพิ่มได้หลายรายการ'},
     {key:'note',label:'บันทึกภายใน (ไม่พิมพ์บนเอกสาร)',type:'textarea',full:true}]);
   return base.concat([
     {key:'amount',label:money?'ยอดรวม (บาท)':'มูลค่าอ้างอิง (บาท)',type:'number',def:0,hint:money?'':'ไม่บังคับ'},
@@ -1364,7 +1442,9 @@ function pgDocuments(v){
   const t=DOC_TYPES.find(x=>x[0]===S.docType);
   header('เอกสารการขาย',[t[1]]);
   actionBtn('สร้าง'+t[1],'plus',()=>openForm('สร้าง'+t[1],docFields(S.docType),{},d=>{
-    const doc=Object.assign({id:uid(),type:S.docType},d);DB.docs.unshift(doc);save();render();toast('สร้างเอกสารแล้ว');openDoc(doc);}));
+    const doc=Object.assign({id:uid(),type:S.docType},d);
+    if(doc.type==='quotation'){ensureQuote(doc);doc.amount=qtTotal(doc);}
+    DB.docs.unshift(doc);save();render();toast('สร้างเอกสารแล้ว');openDocSmart(doc);}));
 
   v.append(hint('เลือกประเภทเอกสารได้จากหัวข้อย่อยใต้ "เอกสารการขาย" ในเมนูซ้าย · คลิกที่รายการเพื่อดูหรือแก้ไข'));
 
@@ -1422,9 +1502,11 @@ function quoteDetail(v,d){
   const items=el('<div class="card"></div>');
   const ih=el('<div class="pad" style="padding-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px"><div class="h3" style="margin:0">รายการสินค้า</div></div>');
   const itemForm=(vals,fn)=>openForm(vals.name?'แก้ไขรายการ':'เพิ่มรายการสินค้า',[
-    {key:'name',label:'รหัสสินค้า / รายละเอียด',req:true,full:true,type:'textarea',
+    {key:'code',label:'รหัสสินค้า'},
+    {key:'unit',label:'หน่วย',type:'select',options:UNITS,def:'ม้วน'},
+    {key:'name',label:'รายละเอียดสินค้า',req:true,full:true,type:'textarea',
       hint:'ขึ้นบรรทัดใหม่ได้ เช่น รายละเอียดสินค้า แล้วเว้นบรรทัด ตามด้วยเงื่อนไขการสั่งซื้อ'},
-    {key:'qty',label:'จำนวน',type:'number',def:1},{key:'unit',label:'หน่วย',def:'ม้วน'},
+    {key:'qty',label:'จำนวน',type:'number',def:1},
     {key:'price',label:'ราคา/หน่วย (บาท)',type:'number',def:0}],vals,fn);
   const addI=el(`<button class="btn sm">${svg('plus','ic s')}เพิ่มรายการ</button>`);
   addI.onclick=()=>itemForm({},o=>{d.items.push(o);d.amount=qtTotal(d);save();render();toast('เพิ่มรายการแล้ว');});
@@ -1435,8 +1517,8 @@ function quoteDetail(v,d){
     d.items.forEach((it,i)=>{
       const r=el(`<div class="lrow">
         <div class="lav">${i+1}</div>
-        <div class="lmain"><div class="lt">${esc(String(it.name).split('\n')[0])}</div>
-        <div class="lm">${num0(it.qty)} ${esc(it.unit||'')} × ${num(it.price)} ฿</div></div>
+        <div class="lmain"><div class="lt">${esc(String(it.name||'').split('\n')[0]||it.code||'-')}</div>
+        <div class="lm">${it.code?esc(it.code)+' · ':''}${num0(it.qty)} ${esc(it.unit||'')} × ${num(it.price)} ฿</div></div>
         <div class="lright"><div class="lamt">${num((+it.qty||0)*(+it.price||0))} ฿</div>
         <button class="btn gh sm rm">ลบ</button></div></div>`);
       r.onclick=()=>itemForm(it,o=>{Object.assign(it,o);d.amount=qtTotal(d);save();render();toast('บันทึกแล้ว');});
@@ -1630,7 +1712,7 @@ function poDetail(v,p){
   const ih=el('<div class="pad" style="padding-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px"><div class="h3" style="margin:0">รายการสินค้า</div></div>');
   const addI=el(`<button class="btn sm">${svg('plus','ic s')}เพิ่มรายการ</button>`);
   addI.onclick=()=>openForm('เพิ่มรายการสินค้า',[
-    {key:'code',label:'รหัสสินค้า',req:true},{key:'unit',label:'หน่วย',def:'ชิ้น'},
+    {key:'code',label:'รหัสสินค้า',req:true},{key:'unit',label:'หน่วย',type:'select',options:UNITS,def:'ม้วน'},
     {key:'name',label:'ชื่อสินค้า',req:true,full:true},
     {key:'qty',label:'จำนวน',type:'number',def:1},{key:'price',label:'ราคา/หน่วย (บาท)',type:'number',def:0}
   ],{},d=>{p.items.push(d);save();render();toast('เพิ่มรายการแล้ว');});
