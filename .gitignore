@@ -1,0 +1,16 @@
+# ---- เอกสารลูกค้า / ไฟล์ภายใน ห้ามขึ้น repo สาธารณะ ----
+*.pdf
+*.xlsx
+*.docx
+
+# ---- ไฟล์ระหว่างออกแบบ ไม่ใช้ตอนรัน ----
+*.dc.html
+canvas.json
+bwp-sales-crm.html
+ChatGPT Image*.png
+
+# ---- ระบบ ----
+.DS_Store
+Thumbs.db
+node_modules/
+.vercel
