@@ -136,7 +136,12 @@ a{color:var(--blue);text-decoration:none}
 .modal footer{padding:16px 24px;border-top:1px solid var(--bd2);display:flex;justify-content:flex-end;gap:10px;background:#fbfcfe}
 .close{background:none;border:0;font-size:22px;color:var(--mut2);cursor:pointer;line-height:1;padding:4px 8px;border-radius:8px}
 .close:hover{background:#f1f5f9;color:var(--tx)}
-.fgroup{font-size:12.5px;font-weight:700;color:var(--mut2);letter-spacing:.04em;grid-column:1/-1;margin-top:6px}
+.fgroup{font-size:14px;font-weight:700;color:var(--tx);grid-column:1/-1;margin-top:10px;padding-top:14px;
+  border-top:1px solid var(--bd2);display:flex;align-items:center;gap:9px}
+.fgroup:first-child{margin-top:0;padding-top:0;border-top:0}
+.fgroup .n{width:23px;height:23px;border-radius:50%;background:var(--blue);color:#fff;font-size:12px;
+  display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.fgroup .sub{font-weight:400;font-size:12.5px;color:var(--mut2)}
 .field{display:flex;flex-direction:column;gap:7px}
 .field label{font-size:13.5px;color:#41546f;font-weight:500}
 .field label .rq{color:#dc2626}
@@ -144,24 +149,31 @@ a{color:var(--blue);text-decoration:none}
 .field textarea{height:auto;padding:12px 13px;resize:vertical}
 .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.13)}
 .field .fh{font-size:12px;color:var(--mut2)}
-/* ตารางกรอกรายการสินค้าในฟอร์ม */
-.itbl{display:flex;flex-direction:column;gap:9px}
-.ithead,.itrow{display:grid;grid-template-columns:116px minmax(0,1fr) 74px 96px 106px 108px 34px;gap:8px;align-items:center}
-.ithead{font-size:12px;color:var(--mut2);font-weight:600}
-.itrow input,.itrow select{height:42px;padding:0 10px;border:1px solid #d3ddec;border-radius:9px;width:100%;outline:0;background:#fff}
-.itrow input:focus,.itrow select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.13)}
-.itrow .itamt{font-weight:700;text-align:right;font-size:14px;padding-right:2px}
-.itrow .itdel{height:34px;width:34px;border:1px solid #fbcaca;background:#fff;color:#b91c1c;border-radius:9px;cursor:pointer;font-size:15px;line-height:1}
+/* ---- การ์ดกรอกรายการสินค้าในฟอร์ม ---- */
+.itbl{display:flex;flex-direction:column;gap:12px}
+.itrow{border:1px solid var(--bd);border-radius:12px;padding:14px 16px 16px;background:#fbfcfe;position:relative;display:flex;flex-direction:column;gap:12px}
+.itrow .ittop{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.itrow .itno{font-size:12.5px;font-weight:700;color:var(--blue-d);background:#e7f0ff;border-radius:999px;padding:3px 12px}
+.itl1{display:grid;grid-template-columns:190px minmax(0,1fr);gap:12px}
+.itl2{display:grid;grid-template-columns:110px 130px 150px minmax(0,1fr);gap:12px;align-items:end}
+.itf{display:flex;flex-direction:column;gap:6px;min-width:0}
+.itf>span{font-size:12.5px;color:#41546f;font-weight:500}
+.itrow input,.itrow select,.itrow textarea{height:44px;padding:0 12px;border:1px solid #d3ddec;border-radius:10px;
+  width:100%;outline:0;background:#fff;font-size:14.5px}
+.itrow textarea{height:auto;padding:11px 12px;resize:vertical;line-height:1.5;min-height:66px}
+.itrow input:focus,.itrow select:focus,.itrow textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.13)}
+.itrow .itamtbox{height:44px;display:flex;align-items:center;justify-content:flex-end;padding:0 13px;
+  background:#eef4ff;border:1px solid #d7e4fb;border-radius:10px;font-weight:700;font-size:16px;color:var(--blue-d)}
+.itrow .itdel{height:34px;padding:0 12px;border:1px solid #fbcaca;background:#fff;color:#b91c1c;border-radius:9px;
+  cursor:pointer;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px}
 .itrow .itdel:hover{background:#fef2f2}
-.itsum{display:flex;flex-direction:column;gap:7px;align-items:flex-end;border-top:1px solid var(--bd2);padding-top:12px;margin-top:4px;font-size:14px}
-.itsum .rw{display:flex;gap:34px}
-.itsum .rw b{width:130px;text-align:right}
-@media(max-width:780px){
-  .ithead{display:none}
-  .itrow{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;border:1px solid var(--bd2);border-radius:10px;padding:10px;position:relative}
-  .itrow .itname{grid-column:1/-1}
-  .itrow .itamt{grid-column:1/-1;text-align:left}
-  .itrow .itdel{position:absolute;top:8px;right:8px}
+.itsum{display:flex;flex-direction:column;gap:9px;align-items:flex-end;border-top:2px solid var(--bd2);padding-top:14px;font-size:14.5px}
+.itsum .rw{display:flex;gap:34px;align-items:baseline}
+.itsum .rw b{width:150px;text-align:right}
+@media(max-width:820px){
+  .itl1,.itl2{grid-template-columns:1fr;gap:11px}
+  .itl2{grid-template-columns:1fr 1fr}
+  .itl2 .itamtwrap{grid-column:1/-1}
 }
 
 /* ---------- upload ---------- */
@@ -227,7 +239,8 @@ a{color:var(--blue);text-decoration:none}
 .sheet .kv .k{width:22mm;flex-shrink:0}
 .sheet .kv .k.r{width:32mm}
 .sheet .lead{margin:9px 0 7px;text-indent:12mm}
-.sheet table.items{width:100%;border-collapse:collapse;table-layout:fixed}
+.sheet .itemswrap{flex:1;display:flex;min-height:0}
+.sheet table.items{width:100%;height:100%;border-collapse:collapse;table-layout:fixed}
 .sheet table.items th,.sheet table.items td{border:1px solid #000;padding:4px 6px;vertical-align:top;font-size:12px}
 .sheet table.items th{text-align:center;font-weight:400;height:9mm;vertical-align:middle}
 .sheet table.items td.no{text-align:center;width:11mm}
@@ -240,7 +253,7 @@ a{color:var(--blue);text-decoration:none}
 .sheet .notes{margin-top:7px;font-size:12px;display:flex;gap:6px}
 .sheet .notes .lbl{width:16mm;flex-shrink:0}
 .sheet .notes .body div{display:flex;gap:5px}
-.sheet .sign{display:flex;gap:10px;margin-top:auto;padding-top:16mm;text-align:center;font-size:12px}
+.sheet .sign{display:flex;gap:10px;padding-top:14mm;text-align:center;font-size:12px}
 .sheet .sign>div{flex:1}
 .sheet .sign .ln{border-bottom:1px dotted #000;width:52mm;margin:0 auto 4px;height:14mm}
 .sheet .sh-foot{text-align:right;font-size:11px;font-weight:700;margin-top:8px}
@@ -576,10 +589,10 @@ function quoteSheet(d){
       </div>
     </div>
     <div class="lead">${esc(co.nameTh)} มีความยินดีที่จะเสนอราคาสินค้าเพื่อให้ท่านพิจารณา ตามรายละเอียดดังต่อไปนี้</div>
-    <table class="items">
+    <div class="itemswrap"><table class="items">
       <thead><tr><th>No.</th><th>รหัสสินค้า/รายละเอียด</th><th>จำนวน</th><th>ราคา/หน่วย</th><th>จำนวนเงิน</th></tr></thead>
-      <tbody>${rowsHtml}<tr class="fill"><td class="no"></td><td style="height:52mm"></td><td></td><td></td><td></td></tr></tbody>
-    </table>
+      <tbody>${rowsHtml}<tr class="fill"><td class="no"></td><td></td><td></td><td></td><td></td></tr></tbody>
+    </table></div>
     <div class="notes"><div class="lbl">หมายเหตุ</div>
       <div class="body">${noteLines.map(l=>`<div><span>:</span><span>${esc(l)}</span></div>`).join('')}<div><span>:</span><span></span></div></div></div>
     <div style="margin-top:10px">ต้องการสินค้าตามรายการดังกล่าว</div>
@@ -929,15 +942,14 @@ async function handleHash(){
 const UNITS=['ม้วน','ใบ','กก.','แผ่น','ชิ้น','กล่อง','ลัง','ถุง','ถัง','เมตร','ชุด','อัน','รายการ'];
 /* ตารางกรอกรายการสินค้า — ใช้ในฟอร์มสร้าง/แก้ไขใบเสนอราคาและ PO */
 function itemsEditor(initial){
-  const box=el(`<div class="itbl">
-    <div class="ithead"><div>รหัสสินค้า</div><div>รายละเอียดสินค้า</div><div>จำนวน</div><div>หน่วย</div><div>ราคา/หน่วย</div><div style="text-align:right">จำนวนเงิน</div><div></div></div>
-    <div class="itrows"></div></div>`);
+  const box=el('<div class="itbl"><div class="itrows"></div></div>');
   const rowsEl=box.querySelector('.itrows');
+  const renum=()=>rowsEl.querySelectorAll('.itrow').forEach((r,i)=>r.querySelector('.itno').textContent='รายการที่ '+(i+1));
   const sum=el(`<div class="itsum">
     <div class="rw"><span class="mut">ยอดก่อนภาษี</span><b id="s1">0.00</b></div>
     <div class="rw"><span class="mut">ภาษีมูลค่าเพิ่ม 7%</span><b id="s2">0.00</b></div>
     <div class="rw" style="font-size:16px"><span style="font-weight:600">รวมทั้งสิ้น</span><b id="s3" style="color:var(--blue-d)">0.00</b></div></div>`);
-  const add=el(`<button type="button" class="btn gh sm" style="align-self:flex-start;margin-top:2px">+ เพิ่มรายการ</button>`);
+  const add=el(`<button type="button" class="btn gh" style="width:100%;border-style:dashed;border-color:#bfd3f5;color:var(--blue-d);background:#f8fbff">+ เพิ่มรายการสินค้า</button>`);
   function calc(){
     let t=0;
     rowsEl.querySelectorAll('.itrow').forEach(r=>{
@@ -950,19 +962,29 @@ function itemsEditor(initial){
   function addRow(it){
     it=it||{};
     const r=el(`<div class="itrow">
-      <input class="itcode" placeholder="รหัสสินค้า" value="${esc(it.code||'')}">
-      <input class="itname" placeholder="รายละเอียดสินค้า เช่น stretch film 250 mm. x 300 m." value="${esc(it.name||'')}">
-      <input class="itqty" type="number" step="0.01" inputmode="decimal" placeholder="0" value="${it.qty??''}">
-      <select class="itunit">${UNITS.map(u=>`<option ${u===(it.unit||'ม้วน')?'selected':''}>${u}</option>`).join('')}</select>
-      <input class="itprice" type="number" step="0.001" inputmode="decimal" placeholder="0.00" value="${it.price??''}">
-      <div class="itamt">0.00</div>
-      <button type="button" class="itdel" title="ลบรายการ">✕</button></div>`);
+      <div class="ittop"><span class="itno">รายการ</span>
+        <button type="button" class="itdel">✕ ลบรายการนี้</button></div>
+      <div class="itl1">
+        <label class="itf"><span>รหัสสินค้า</span>
+          <input class="itcode" placeholder="เช่น MP-SF-250" value="${esc(it.code||'')}"></label>
+        <label class="itf"><span>รายละเอียดสินค้า</span>
+          <textarea class="itname" rows="2" placeholder="เช่น stretch film 250 mm. x 300 m. x 12 mc.&#10;(ขึ้นบรรทัดใหม่ได้ เช่น 1 กล่องบรรจุ 6 ม้วน)">${esc(it.name||'')}</textarea></label>
+      </div>
+      <div class="itl2">
+        <label class="itf"><span>จำนวน</span>
+          <input class="itqty" type="number" step="0.01" inputmode="decimal" placeholder="0" value="${it.qty??''}"></label>
+        <label class="itf"><span>หน่วย</span>
+          <select class="itunit">${UNITS.map(u=>`<option ${u===(it.unit||'ม้วน')?'selected':''}>${u}</option>`).join('')}</select></label>
+        <label class="itf"><span>ราคา/หน่วย (บาท)</span>
+          <input class="itprice" type="number" step="0.001" inputmode="decimal" placeholder="0.00" value="${it.price??''}"></label>
+        <div class="itf itamtwrap"><span>จำนวนเงิน</span><div class="itamtbox"><span class="itamt">0.00</span></div></div>
+      </div></div>`);
     r.querySelector('.itqty').oninput=calc;r.querySelector('.itprice').oninput=calc;
-    r.querySelector('.itdel').onclick=()=>{r.remove();if(!rowsEl.children.length)addRow();calc();};
-    rowsEl.append(r);calc();return r;
+    r.querySelector('.itdel').onclick=()=>{r.remove();if(!rowsEl.children.length)addRow();renum();calc();};
+    rowsEl.append(r);renum();calc();return r;
   }
   (initial&&initial.length?initial:[{}]).forEach(addRow);
-  add.onclick=()=>{addRow().querySelector('.itcode').focus();};
+  add.onclick=()=>{const r=addRow();r.querySelector('.itcode').focus();r.scrollIntoView({behavior:'smooth',block:'nearest'});};
   box.append(add,sum);
   return {el:box,
     value:()=>[...rowsEl.querySelectorAll('.itrow')].map(r=>({
@@ -973,19 +995,24 @@ function itemsEditor(initial){
       price:parseFloat(r.querySelector('.itprice').value)||0
     })).filter(i=>i.name||i.code||i.qty||i.price)};
 }
-function openForm(title,fields,values,onSubmit){
+function openForm(title,fields,values,onSubmit,opts){
+  opts=opts||{};
   const ov=el('<div class="ov"></div>');
-  const m=el(`<div class="modal"><header><b>${esc(title)}</b><button class="close" title="ปิด (Esc)">✕</button></header>
+  const m=el(`<div class="modal" ${opts.wide?'style="max-width:1000px"':''}>
+    <header><div><b>${esc(title)}</b>${opts.sub?`<div class="tiny" style="margin-top:3px">${esc(opts.sub)}</div>`:''}</div>
+      <button class="close" title="ปิด (Esc)">✕</button></header>
     <div class="mb"><div class="grid g2" id="ff" style="gap:16px"></div></div>
-    <footer><button class="btn gh" id="c">ยกเลิก</button><button class="btn" id="s">${svg('check','ic s')}บันทึก</button></footer></div>`);
+    <footer><button class="btn gh" id="c">ยกเลิก</button><button class="btn" id="s">${svg('check','ic s')}${esc(opts.okLabel||'บันทึก')}</button></footer></div>`);
   const ff=m.querySelector('#ff');
-  const custom={};
+  const custom={};let gi=0;
   fields.forEach(f=>{
-    if(f.group){ff.append(el(`<div class="fgroup">${esc(f.group)}</div>`));return;}
+    if(f.group){gi++;
+      ff.append(el(`<div class="fgroup"><span class="n">${gi}</span><span>${esc(f.group)}</span>
+        ${f.sub?`<span class="sub">${esc(f.sub)}</span>`:''}</div>`));return;}
     if(f.type==='items'){
       const ed=itemsEditor(values[f.key]);
       custom[f.key]=ed.value;
-      const w=el(`<div class="field" style="grid-column:1/-1"><label>${esc(f.label)}</label></div>`);
+      const w=el('<div style="grid-column:1/-1"></div>');
       w.append(ed.el);ff.append(w);return;
     }
     const v=values[f.key]??f.def??'';
@@ -1418,14 +1445,22 @@ function docFields(type){
     {key:'customer',label:'ลูกค้า',type:'select',options:DB.customers.map(c=>c.name),req:true},
     {key:'date',label:'วันที่',type:'date',def:today()},
     {key:'status',label:'สถานะ',type:'select',options:Object.keys(DOC_ST),def:'ร่าง'}];
-  if(type==='quotation')return base.concat([
+  if(type==='quotation')return [
+    {group:'เสนอราคาให้ใคร',sub:'ข้อมูลส่วนนี้จะพิมพ์ที่หัวเอกสาร'},
+    {key:'customer',label:'ลูกค้า',type:'select',options:DB.customers.map(c=>c.name),req:true,
+      hint:'ที่อยู่บนเอกสารดึงจากข้อมูลลูกค้าอัตโนมัติ'},
     {key:'contact',label:'ผู้ติดต่อ',def:'ฝ่ายจัดซื้อ'},
+    {group:'ข้อมูลเอกสาร'},
+    {key:'no',label:'เลขที่ใบเสนอราคา',req:true,def:nextNo('QUO')},
+    {key:'date',label:'วันที่ออกเอกสาร',type:'date',def:today()},
     {key:'payment',label:'เงื่อนไขการชำระเงิน',type:'select',options:['เงินสด','เครดิต 30 วัน','เครดิต 45 วัน','เครดิต 60 วัน'],def:'เงินสด'},
-    {key:'validDays',label:'ยืนราคา (วัน)',type:'number',def:7},
+    {key:'validDays',label:'ยืนราคา (วัน)',type:'number',def:7,hint:'ระบบคำนวณวันหมดอายุให้อัตโนมัติ'},
     {key:'salesperson',label:'พนักงานขาย'},
-    {group:'รายการสินค้า'},
-    {key:'items',type:'items',label:'กรอกสินค้าที่จะเสนอราคา — เพิ่มได้หลายรายการ'},
-    {key:'note',label:'บันทึกภายใน (ไม่พิมพ์บนเอกสาร)',type:'textarea',full:true}]);
+    {key:'status',label:'สถานะ',type:'select',options:Object.keys(DOC_ST),def:'ร่าง'},
+    {group:'รายการสินค้า',sub:'จำนวนเงินคำนวณให้อัตโนมัติ'},
+    {key:'items',type:'items'},
+    {group:'บันทึกภายใน',sub:'ไม่พิมพ์บนเอกสาร'},
+    {key:'note',label:'บันทึกช่วยจำ',type:'textarea',full:true,ph:'เช่น ลูกค้าขอส่วนลดเพิ่ม รอยืนยันจากผู้จัดการ'}];
   return base.concat([
     {key:'amount',label:money?'ยอดรวม (บาท)':'มูลค่าอ้างอิง (บาท)',type:'number',def:0,hint:money?'':'ไม่บังคับ'},
     {key:'note',label:'รายละเอียด',type:'textarea',full:true,ph:'ระบุสิ่งที่ลูกค้าต้องการ / เงื่อนไข'}]);
@@ -1441,10 +1476,12 @@ function pgDocuments(v){
   if(S.docOpen){const d=DB.docs.find(x=>x.id===S.docOpen);if(d)return quoteDetail(v,d);S.docOpen=null;}
   const t=DOC_TYPES.find(x=>x[0]===S.docType);
   header('เอกสารการขาย',[t[1]]);
+  const isQ=S.docType==='quotation';
   actionBtn('สร้าง'+t[1],'plus',()=>openForm('สร้าง'+t[1],docFields(S.docType),{},d=>{
     const doc=Object.assign({id:uid(),type:S.docType},d);
     if(doc.type==='quotation'){ensureQuote(doc);doc.amount=qtTotal(doc);}
-    DB.docs.unshift(doc);save();render();toast('สร้างเอกสารแล้ว');openDocSmart(doc);}));
+    DB.docs.unshift(doc);save();render();toast('สร้างเอกสารแล้ว');openDocSmart(doc);},
+    isQ?{wide:true,sub:'กรอกข้อมูลตามลำดับ 1 → 4 แล้วกดสร้าง',okLabel:'สร้างใบเสนอราคา'}:null));
 
   v.append(hint('เลือกประเภทเอกสารได้จากหัวข้อย่อยใต้ "เอกสารการขาย" ในเมนูซ้าย · คลิกที่รายการเพื่อดูหรือแก้ไข'));
 
@@ -1479,7 +1516,9 @@ function quoteDetail(v,d){
   ensureQuote(d);
   header(d.no,['เอกสารการขาย','ใบเสนอราคา']);
   backBtn('กลับ',()=>go('documents',{docOpen:null}));
-  actionBtn('แก้ไขข้อมูล','edit',()=>openForm('แก้ไข '+d.no,docFields('quotation'),d,o=>{Object.assign(d,o);d.amount=qtTotal(d)||d.amount;save();render();toast('บันทึกแล้ว');}),'btn gh');
+  actionBtn('แก้ไขข้อมูล','edit',()=>openForm('แก้ไข '+d.no,docFields('quotation'),d,o=>{
+    Object.assign(d,o);d.amount=qtTotal(d)||d.amount;save();render();toast('บันทึกแล้ว');},
+    {wide:true,okLabel:'บันทึกการแก้ไข'}),'btn gh');
   if(!quoteHasReceipt(d))actionBtn('ออกใบเสร็จ','receipt',()=>issueReceipt({customer:d.customer,amount:qtTotal(d)||d.amount,poRef:d.no}),'btn gh');
   actionBtn('ดูตัวอย่าง / พิมพ์','print',()=>printQuote(d));
 
