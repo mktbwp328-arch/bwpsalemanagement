@@ -149,6 +149,20 @@ a{color:var(--blue);text-decoration:none}
 .field textarea{height:auto;padding:12px 13px;resize:vertical}
 .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.13)}
 .field .fh{font-size:12px;color:var(--mut2)}
+.optrow{display:flex;flex-wrap:wrap;gap:9px}
+.opt{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid #d3ddec;border-radius:10px;
+  padding:0 14px;height:44px;cursor:pointer;font-size:14.5px;color:#33445f}
+.opt:hover{border-color:#a9c4f0}
+.opt.on{border-color:var(--blue);background:#eff5ff;color:var(--blue-d);font-weight:600}
+.opt .bx{width:20px;height:20px;border:1.5px solid #c3cfe0;border-radius:5px;display:inline-flex;
+  align-items:center;justify-content:center;font-size:13px;background:#fff;color:var(--blue-d);flex-shrink:0}
+.opt.on .bx{border-color:var(--blue);background:var(--blue);color:#fff}
+.ppl{display:flex;flex-direction:column;gap:9px}
+.pplrow{display:grid;grid-template-columns:210px minmax(0,1fr);gap:10px;align-items:center}
+.pplrow>span{font-size:13.5px;color:#41546f}
+.pplrow input{height:44px;padding:0 12px;border:1px solid #d3ddec;border-radius:10px;outline:0;width:100%}
+.pplrow input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.13)}
+@media(max-width:780px){.pplrow{grid-template-columns:1fr;gap:5px}}
 /* ---- การ์ดกรอกรายการสินค้าในฟอร์ม ---- */
 .itbl{display:flex;flex-direction:column;gap:12px}
 .itrow{border:1px solid var(--bd);border-radius:12px;padding:14px 16px 16px;background:#fbfcfe;position:relative;display:flex;flex-direction:column;gap:12px}
@@ -258,12 +272,31 @@ a{color:var(--blue);text-decoration:none}
 .sheet .sign .ln{border-bottom:1px dotted #000;width:52mm;margin:0 auto 4px;height:14mm}
 .sheet .sh-foot{text-align:right;font-size:11px;font-weight:700;margin-top:8px}
 .sheet .ph{border:1px dashed #b9c3d4;color:#8b97ab;font-size:10px;padding:8px 4px;text-align:center;cursor:pointer;width:100%}
+.sheet+.sheet{margin-top:22px}
+/* ---- ใบขอเครดิต ---- */
+.sheet.crd{font-size:12.5px;line-height:1.85;display:block;padding:12mm 13mm}
+.sheet.crd .ln{margin-bottom:2px;white-space:nowrap;overflow:hidden}
+.sheet.crd .hd{font-weight:700;margin:11px 0 4px}
+.sheet.crd .dt{display:inline-block;border-bottom:1px dotted #000;text-align:center;padding:0 4px;
+  vertical-align:bottom;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.sheet.crd .cb{display:inline-block;width:13px;height:13px;border:1px solid #000;text-align:center;
+  line-height:12px;font-size:11px;vertical-align:-2px;margin:0 2px}
+.sheet.crd .pg{position:absolute;bottom:7mm;left:0;right:0;text-align:center;font-size:11.5px}
+.sheet.crd table.apv{width:100%;border-collapse:collapse;margin-bottom:14px}
+.sheet.crd table.apv th,.sheet.crd table.apv td{border:1px solid #000;padding:5px 7px;font-size:12px;text-align:center}
+.sheet.crd table.apv th{font-weight:600;height:9mm}
+.sheet.crd table.apv td.va{vertical-align:middle;font-weight:600;font-size:13px}
+.sheet.crd table.apv td.sg{height:26mm;vertical-align:bottom;padding-bottom:6px;position:relative}
+.sheet.crd table.apv td.sg img{position:absolute;left:50%;transform:translateX(-50%);bottom:30px;max-height:16mm;max-width:80%}
+.sheet.crd table.apv td.sg .nm{font-size:11.5px}
+.sheet.crd table.apv td.sg .dtl{font-size:11.5px}
 @media print{
   body *{visibility:hidden!important}
   .prevov,.prevov *{visibility:visible!important}
   .prevbar,.sheet .ph{display:none!important}
   .prevov{position:absolute!important;inset:auto!important;left:0;top:0;padding:0!important;background:#fff!important;overflow:visible!important}
-  .sheet{box-shadow:none!important;margin:0!important}
+  .sheet{box-shadow:none!important;margin:0!important;break-after:page;page-break-after:always}
+  .sheet:last-child{break-after:auto;page-break-after:auto}
   @page{size:A4;margin:0}
 }
 .seg{display:flex;background:#eef2f8;border-radius:10px;padding:4px;gap:3px}
@@ -604,6 +637,100 @@ function quoteSheet(d){
     <div class="sh-foot">${esc(co.docCode)}</div>
   </div>`);
 }
+/* ---------- แบบพิมพ์ใบขอเครดิต (2 หน้า A4) ---------- */
+const dots=(v,w)=>`<span class="dt" style="min-width:${w||60}px">${esc(v||'')}</span>`;
+const chk=on=>`<span class="cb">${on?'✓':''}</span>`;
+function creditSheets(d){
+  ensureCredit(d);
+  const co=DB.company,cust=DB.customers.find(c=>c.name===d.customer)||{};
+  const taxAdr=d.taxAddress||cust.address||'';
+  const dt=new Date(d.date);
+  const D=isNaN(dt)?['','','']:[dt.getDate(),dt.getMonth()+1,dt.getFullYear()+543];
+  const lg=logoSrc();
+  const head=`<div class="sh-top" style="align-items:center">
+      <div class="sh-logo">${lg?`<img src="${lg}">`:''}</div>
+      <div class="sh-mid">
+        <div class="co-th" style="font-size:17px">${esc(co.nameTh)}</div>
+        <div class="co-ad">${esc(co.address)}</div>
+        <div class="co-ad">${esc(co.phone)}</div>
+      </div><div class="sh-cert"></div></div>
+    <div style="border-bottom:1px solid #000;margin:8px 0 10px"></div>`;
+
+  const p1=el(`<div class="sheet crd">
+    ${head}
+    <div class="sh-title" style="margin:2px 0 10px">แบบฟอร์มสำหรับลูกค้าขอเครดิต</div>
+    <div style="text-align:right;margin-bottom:8px">วันที่ ${dots(D[0],44)} เดือน ${dots(D[1],66)} พ.ศ. ${dots(D[2],56)}</div>
+
+    <div class="ln">1) ชื่อบริษัท / ห้างหุ้นส่วน / ร้าน ${dots(d.customer,420)}</div>
+    <div class="ln">บริษัท ประกอบธุรกิจประเภท ${dots(d.bizType,230)} ประเภทลูกค้า ${chk(d.custType==='ใช้เอง')} ใช้เอง ${chk(d.custType!=='ใช้เอง'&&d.custType)} ผู้ขาย (นำไปจำหน่าย)</div>
+    <div class="ln">ที่อยู่ (สำหรับเปิดใบกำกับภาษี) ${dots(taxAdr.split('\n')[0],380)}</div>
+    <div class="ln">${dots(taxAdr.split('\n').slice(1).join(' '),700)}</div>
+    <div class="ln">Tel ${dots(d.tel||cust.phone,180)} Fax. ${dots(d.fax,170)} E-mail ${dots(d.email||cust.email,180)}</div>
+    <div class="ln">เลขประจำตัวผู้เสียภาษี ${dots(d.taxId||cust.taxId,220)} ${chk(d.officeType!=='สาขา')} สำนักงานใหญ่ ${chk(d.officeType==='สาขา')} สาขา ${dots(d.branch,90)}</div>
+    <div class="ln">ที่อยู่ (สำหรับจัดส่งสินค้า) ${dots((d.shipAddress||'').split('\n')[0],400)}</div>
+    <div class="ln">${dots((d.shipAddress||'').split('\n').slice(1).join(' '),700)}</div>
+    <div class="ln">Tel. ${dots(d.shipTel,300)} Fax. ${dots(d.shipFax,280)}</div>
+
+    <div class="hd">2) การซื้อสินค้า</div>
+    <div class="ln">ประเภทสินค้า ${['Shrink Film','Shrink Printed','Shrink Hood','Stretch Film']
+      .map(p=>`${chk(d.products.includes(p))} ${p}`).join(' &nbsp; ')}</div>
+    <div class="ln">ยอดสั่งซื้อต่อเดือนโดยประมาณ ${dots(d.qtyKg?num0(d.qtyKg):'',150)} กก. / ${dots(d.qtyRoll?num0(d.qtyRoll):'',130)} ม้วน / ${dots(d.qtyPcs?num0(d.qtyPcs):'',110)} ใบ</div>
+
+    <div class="hd">3) รายชื่อบุคคลที่ติดต่อกับบริษัท</div>
+    ${d.contacts.map((c,i)=>`<div class="ln" style="padding-left:16px">${i+1}. <span style="display:inline-block;width:150px">${esc(c.role==='อื่น ๆ (โปรดระบุตำแหน่ง)'?(c.pos||'อื่น ๆ'):c.role)}</span>
+      ชื่อ ${dots(c.name,210)} ลายเซ็นต์ ${dots('',150)}</div>`).join('')}
+
+    <div class="hd">4) เอกสารเกี่ยวกับบริษัท (กรุณาเซ็นชื่อรับรองและประทับตราในเอกสารทุกรายการ)</div>
+    ${CREDIT_DOCS.map((t,i)=>`<div class="ln" style="padding-left:28px">${chk(d.docs5.includes(t))} ${i+1}. ${esc(t)}</div>`).join('')}
+    <div class="pg">หน้า 1/2</div></div>`);
+
+  const p2=el(`<div class="sheet crd">
+    <div class="hd" style="margin-top:0">5) เงื่อนไขการชำระเงิน</div>
+    <div class="ln">สถานที่วางบิล / รับเช็ค (ที่อยู่) ${dots((d.billAddress||'').split('\n')[0],400)}</div>
+    <div class="ln">${dots((d.billAddress||'').split('\n').slice(1).join(' '),700)}</div>
+    <div class="ln">โทรศัพท์ ${dots(d.billTel,170)} แฟกซ์ ${dots(d.billFax,150)} ชื่อผู้ติดต่อ ${dots(d.billContact,180)}</div>
+    <div class="ln">กำหนดการวางบิล - รับเช็ค</div>
+    <div class="ln" style="padding-left:44px">( ${d.billDay?'✓':'&nbsp;'} ) วางบิลได้ทุกวันที่ ${dots(d.billDay,240)} เวลา ${dots(d.billTime,90)} น.</div>
+    <div class="ln" style="padding-left:44px">( ${d.chequeDay?'✓':'&nbsp;'} ) รับเช็คได้ทุกวันที่ ${dots(d.chequeDay,240)} เวลา ${dots(d.chequeTime,90)} น.</div>
+    <div class="ln" style="padding-left:44px">( ${d.transferDay?'✓':'&nbsp;'} ) โอนเงิน ทุกวันที่ ${dots(d.transferDay,180)} ผ่านธนาคาร ${dots(d.transferBank,180)}</div>
+    <div class="ln" style="padding-left:44px">( ${d.otherPay?'✓':'&nbsp;'} ) อื่น ๆ ${dots(d.otherPay,470)}</div>
+    <div class="ln" style="margin-top:10px">** หมายเหตุ : ลูกค้าต่างจังหวัด ทางบริษัทฯ ขอความกรุณาให้ท่านชำระเงินโดยการโอนเงินผ่านทางธนาคาร</div>
+
+    <div style="margin-top:26px;display:flex;gap:20px">
+      <div style="width:150px">ตราประทับ (ถ้ามี)</div>
+      <div style="flex:1;text-align:center">
+        <div style="margin-bottom:16px">ลงชื่อ ${dots(d.signerName,240)} ผู้มีอำนาจลงนาม</div>
+        <div style="margin-bottom:14px">( ${dots(d.signerName,230)} )</div>
+        <div>ตำแหน่ง ${dots(d.signerPosition,240)}</div>
+      </div></div>
+
+    <div class="ln" style="margin-top:22px;font-size:11.5px">**รายละเอียดข้างต้นเป็นข้อมูลจำเป็นที่ต้องนำมาประกอบในการดำเนินงาน และเพื่อเป็นประโยชน์ต่อบริษัทฯและลูกค้า จึงขอความร่วมมือในการกรอกรายละเอียดให้ครบถ้วน**</div>
+    <div style="border-bottom:1px solid #000;margin:12px 0 14px"></div>
+    <div style="font-size:15px;font-weight:700;margin-bottom:10px">ส่วนของบริษัท ${esc(co.nameTh).replace('บริษัท ','')}</div>
+
+    ${[[0,1],[2,3]].map(pair=>`<table class="apv">
+      <tr><th style="width:24%">วงเงินอนุมัติ (บาท)</th><th style="width:18%">เครดิต (วัน)</th>
+        <th style="width:29%">${CREDIT_ROLES[pair[0]][1]}</th><th style="width:29%">${CREDIT_ROLES[pair[1]][1]}</th></tr>
+      <tr><td class="va">${d.approvedAmount?num(d.approvedAmount):''}</td><td class="va">${d.creditDays||''}</td>
+        ${pair.map(i=>{const r=CREDIT_ROLES[i],s=d.sigs[r[0]];
+          return `<td class="sg">${s&&s.img?`<img src="${s.img}">`:''}
+            <div class="nm">( ${esc(s?s.name:'')}${s?'':'.'.repeat(30)} )</div>
+            <div class="dtl">${s?fmtShort(s.date).replace(/\//g,' / '):'........../.........../.............'}</div></td>`;}).join('')}
+      </tr></table>`).join('')}
+    <div class="pg">หน้า 2/2</div></div>`);
+  return [p1,p2];
+}
+function printCredit(d){
+  const ov=el('<div class="prevov"></div>');
+  const bar=el('<div class="prevbar"></div>');
+  const mk=(t,c,fn)=>{const b=el(`<button class="btn ${c}">${esc(t)}</button>`);b.onclick=fn;bar.append(b);};
+  mk('🖨  พิมพ์ / บันทึกเป็น PDF','',()=>window.print());
+  mk('แก้ไขหัวกระดาษ','gh',companyForm);
+  mk('ปิด','gh',()=>ov.remove());
+  ov.append(bar);
+  creditSheets(d).forEach(s=>ov.append(s));
+  $('#layer').append(ov);
+}
 function printQuote(d){
   const ov=el('<div class="prevov"></div>');
   const bar=el('<div class="prevbar"></div>');
@@ -649,7 +776,8 @@ async function sbRpc(fn,args){
   if(!r.ok){
     let msg=txt;try{msg=JSON.parse(txt).message||txt;}catch(e){}
     if(/could not find the function|schema cache|does not exist/i.test(msg))
-      throw new Error('ยังไม่ได้ติดตั้งตารางในฐานข้อมูล — เปิด Supabase แล้วรันไฟล์ supabase-setup.sql ก่อน');
+      throw new Error('ยังไม่ได้ติดตั้งส่วนนี้ในฐานข้อมูล — เปิด Supabase แล้วรัน '
+        +(/doc_signature/.test(fn)?'supabase-setup-2.sql':'supabase-setup.sql')+' ก่อน');
     throw new Error(msg||('เชื่อมต่อไม่สำเร็จ ('+r.status+')'));
   }
   return txt?JSON.parse(txt):null;
@@ -885,6 +1013,129 @@ function pasteCodeModal(){
     else if(p.t==='qt-ok')applySignature(p);
     else toast('รหัสไม่ถูกต้อง');});
 }
+/* ================= ใบขอเครดิต: เซ็น 4 ลายเซ็น ================= */
+const roleName=k=>(CREDIT_ROLES.find(r=>r[0]===k)||[,k])[1];
+async function shareCredit(d){
+  ensureCredit(d);
+  if(!sbOn()||sbReady===false){toast('ต้องเชื่อมฐานข้อมูลก่อน — รันไฟล์ supabase-setup-2.sql ใน Supabase');return;}
+  const cust=DB.customers.find(c=>c.name===d.customer)||{};
+  const payload=Object.assign({},d,{_cust:{address:cust.address,phone:cust.phone,email:cust.email,taxId:cust.taxId},
+    company:DB.company,logo:DB.logo});
+  let id=d.sigDocId;
+  try{
+    if(!id){id=await sbRpc('create_doc_signature',{p_payload:payload,p_doc_no:d.no,p_doc_type:'credit',p_customer:d.customer});
+      d.sigDocId=typeof id==='string'?id:(id&&id.id)||id;save();}
+  }catch(e){toast(e.message);return;}
+  const ov=el('<div class="ov"></div>');
+  const links=CREDIT_ROLES.map(([k,label])=>
+    `<div class="field" style="margin-bottom:12px"><label>${esc(label)}${d.sigs[k]?' ✅ เซ็นแล้ว':''}</label>
+      <textarea rows="2" readonly data-k="${k}" style="font-size:11.5px">${esc(baseUrl()+'#s='+d.sigDocId+'&r='+k)}</textarea>
+      <button class="btn gh sm cp" data-k="${k}" style="margin-top:6px;width:150px">คัดลอกลิงก์</button></div>`).join('');
+  const m=el(`<div class="modal" style="max-width:760px"><header><div><b>ส่งลิงก์ให้เซ็น 4 ท่าน</b>
+      <div class="tiny" style="margin-top:2px">${esc(d.no)} · ${esc(d.customer)}</div></div>
+      <button class="close">✕</button></header>
+    <div class="mb"><div class="hint" style="margin-bottom:16px">ส่งลิงก์ของแต่ละท่านทางไลน์ เปิดบนมือถือหรือ iPad แล้วเซ็นได้เลย เซ็นครบทั้ง 4 ลายเซ็นเอกสารจะขึ้นสถานะอนุมัติสมบูรณ์</div>
+      ${links}</div>
+    <footer><button class="btn" id="dn">เสร็จสิ้น</button></footer></div>`);
+  m.querySelectorAll('.cp').forEach(b=>b.onclick=()=>{
+    const t=m.querySelector(`textarea[data-k="${b.dataset.k}"]`);t.select();
+    (navigator.clipboard?navigator.clipboard.writeText(t.value).catch(()=>document.execCommand('copy'))
+      :Promise.resolve(document.execCommand('copy'))).then(()=>toast('คัดลอกลิงก์ '+roleName(b.dataset.k)+' แล้ว'));});
+  const close=()=>ov.remove();
+  m.querySelector('.close').onclick=close;m.querySelector('#dn').onclick=close;
+  ov.onclick=e=>{if(e.target===ov)close();};
+  ov.append(m);$('#layer').append(ov);
+}
+/* หน้าจอผู้เซ็น (เปิดจากลิงก์) */
+function creditSignView(row,id,role){
+  const d=ensureCredit(Object.assign({},row.payload,{sigs:row.sigs||{}}));
+  const saveCo=DB.company,saveLogo=DB.logo;
+  if(d.company)DB.company=d.company;if(d.logo)DB.logo=d.logo;
+  const cust=DB.customers.find(c=>c.name===d.customer);
+  const tmp=!cust&&d._cust?(DB.customers.push(Object.assign({id:'__tmp',name:d.customer,timeline:[],photos:[],files:[]},d._cust)),true):false;
+  const sheets=creditSheets(d);
+  if(tmp)DB.customers=DB.customers.filter(c=>c.id!=='__tmp');
+  DB.company=saveCo;DB.logo=saveLogo;
+
+  const ov=el('<div class="prevov"></div>');
+  const done=!!(row.sigs&&row.sigs[role]);
+  ov.append(el(`<div style="max-width:210mm;margin:0 auto 18px;background:#fff;border-radius:14px;padding:18px 20px">
+    <div style="font-size:19px;font-weight:700">ใบขอเครดิต ${esc(d.no)}</div>
+    <div class="mut">${esc(d.customer)} · วงเงินขออนุมัติ ${d.approvedAmount?num(d.approvedAmount):'-'} บาท · เครดิต ${esc(d.creditDays||'-')} วัน</div>
+    <div style="margin-top:10px;font-size:15px">คุณกำลังเซ็นในฐานะ <b style="color:var(--blue-d)">${esc(roleName(role))}</b></div>
+    <div class="tiny" style="margin-top:6px">ลายเซ็นที่ครบแล้ว: ${CREDIT_ROLES.filter(r=>row.sigs&&row.sigs[r[0]]).map(r=>r[1]).join(' · ')||'ยังไม่มี'}</div></div>`));
+  sheets.forEach(s=>ov.append(s));
+
+  if(done){
+    ov.append(el(`<div style="max-width:210mm;margin:18px auto 0;background:#fff;border-radius:14px;padding:22px;text-align:center">
+      <div style="font-size:17px;font-weight:700;color:#15803d">✓ ท่านเซ็นเอกสารนี้ไปแล้ว</div>
+      <div class="mut" style="margin-top:6px">${esc(row.sigs[role].name||'')} · ${fmtDate(row.sigs[role].date)}</div></div>`));
+    $('#layer').append(ov);return;
+  }
+  const box=el(`<div style="max-width:210mm;margin:18px auto 0;background:#fff;border-radius:14px;padding:20px">
+    <div class="h3">ลายเซ็น — ${esc(roleName(role))}</div>
+    <div class="field" style="margin-bottom:14px"><label>ชื่อผู้เซ็น</label><input id="an" placeholder="ชื่อ-นามสกุล"></div></div>`);
+  const pad=signaturePad();box.append(pad.el);
+  const bar=el('<div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap"></div>');
+  const bClr=el('<button class="btn gh">ล้างลายเซ็น</button>');
+  const bNo=el('<button class="btn dg">ไม่อนุมัติ</button>');
+  const bOk=el('<button class="btn" style="flex:1">บันทึกลายเซ็น</button>');
+  bClr.onclick=()=>pad.clear();
+  bar.append(bClr,bNo,bOk);box.append(bar);ov.append(box);
+  $('#layer').append(ov);
+
+  const finish=async ok=>{
+    const img=ok?pad.data():null;
+    if(ok&&!img){toast('ยังไม่ได้เซ็น — กรุณาเซ็นชื่อในกรอบก่อน');return;}
+    bOk.disabled=bNo.disabled=true;bOk.textContent='กำลังบันทึก…';
+    try{
+      const res=await sbRpc('add_doc_signature',{p_id:id,p_role:role,
+        p_name:box.querySelector('#an').value.trim(),p_sig:img,p_ok:ok,p_note:null,
+        p_roles_required:CREDIT_ROLES.map(r=>r[0])});
+      ov.remove();
+      const st=res&&res.status;
+      const ov2=el('<div class="ov"></div>');
+      ov2.append(el(`<div class="modal" style="max-width:460px"><header><b>${
+        st==='complete'?'เซ็นครบทุกท่านแล้ว ✓':st==='rejected'?'บันทึกผลไม่อนุมัติแล้ว':'บันทึกลายเซ็นเรียบร้อย ✓'}</b></header>
+        <div class="mb" style="font-size:15px;color:#41546f">${
+          st==='complete'?'ใบขอเครดิตนี้ได้รับอนุมัติครบทั้ง 4 ลายเซ็นแล้ว':
+          st==='rejected'?'ระบบบันทึกว่าไม่อนุมัติ และแจ้งกลับฝ่ายขายแล้ว':
+          'ส่งกลับให้ฝ่ายขายเรียบร้อย รออีก '+(4-Object.keys(res.sigs||{}).length)+' ลายเซ็น'}
+          <div class="tiny" style="margin-top:8px">${esc(d.no)} · ${esc(roleName(role))}</div></div>
+        <footer><button class="btn" onclick="location.hash='';location.reload()">ปิด</button></footer></div>`));
+      $('#layer').append(ov2);
+      applyCreditSigs(d.no,res.sigs,st,true);
+    }catch(e){bOk.disabled=bNo.disabled=false;bOk.textContent='บันทึกลายเซ็น';toast(e.message);}
+  };
+  bOk.onclick=()=>finish(true);
+  bNo.onclick=()=>askConfirm('ไม่อนุมัติ','บันทึกว่าไม่อนุมัติใบขอเครดิตนี้?','ยืนยัน',()=>finish(false));
+}
+function applyCreditSigs(no,sigs,status,silent){
+  const d=DB.docs.find(x=>x.no===no&&x.type==='credit');
+  if(!d)return false;
+  ensureCredit(d);d.sigs=sigs||{};
+  if(status==='complete')d.status='อนุมัติแล้ว';
+  else if(status==='rejected')d.status='ยกเลิก';
+  else if(Object.keys(d.sigs).length)d.status='รออนุมัติ';
+  save();if(!silent)render();
+  return true;
+}
+async function checkCredit(d,silent){
+  if(!d.sigDocId||!sbOn())return null;
+  try{
+    const rows=await sbRpc('get_doc_signature',{p_id:d.sigDocId});
+    const row=Array.isArray(rows)?rows[0]:rows;
+    if(!row){if(!silent)toast('ไม่พบเอกสารนี้ในฐานข้อมูล');return null;}
+    const before=Object.keys(d.sigs||{}).length;
+    applyCreditSigs(d.no,row.sigs,row.status,true);
+    const after=Object.keys(d.sigs||{}).length;
+    render();
+    if(!silent||after>before)toast(row.status==='complete'?'เซ็นครบ 4 ลายเซ็นแล้ว ✓'
+      :row.status==='rejected'?'มีผู้ไม่อนุมัติเอกสารนี้':after>before?'ได้รับลายเซ็นเพิ่ม ('+after+'/4)':'ยังรอลายเซ็นอยู่ ('+after+'/4)');
+    return row.status;
+  }catch(e){if(!silent)toast(e.message);return null;}
+}
+
 /* ---- ฝ่ายขายเช็คผลอนุมัติจากฐานข้อมูล ---- */
 async function checkApproval(d,silent){
   if(!d.approvalId||!sbOn())return null;
@@ -914,10 +1165,23 @@ function startPolling(d){
 /* ---- เปิดจากลิงก์ ---- */
 async function handleHash(){
   const h=location.hash||'';
+  const ms=h.match(/^#s=([0-9a-fA-F-]{36})&r=([a-zA-Z]+)$/);
   const mo=h.match(/^#a=([0-9a-fA-F-]{36})$/);
   const m1=h.match(/^#approve=(.+)$/),m2=h.match(/^#signed=(.+)$/);
-  if(!mo&&!m1&&!m2)return false;
+  if(!ms&&!mo&&!m1&&!m2)return false;
   history.replaceState(null,'',baseUrl());
+  if(ms){
+    const [,id,role]=ms;
+    if(!CREDIT_ROLES.some(r=>r[0]===role)){toast('ลิงก์ไม่ถูกต้อง');return false;}
+    toast('กำลังโหลดเอกสาร…');
+    try{
+      const rows=await sbRpc('get_doc_signature',{p_id:id});
+      const row=Array.isArray(rows)?rows[0]:rows;
+      if(!row){toast('ไม่พบเอกสารนี้ หรือลิงก์หมดอายุแล้ว');return false;}
+      if(row.status==='rejected'){toast('เอกสารนี้ถูกปฏิเสธไปแล้ว');return false;}
+      creditSignView(row,id,role);return true;
+    }catch(e){toast(e.message);return false;}
+  }
   if(mo){
     const id=mo[1];
     toast('กำลังโหลดเอกสาร…');
@@ -1015,6 +1279,42 @@ function openForm(title,fields,values,onSubmit,opts){
       const w=el('<div style="grid-column:1/-1"></div>');
       w.append(ed.el);ff.append(w);return;
     }
+    if(f.type==='checks'||f.type==='radio'){
+      const cur=f.type==='checks'?(values[f.key]||f.def||[]):(values[f.key]??f.def??'');
+      const w=el(`<div class="field" style="${f.full?'grid-column:1/-1':''}">
+        <label>${esc(f.label)}</label><div class="optrow"></div>
+        ${f.hint?`<div class="fh">${esc(f.hint)}</div>`:''}</div>`);
+      const row=w.querySelector('.optrow');
+      (f.options||[]).forEach(o=>{
+        const on=f.type==='checks'?cur.includes(o):cur===o;
+        const b=el(`<button type="button" class="opt ${on?'on':''}" data-v="${esc(o)}">
+          <span class="bx">${on?'✓':''}</span>${esc(o)}</button>`);
+        b.onclick=()=>{
+          if(f.type==='radio'){row.querySelectorAll('.opt').forEach(x=>{x.classList.remove('on');x.querySelector('.bx').textContent='';});
+            b.classList.add('on');b.querySelector('.bx').textContent='✓';}
+          else{const s=b.classList.toggle('on');b.querySelector('.bx').textContent=s?'✓':'';}};
+        row.append(b);});
+      custom[f.key]=()=>{
+        const on=[...row.querySelectorAll('.opt.on')].map(x=>x.dataset.v);
+        return f.type==='checks'?on:(on[0]||'');};
+      ff.append(w);return;
+    }
+    if(f.type==='people'){
+      const cur=values[f.key]||f.rolesDefault.map(r=>({role:r,name:''}));
+      const w=el(`<div class="field" style="grid-column:1/-1"><label>${esc(f.label)}</label><div class="ppl"></div></div>`);
+      const box=w.querySelector('.ppl');
+      f.rolesDefault.forEach((role,i)=>{
+        const v=cur.find(c=>c.role===role)||cur[i]||{};
+        box.append(el(`<div class="pplrow"><span>${i+1}. ${esc(role)}</span>
+          <input class="pname" data-role="${esc(role)}" placeholder="ชื่อ-นามสกุล" value="${esc(v.name||'')}">
+          ${role==='อื่น ๆ (โปรดระบุตำแหน่ง)'?`<input class="ppos" placeholder="ระบุตำแหน่ง" value="${esc(v.pos||'')}">`:''}</div>`));
+      });
+      custom[f.key]=()=>[...box.querySelectorAll('.pplrow')].map(r=>({
+        role:r.querySelector('.pname').dataset.role,
+        name:r.querySelector('.pname').value.trim(),
+        pos:r.querySelector('.ppos')?r.querySelector('.ppos').value.trim():''}));
+      ff.append(w);return;
+    }
     const v=values[f.key]??f.def??'';
     let inp;
     if(f.type==='select')inp=`<select name="${f.key}">${(f.options||[]).map(o=>`<option value="${esc(o)}" ${String(o)===String(v)?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
@@ -1028,7 +1328,8 @@ function openForm(title,fields,values,onSubmit,opts){
   const submit=()=>{
     const out={};let bad=null;
     Object.keys(custom).forEach(k=>out[k]=custom[k]());
-    fields.filter(f=>!f.group&&f.type!=='items').forEach(f=>{const n=ff.querySelector(`[name="${f.key}"]`);let v=n.value.trim();
+    fields.filter(f=>!f.group&&!custom[f.key]).forEach(f=>{
+      const n=ff.querySelector(`[name="${f.key}"]`);if(!n)return;let v=n.value.trim();
       if(f.type==='number')v=parseFloat(v||0)||0;
       if(f.req&&!v&&!bad)bad=[f.label,n];out[f.key]=v;});
     if(bad){toast('กรุณากรอก: '+bad[0]);bad[1].focus();bad[1].style.borderColor='#dc2626';return;}
@@ -1461,27 +1762,84 @@ function docFields(type){
     {key:'items',type:'items'},
     {group:'บันทึกภายใน',sub:'ไม่พิมพ์บนเอกสาร'},
     {key:'note',label:'บันทึกช่วยจำ',type:'textarea',full:true,ph:'เช่น ลูกค้าขอส่วนลดเพิ่ม รอยืนยันจากผู้จัดการ'}];
+  if(type==='credit')return creditFields();
   return base.concat([
     {key:'amount',label:money?'ยอดรวม (บาท)':'มูลค่าอ้างอิง (บาท)',type:'number',def:0,hint:money?'':'ไม่บังคับ'},
     {key:'note',label:'รายละเอียด',type:'textarea',full:true,ph:'ระบุสิ่งที่ลูกค้าต้องการ / เงื่อนไข'}]);
+}
+/* ---------- ใบขอเครดิต: ฟอร์มตามแบบฟอร์มบริษัท ---------- */
+const CREDIT_ROLES=[['sales','ผู้ขาย'],['salesMgr','ผู้จัดการฝ่ายขาย'],
+  ['accMgr','ผู้จัดการฝ่ายบัญชีและการเงิน'],['md','กรรมการผู้จัดการ']];
+const CONTACT_ROLES=['กรรมการผู้จัดการ','ผู้จัดการฝ่ายจัดซื้อ','เจ้าหน้าที่จัดซื้อ','เจ้าหน้าที่บัญชีการเงิน','อื่น ๆ (โปรดระบุตำแหน่ง)'];
+const CREDIT_DOCS=['ทะเบียนภาษีมูลค่าเพิ่ม ภ.พ. 20 , ภ.พ.09','หนังสือรับรองบริษัท (ไม่เกิน 3 เดือน)',
+  'แผนที่ (สำหรับส่งสินค้า, รับเช็ค-วางบิล)','สำเนาบัตรประชาชนผู้มีอำนาจลงนาม','ระเบียบวางบิล / รับเช็ค'];
+function creditFields(){return [
+  {group:'ข้อมูลบริษัทลูกค้า',sub:'ข้อ 1 ในแบบฟอร์ม'},
+  {key:'no',label:'เลขที่เอกสาร',req:true,def:nextNo('CRD')},
+  {key:'date',label:'วันที่',type:'date',def:today()},
+  {key:'customer',label:'ชื่อบริษัท / ห้างหุ้นส่วน / ร้าน',type:'select',options:DB.customers.map(c=>c.name),req:true,full:true},
+  {key:'bizType',label:'ประกอบธุรกิจประเภท'},
+  {key:'custType',label:'ประเภทลูกค้า',type:'radio',options:['ใช้เอง','ผู้ขาย (นำไปจำหน่าย)']},
+  {key:'taxAddress',label:'ที่อยู่ (สำหรับเปิดใบกำกับภาษี)',type:'textarea',full:true,
+    hint:'ปล่อยว่างได้ ระบบจะใช้ที่อยู่จากข้อมูลลูกค้า'},
+  {key:'tel',label:'Tel'},{key:'fax',label:'Fax'},
+  {key:'email',label:'E-mail'},{key:'taxId',label:'เลขประจำตัวผู้เสียภาษี'},
+  {key:'officeType',label:'ประเภทสำนักงาน',type:'radio',options:['สำนักงานใหญ่','สาขา']},
+  {key:'branch',label:'สาขาเลขที่'},
+  {key:'shipAddress',label:'ที่อยู่ (สำหรับจัดส่งสินค้า)',type:'textarea',full:true},
+  {key:'shipTel',label:'Tel (จัดส่ง)'},{key:'shipFax',label:'Fax (จัดส่ง)'},
+  {group:'การซื้อสินค้า',sub:'ข้อ 2'},
+  {key:'products',label:'ประเภทสินค้า',type:'checks',full:true,
+    options:['Shrink Film','Shrink Printed','Shrink Hood','Stretch Film']},
+  {key:'qtyKg',label:'ยอดสั่งซื้อต่อเดือน (กก.)',type:'number'},
+  {key:'qtyRoll',label:'ยอดสั่งซื้อต่อเดือน (ม้วน)',type:'number'},
+  {key:'qtyPcs',label:'ยอดสั่งซื้อต่อเดือน (ใบ)',type:'number'},
+  {group:'รายชื่อบุคคลที่ติดต่อกับบริษัท',sub:'ข้อ 3'},
+  {key:'contacts',label:'ผู้ติดต่อ (ลายเซ็นให้เซ็นบนกระดาษที่พิมพ์ออกมา)',type:'people',rolesDefault:CONTACT_ROLES},
+  {group:'เอกสารเกี่ยวกับบริษัท',sub:'ข้อ 4 — ติ๊กรายการที่ลูกค้าส่งมาครบแล้ว'},
+  {key:'docs5',label:'เอกสารที่ได้รับ (ต้องเซ็นรับรองและประทับตราทุกรายการ)',type:'checks',full:true,options:CREDIT_DOCS},
+  {group:'เงื่อนไขการชำระเงิน',sub:'ข้อ 5'},
+  {key:'billAddress',label:'สถานที่วางบิล / รับเช็ค (ที่อยู่)',type:'textarea',full:true},
+  {key:'billTel',label:'โทรศัพท์'},{key:'billFax',label:'แฟกซ์'},
+  {key:'billContact',label:'ชื่อผู้ติดต่อ',full:true},
+  {key:'billDay',label:'วางบิลได้ทุกวันที่'},{key:'billTime',label:'เวลา (วางบิล)'},
+  {key:'chequeDay',label:'รับเช็คได้ทุกวันที่'},{key:'chequeTime',label:'เวลา (รับเช็ค)'},
+  {key:'transferDay',label:'โอนเงินทุกวันที่'},{key:'transferBank',label:'ผ่านธนาคาร'},
+  {key:'otherPay',label:'อื่น ๆ',full:true},
+  {key:'signerName',label:'ผู้มีอำนาจลงนาม (ชื่อ)'},{key:'signerPosition',label:'ตำแหน่ง'},
+  {group:'ส่วนของบริษัท BWP',sub:'กรอกหลังพิจารณา — ลายเซ็น 4 ท่านส่งลิงก์ให้เซ็นทีหลังได้'},
+  {key:'approvedAmount',label:'วงเงินอนุมัติ (บาท)',type:'number'},
+  {key:'creditDays',label:'เครดิต (วัน)',type:'number',def:30},
+  {key:'note',label:'บันทึกภายใน',type:'textarea',full:true}];}
+function ensureCredit(d){
+  if(!d.contacts)d.contacts=CONTACT_ROLES.map(r=>({role:r,name:'',pos:''}));
+  if(!d.products)d.products=[];
+  if(!d.docs5)d.docs5=[];
+  if(!d.sigs)d.sigs={};
+  if(d.creditDays==null)d.creditDays=30;
+  return d;
 }
 function nextNo(prefix){const yr=new Date().getFullYear()+543;
   const n=DB.docs.filter(d=>d.no.startsWith(prefix)).length+1;
   return `${prefix}-${yr}-${String(n).padStart(4,'0')}`;}
 function openDocSmart(d){
-  if(d.type==='quotation')go('documents',{docType:'quotation',docOpen:d.id});
+  if(d.type==='quotation'||d.type==='credit')go('documents',{docType:d.type,docOpen:d.id});
   else openDoc(d);
 }
 function pgDocuments(v){
-  if(S.docOpen){const d=DB.docs.find(x=>x.id===S.docOpen);if(d)return quoteDetail(v,d);S.docOpen=null;}
+  if(S.docOpen){const d=DB.docs.find(x=>x.id===S.docOpen);
+    if(d)return d.type==='credit'?creditDetail(v,d):quoteDetail(v,d);
+    S.docOpen=null;}
   const t=DOC_TYPES.find(x=>x[0]===S.docType);
   header('เอกสารการขาย',[t[1]]);
-  const isQ=S.docType==='quotation';
+  const isQ=S.docType==='quotation',isC=S.docType==='credit';
   actionBtn('สร้าง'+t[1],'plus',()=>openForm('สร้าง'+t[1],docFields(S.docType),{},d=>{
     const doc=Object.assign({id:uid(),type:S.docType},d);
     if(doc.type==='quotation'){ensureQuote(doc);doc.amount=qtTotal(doc);}
+    if(doc.type==='credit'){ensureCredit(doc);doc.amount=doc.approvedAmount||0;}
     DB.docs.unshift(doc);save();render();toast('สร้างเอกสารแล้ว');openDocSmart(doc);},
-    isQ?{wide:true,sub:'กรอกข้อมูลตามลำดับ 1 → 4 แล้วกดสร้าง',okLabel:'สร้างใบเสนอราคา'}:null));
+    isQ?{wide:true,sub:'กรอกข้อมูลตามลำดับ 1 → 4 แล้วกดสร้าง',okLabel:'สร้างใบเสนอราคา'}
+    :isC?{wide:true,sub:'กรอกตามแบบฟอร์มขอเครดิต ข้อ 1 → 5',okLabel:'สร้างใบขอเครดิต'}:null));
 
   v.append(hint('เลือกประเภทเอกสารได้จากหัวข้อย่อยใต้ "เอกสารการขาย" ในเมนูซ้าย · คลิกที่รายการเพื่อดูหรือแก้ไข'));
 
@@ -1511,6 +1869,95 @@ function pgDocuments(v){
     empty:emptyState('ยังไม่มี'+t[1],'สร้างฉบับแรกได้เลย','สร้าง'+t[1],()=>$('#topActions .btn').click())
   }));
 }
+/* ---- หน้ารายละเอียดใบขอเครดิต (พิมพ์ 2 หน้า + เซ็น 4 ลายเซ็น) ---- */
+function creditDetail(v,d){
+  ensureCredit(d);
+  header(d.no,['เอกสารการขาย','ใบขอเครดิต']);
+  backBtn('กลับ',()=>go('documents',{docOpen:null}));
+  actionBtn('แก้ไขข้อมูล','edit',()=>openForm('แก้ไข '+d.no,creditFields(),d,o=>{
+    Object.assign(d,o);save();render();toast('บันทึกแล้ว');},{wide:true,okLabel:'บันทึกการแก้ไข'}),'btn gh');
+  actionBtn('ดูตัวอย่าง / พิมพ์','print',()=>printCredit(d));
+
+  const cust=DB.customers.find(c=>c.name===d.customer)||{};
+  const wrap=el('<div class="split"></div>');
+  const left=el('<div style="display:flex;flex-direction:column;gap:16px;min-width:0"></div>');
+  left.append(el(`<div class="card pad">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px">
+      <div class="h3" style="margin:0">ข้อมูลลูกค้า</div>${pill(d.status,DOC_ST)}</div>
+    <div class="grid g3">
+      <div class="fl"><span>ชื่อบริษัท</span><b>${esc(d.customer)}</b></div>
+      <div class="fl"><span>ประเภทธุรกิจ</span><b>${esc(d.bizType||'-')}</b></div>
+      <div class="fl"><span>ประเภทลูกค้า</span><b>${esc(d.custType||'-')}</b></div>
+      <div class="fl"><span>เลขประจำตัวผู้เสียภาษี</span><b>${esc(d.taxId||cust.taxId||'-')}</b></div>
+      <div class="fl"><span>สำนักงาน</span><b>${esc(d.officeType||'-')}${d.branch?' '+esc(d.branch):''}</b></div>
+      <div class="fl"><span>โทรศัพท์</span><b>${esc(d.tel||cust.phone||'-')}</b></div>
+      <div class="fl" style="grid-column:1/-1"><span>ที่อยู่ออกใบกำกับภาษี</span>
+        <b style="font-weight:500">${esc(d.taxAddress||cust.address||'—')}</b></div>
+    </div></div>`));
+  left.append(el(`<div class="card pad"><div class="h3">การซื้อสินค้าและเงื่อนไข</div>
+    <div class="grid g3">
+      <div class="fl"><span>ประเภทสินค้า</span><b>${esc((d.products||[]).join(', ')||'-')}</b></div>
+      <div class="fl"><span>ยอดสั่งซื้อ/เดือน</span><b>${[d.qtyKg?num0(d.qtyKg)+' กก.':'',d.qtyRoll?num0(d.qtyRoll)+' ม้วน':'',d.qtyPcs?num0(d.qtyPcs)+' ใบ':''].filter(Boolean).join(' · ')||'-'}</b></div>
+      <div class="fl"><span>ผู้มีอำนาจลงนาม</span><b>${esc(d.signerName||'-')}</b></div>
+      <div class="fl"><span>วางบิลทุกวันที่</span><b>${esc(d.billDay||'-')} ${esc(d.billTime||'')}</b></div>
+      <div class="fl"><span>รับเช็คทุกวันที่</span><b>${esc(d.chequeDay||'-')} ${esc(d.chequeTime||'')}</b></div>
+      <div class="fl"><span>เอกสารครบ</span><b>${(d.docs5||[]).length}/5 รายการ</b></div>
+    </div>
+    <div style="border-top:1px solid var(--bd2);margin-top:14px;padding-top:14px" class="grid g2">
+      <div class="fl"><span>วงเงินอนุมัติ</span><b style="font-size:19px;color:var(--blue-d)">${d.approvedAmount?num(d.approvedAmount)+' ฿':'ยังไม่กำหนด'}</b></div>
+      <div class="fl"><span>เครดิต</span><b style="font-size:19px">${esc(d.creditDays||'-')} วัน</b></div>
+    </div></div>`));
+  wrap.append(left);
+
+  const right=el('<div style="display:flex;flex-direction:column;gap:16px;align-self:start"></div>');
+  const n=Object.keys(d.sigs||{}).length;
+  const sg=el(`<div class="card pad"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px">
+    <div class="h3" style="margin:0">ลายเซ็นอนุมัติ</div>
+    <span class="pill" style="background:${n===4?'#dcfce7':'#fef3c7'};color:${n===4?'#15803d':'#b45309'}">${n}/4 ลายเซ็น</span></div></div>`);
+  CREDIT_ROLES.forEach(([k,label],i)=>{
+    const s=d.sigs[k],done=!!(s&&s.img);
+    const row=el(`<div style="display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--bd2)">
+      <div style="width:26px;height:26px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+        font-size:12px;font-weight:700;background:${done?'#dcfce7':'#eef2f8'};color:${done?'#15803d':'#94a3b8'}">${done?'✓':i+1}</div>
+      <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">${esc(label)}</div>
+      <div class="tiny">${done?esc(s.name||'')+' · '+fmtDate(s.date):'ยังไม่ได้เซ็น'}</div>
+      ${done?`<img src="${s.img}" style="max-height:40px;margin-top:7px;display:block">`:''}</div></div>`);
+    if(!done){
+      const b=el('<button class="btn gh sm">เซ็นที่เครื่องนี้</button>');
+      b.onclick=()=>signModal('เซ็นอนุมัติ — '+label,'ใบขอเครดิต '+d.no,'',s2=>{
+        d.sigs[k]=s2;
+        if(Object.keys(d.sigs).length===4)d.status='อนุมัติแล้ว';else d.status='รออนุมัติ';
+        save();render();toast('บันทึกลายเซ็น '+label+' แล้ว');});
+      row.append(b);
+    }
+    sg.append(row);});
+  const send=el(`<button class="btn blk" style="margin-top:14px">${svg('doc','ic s')}ส่งลิงก์ให้เซ็น 4 ท่าน</button>`);
+  send.onclick=()=>shareCredit(d);
+  sg.append(send);
+  if(d.sigDocId){
+    const rf=el('<button class="btn gh blk" style="margin-top:9px">ตรวจสอบลายเซ็นล่าสุด</button>');
+    rf.onclick=()=>checkCredit(d);sg.append(rf);
+    if(n<4&&sbReady!==false){clearInterval(pollTimer);
+      pollTimer=setInterval(()=>{if(S.docOpen!==d.id){clearInterval(pollTimer);return;}checkCredit(d,true);},15000);}
+  }
+  sg.append(el(`<div class="tiny" style="margin-top:10px">${sbReady===true?'🟢 พร้อมส่งลิงก์ให้เซ็นข้ามเครื่อง'
+    :sbReady===false?'🟠 '+esc(sbError):'⏳ กำลังตรวจสอบการเชื่อมต่อ…'}</div>`));
+  right.append(sg);
+
+  const pv=el('<div class="card pad"><div class="h3">พิมพ์เอกสาร</div></div>');
+  pv.append(el('<div class="tiny" style="margin-bottom:12px">พิมพ์ตามแบบฟอร์มบริษัท 2 หน้า A4 พร้อมลายเซ็นที่เซ็นแล้ว</div>'));
+  const b1=el(`<button class="btn blk">${svg('print','ic s')}ดูตัวอย่างก่อนพิมพ์</button>`);
+  b1.onclick=()=>printCredit(d);pv.append(b1);
+  right.append(pv);
+
+  const del=el(`<button class="btn dg blk">${svg('trash','ic s')}ลบใบขอเครดิตนี้</button>`);
+  del.onclick=()=>askConfirm('ลบเอกสาร','ลบ '+d.no+' ออกจากระบบ?','ลบ',()=>{
+    const i=DB.docs.indexOf(d);DB.docs.splice(i,1);save();go('documents',{docOpen:null});
+    toast('ลบเอกสารแล้ว',()=>{DB.docs.splice(i,0,d);save();render();});});
+  right.append(del);
+  wrap.append(right);v.append(wrap);
+}
+
 /* ---- หน้ารายละเอียดใบเสนอราคา (มีรายการสินค้า + พิมพ์ตามแบบฟอร์ม) ---- */
 function quoteDetail(v,d){
   ensureQuote(d);
