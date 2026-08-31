@@ -11,7 +11,7 @@ create table if not exists public.employees (
   id         uuid primary key default gen_random_uuid(),
   phone      text not null unique,          -- เบอร์ตัวเลขล้วน ใช้เข้าระบบ
   name       text,
-  position   text,
+  "position" text,                          -- ต้องครอบด้วย " เพราะเป็นคำสงวนของ Postgres
   role       text not null default 'sales' check (role in ('sales','manager','admin')),
   active     boolean not null default true,
   note       text,
@@ -77,10 +77,10 @@ end $$;
 -- ---------- 4) ให้แอดมินเห็นว่าใครตั้ง PIN แล้วบ้าง ----------
 drop function if exists public.employee_list();
 create or replace function public.employee_list()
-returns table (id uuid, phone text, name text, position text, role text,
+returns table (id uuid, phone text, name text, "position" text, role text,
                active boolean, note text, has_pin boolean, last_saved timestamptz)
 language sql stable security definer set search_path = public as $$
-  select e.id, e.phone, e.name, e.position, e.role, e.active, e.note,
+  select e.id, e.phone, e.name, e."position", e.role, e.active, e.note,
          (p.id is not null) as has_pin,
          d.updated_at
   from public.employees e
@@ -105,7 +105,7 @@ on conflict (phone) do nothing;
 --    Authentication → Sign In / Providers → Email → ปิด "Confirm email" → Save
 --
 -- คำสั่งที่ใช้บ่อย
---   ดูทะเบียนพนักงาน:      select phone, name, position, role, active from public.employees;
+--   ดูทะเบียนพนักงาน:      select phone, name, "position", role, active from public.employees;
 --   ปิดใช้งานพนักงาน:      update public.employees set active=false where phone='0812345678';
 --   ให้พนักงานตั้ง PIN ใหม่: delete from auth.users where email='0812345678@bwp.invalid';
 --                          (ทะเบียนยังอยู่ พนักงานเข้าเว็บแล้วตั้ง PIN ใหม่ได้เลย)
