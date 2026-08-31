@@ -263,6 +263,11 @@ a{color:var(--blue);text-decoration:none}
 .sheet table.items td.pr{text-align:right;width:24mm}
 .sheet table.items td.am{text-align:right;width:26mm}
 .sheet table.items tr.fill td{border-top:0;border-bottom:0;height:auto}
+.sheet table.items tr.sum td{height:auto;padding:4px 8px;font-size:12px;vertical-align:middle}
+.sheet table.items tr.sum .nt{text-align:left}
+.sheet table.items tr.sum .lb{text-align:right;font-weight:600}
+.sheet table.items tr.sum .am{text-align:right}
+.sheet table.items tr.tot .lb,.sheet table.items tr.tot .am{font-weight:700}
 .sheet table.items tr.last td{height:auto}
 .sheet .notes{margin-top:7px;font-size:12px;display:flex;gap:6px}
 .sheet .notes .lbl{width:16mm;flex-shrink:0}
@@ -653,6 +658,7 @@ function quoteSheet(d){
   ensureQuote(d);
   const co=DB.company,cust=DB.customers.find(c=>c.name===d.customer);
   const adr=(cust&&cust.address||'').split(/\n|,\s*/).filter(Boolean).slice(0,3);
+  const sub=qtTotal(d)||(+d.amount||0),vat=sub*.07;
   const rowsHtml=(d.items.length?d.items:[{name:'',qty:'',unit:'',price:0}]).map((it,i)=>{
     const amt=(+it.qty||0)*(+it.price||0);
     const detail=[it.code,it.name].filter(Boolean).join('\n');
@@ -693,7 +699,14 @@ function quoteSheet(d){
     <div class="lead">${esc(co.nameTh)} มีความยินดีที่จะเสนอราคาสินค้าเพื่อให้ท่านพิจารณา ตามรายละเอียดดังต่อไปนี้</div>
     <div class="itemswrap"><table class="items">
       <thead><tr><th>No.</th><th>รหัสสินค้า/รายละเอียด</th><th>จำนวน</th><th>ราคา/หน่วย</th><th>จำนวนเงิน</th></tr></thead>
-      <tbody>${rowsHtml}<tr class="fill"><td class="no"></td><td></td><td></td><td></td><td></td></tr></tbody>
+      <tbody>${rowsHtml}<tr class="fill"><td class="no"></td><td></td><td></td><td></td><td></td></tr>
+        <tr class="sum"><td colspan="3" class="nt"><b>หมายเหตุฯ</b> ราคาอาจมีการเปลี่ยนแปลงตามสภาวการณ์</td>
+          <td class="lb">มูลค่า</td><td class="am">${num(sub)}</td></tr>
+        <tr class="sum"><td colspan="3" class="nt"><b>กำหนดยืนราคา</b> ${esc(d.validDays)} วัน นับจากวันที่เสนอราคา</td>
+          <td class="lb">ภาษีมูลค่าเพิ่ม 7%</td><td class="am">${num(vat)}</td></tr>
+        <tr class="sum tot"><td colspan="3" class="nt"></td>
+          <td class="lb">รวมมูลค่าทั้งสิ้น</td><td class="am">${num(sub+vat)}</td></tr>
+      </tbody>
     </table></div>
     <div class="notes"><div class="lbl">หมายเหตุ</div>
       <div class="body">${noteLines.map(l=>`<div><span>:</span><span>${esc(l)}</span></div>`).join('')}<div><span>:</span><span></span></div></div></div>
