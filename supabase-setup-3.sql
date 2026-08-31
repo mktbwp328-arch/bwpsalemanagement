@@ -6,7 +6,7 @@
 --    Authentication → Sign In / Providers → Email → ปิด "Confirm email" → Save
 --
 --    เพราะระบบนี้ล็อกอินด้วย "ชื่อผู้ใช้ + รหัสผ่าน" ไม่ใช้อีเมลจริง
---    แอปจะแปลงชื่อผู้ใช้เป็นอีเมลภายในให้เอง เช่น somchai -> somchai@bwp.local
+--    แอปจะแปลงชื่อผู้ใช้เป็นอีเมลภายในให้เอง เช่น somchai -> somchai@bwp.invalid
 --    ซึ่งเป็นโดเมนสมมติ ส่งอีเมลยืนยันไปไม่ถึงแน่นอน
 -- ============================================================
 
@@ -115,11 +115,11 @@ grant execute on function public.is_manager() to authenticated;
 --   from public.profiles order by created_at;
 --
 -- ตั้งให้เป็นผู้จัดการ (เห็นข้อมูลของทุกคน) — เปลี่ยน somchai เป็นชื่อผู้ใช้จริง
---   update public.profiles set role='admin' where email='somchai@bwp.local';
+--   update public.profiles set role='admin' where email='somchai@bwp.invalid';
 --
 -- ลดสิทธิ์กลับเป็นพนักงานขาย
---   update public.profiles set role='sales' where email='somchai@bwp.local';
+--   update public.profiles set role='sales' where email='somchai@bwp.invalid';
 --
 -- ลบบัญชีพนักงานที่ลาออก (ข้อมูลงานขายของคนนั้นจะถูกลบตามไปด้วย)
---   delete from auth.users where email='somchai@bwp.local';
+--   delete from auth.users where email='somchai@bwp.invalid';
 -- ============================================================

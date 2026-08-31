@@ -1150,7 +1150,10 @@ async function sbPing(){
 }
 /* ---------- บัญชีผู้ใช้ (ชื่อผู้ใช้ + รหัสผ่าน ไม่ต้องมีอีเมลจริง) ---------- */
 const AKEY='bwp_auth_v1';
-const USER_DOMAIN='bwp.local';
+/* โดเมนภายในสำหรับล็อกอินด้วยชื่อผู้ใช้
+   ใช้ .invalid ตาม RFC 2606 — เป็นโดเมนสงวนที่ไม่มีใครเป็นเจ้าของได้
+   จึงไม่มีทางส่งอีเมลออกไปหาคนจริง (Supabase ไม่รับ .local) */
+const USER_DOMAIN='bwp.invalid';
 /* ชื่อผู้ใช้ -> อีเมลภายในระบบ (ถ้าพิมพ์อีเมลจริงมาก็ใช้ตามนั้น) */
 const toEmail=u=>{const v=String(u||'').trim();
   return v.includes('@')?v.toLowerCase():v.toLowerCase().replace(/\s+/g,'')+'@'+USER_DOMAIN;};
@@ -1181,6 +1184,7 @@ async function sbAuthCall(path,body){
     if(/email not confirmed/i.test(m))throw new Error('ระบบยังบังคับยืนยันอีเมลอยู่ — ให้ผู้ดูแลปิด "Confirm email" ใน Supabase');
     if(/already registered|already exists/i.test(m))throw new Error('ชื่อผู้ใช้นี้มีคนใช้แล้ว กรุณาใช้ชื่ออื่นหรือเข้าสู่ระบบ');
     if(/signups? not allowed|disabled/i.test(m))throw new Error('ระบบปิดการสมัครเอง — ติดต่อผู้ดูแลให้สร้างบัญชีให้');
+    if(/rate limit/i.test(m))throw new Error('ระบบยังเปิด "Confirm email" อยู่ จึงพยายามส่งอีเมลจนเต็มโควตา — ให้ผู้ดูแลปิดใน Supabase → Authentication → Providers → Email');
     if(/invalid.*email|email.*invalid/i.test(m))throw new Error('ชื่อผู้ใช้ใช้ได้เฉพาะ a-z 0-9 . _ - (3 ตัวขึ้นไป)');
     if(/password/i.test(m)&&/least|short/i.test(m))throw new Error('รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร');
     throw new Error(m);
