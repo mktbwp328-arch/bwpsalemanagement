@@ -1328,6 +1328,9 @@ async function shareCredit(d){
   const cust=DB.customers.find(c=>c.name===d.customer)||{};
   const payload=Object.assign({},d,{_cust:{address:cust.address,phone:cust.phone,email:cust.email,taxId:cust.taxId},
     company:DB.company,logo:DB.logo});
+  /* ไม่ส่งไฟล์แนบไปกับลิงก์ ให้ลิงก์เบาและเปิดเร็ว ส่งไปแค่จำนวน */
+  payload._attachN=(d.photos||[]).length+(d.files||[]).length;
+  delete payload.photos;delete payload.files;
   const roles=rolesOf(d.type);
   let id=d.sigDocId;
   try{
@@ -1377,7 +1380,8 @@ function creditSignView(row,id,role){
     <div style="font-size:19px;font-weight:700">${title} ${esc(d.no)}</div>
     <div class="mut">${esc(d.customer)} · ${subline}</div>
     <div style="margin-top:10px;font-size:15px">คุณกำลังเซ็นในฐานะ <b style="color:var(--blue-d)">${esc(roleName(role,type))}</b></div>
-    <div class="tiny" style="margin-top:6px">ลายเซ็นที่ครบแล้ว: ${roles.filter(r=>row.sigs&&row.sigs[r[0]]).map(r=>r[1]).join(' · ')||'ยังไม่มี'}</div></div>`));
+    <div class="tiny" style="margin-top:6px">ลายเซ็นที่ครบแล้ว: ${roles.filter(r=>row.sigs&&row.sigs[r[0]]).map(r=>r[1]).join(' · ')||'ยังไม่มี'}</div>
+    ${d._attachN?`<div class="tiny" style="margin-top:4px">📎 มีเอกสารแนบ ${d._attachN} ไฟล์ในระบบ (ดูได้ที่หน้าเอกสารในโปรแกรม)</div>`:''}</div>`));
   sheets.forEach(s=>ov.append(s));
 
   if(done){
@@ -2241,6 +2245,8 @@ function ensureCredit(d){
   if(!d.products)d.products=[];
   if(!d.docs5)d.docs5=[];
   if(!d.sigs)d.sigs={};
+  if(!d.photos)d.photos=[];
+  if(!d.files)d.files=[];
   if(d.creditDays==null)d.creditDays=30;
   return d;
 }
@@ -2286,7 +2292,8 @@ function pgDocuments(v){
   v.append(listCard(items,{
     avatar:()=>svg('doc','ic s'),
     title:d=>esc(d.no),
-    meta:d=>esc(d.customer)+' · '+fmtDate(d.date)+(d.note?' · '+esc(d.note.slice(0,40)):''),
+    meta:d=>{const n=(d.photos||[]).length+(d.files||[]).length;
+      return esc(d.customer)+' · '+fmtDate(d.date)+(n?' · 📎 '+n:'')+(d.note?' · '+esc(d.note.slice(0,32)):'');},
     amount:money?d=>num0(d.amount)+' ฿':null,
     status:d=>pill(d.status,DOC_ST),
     onOpen:openDocSmart,
@@ -2409,12 +2416,14 @@ function creditDetail(v,d){
       <div class="fl"><span>ผู้มีอำนาจลงนาม</span><b>${esc(d.signerName||'-')}</b></div>
       <div class="fl"><span>วางบิลทุกวันที่</span><b>${esc(d.billDay||'-')} ${esc(d.billTime||'')}</b></div>
       <div class="fl"><span>รับเช็คทุกวันที่</span><b>${esc(d.chequeDay||'-')} ${esc(d.chequeTime||'')}</b></div>
-      <div class="fl"><span>เอกสารครบ</span><b>${(d.docs5||[]).length}/5 รายการ</b></div>
+      <div class="fl"><span>เอกสารครบ</span><b>${(d.docs5||[]).length}/5 รายการ · แนบไฟล์ ${(d.photos||[]).length+(d.files||[]).length}</b></div>
     </div>
     <div style="border-top:1px solid var(--bd2);margin-top:14px;padding-top:14px" class="grid g2">
       <div class="fl"><span>วงเงินอนุมัติ</span><b style="font-size:19px;color:var(--blue-d)">${d.approvedAmount?num(d.approvedAmount)+' ฿':'ยังไม่กำหนด'}</b></div>
       <div class="fl"><span>เครดิต</span><b style="font-size:19px">${esc(d.creditDays||'-')} วัน</b></div>
     </div></div>`));
+  left.append(attachPanel(d,'เอกสารแนบและรูปภาพ',
+    'แนบสำเนา ภ.พ.20 · หนังสือรับรองบริษัท · แผนที่ · สำเนาบัตรประชาชนผู้มีอำนาจลงนาม · ระเบียบวางบิล/รับเช็ค'));
   wrap.append(left);
 
   const right=el('<div style="display:flex;flex-direction:column;gap:16px;align-self:start"></div>');
@@ -3002,6 +3011,19 @@ function pgProfiles(v){
       <div class="tiny">${fmtDate(t.date)}${t.by?' · '+esc(t.by):''}${t.note?' · '+esc(t.note):''}</div></div></div>`)));
     v.append(card);
   }
+}
+/* การ์ดแนบรูป/ไฟล์ ใช้ได้กับทุกเอกสาร */
+function attachPanel(o,title,hint){
+  o.photos=o.photos||[];o.files=o.files||[];
+  const card=el(`<div class="card pad" style="display:flex;flex-direction:column;gap:14px">
+    <div><div class="h3" style="margin:0">${esc(title)}</div>
+    ${hint?`<div class="tiny" style="margin-top:4px">${esc(hint)}</div>`:''}</div></div>`);
+  card.append(dropZone('JPG, PNG, PDF · รูปจะถูกย่อขนาดอัตโนมัติ',fs=>addUploads(fs,o.photos,o.files)));
+  card.append(el(`<div style="font-size:14px;font-weight:600">รูปภาพ (${o.photos.length})</div>`));
+  card.append(thumbGrid(o.photos));
+  card.append(el(`<div style="font-size:14px;font-weight:600">ไฟล์แนบ (${o.files.length})</div>`));
+  card.append(fileList(o.files));
+  return card;
 }
 function uploadPanel(c,title){
   const r=el('<div class="card pad" style="display:flex;flex-direction:column;gap:16px;align-self:start"></div>');
