@@ -416,6 +416,17 @@ a{color:var(--blue);text-decoration:none}
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap" id="topActions"></div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div id="syncDot" style="display:flex;align-items:center;gap:6px"></div>
+        <button id="userBtn" title="บัญชีผู้ใช้"
+          style="display:flex;align-items:center;gap:9px;background:none;border:1px solid transparent;cursor:pointer;padding:5px 8px;border-radius:10px">
+          <div id="userAv" style="width:34px;height:34px;border-radius:50%;background:#dbeafe;color:var(--blue-d);
+            display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700">—</div>
+          <div style="line-height:1.2;text-align:left">
+            <div id="userName" style="font-size:13px;font-weight:600">ผู้ใช้</div>
+            <div id="userRole" style="font-size:11px;color:var(--mut2)">—</div></div>
+        </button>
+      </div>
     </header>
     <div class="body" id="view"></div>
   </div>
@@ -483,9 +494,43 @@ const MN=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.�
 const KEY='bwp_sales_v1';
 let DB=null;
 let booted=false;
-function save(){try{localStorage.setItem(KEY,JSON.stringify(DB));}
-  catch(e){if(booted)toast('บันทึกไม่สำเร็จ — พื้นที่จัดเก็บเต็ม ลองลบรูปที่ไม่ได้ใช้ออก');}}
-function load(){try{const r=localStorage.getItem(KEY);if(r)return JSON.parse(r);}catch(e){}return null;}
+/* ---------- ซิงก์ข้อมูลขึ้นคลาวด์ (สำรองในเครื่องด้วย) ---------- */
+let syncState='idle';      /* idle | saving | saved | offline | readonly */
+let syncTimer=null,syncPending=false;
+const localKey=()=>KEY+(AUTH.user?'_'+AUTH.user.id:'');
+function setSync(s){syncState=s;const e=document.getElementById('syncDot');if(e)paintSync(e);}
+function paintSync(e){
+  const m={idle:['','',''],saving:['#f59e0b','กำลังบันทึก…','⟳'],saved:['#16a34a','บันทึกแล้ว','✓'],
+    offline:['#dc2626','ยังไม่ได้บันทึกขึ้นคลาวด์','!'],readonly:['#6366f1','โหมดดูอย่างเดียว','👁']}[syncState]||['','',''];
+  e.innerHTML=m[1]?`<span style="width:8px;height:8px;border-radius:50%;background:${m[0]};display:inline-block"></span>
+    <span style="font-size:12px;color:var(--mut)">${esc(m[1])}</span>`:'';
+}
+function save(){
+  try{localStorage.setItem(localKey(),JSON.stringify(DB));}
+  catch(e){if(booted)toast('พื้นที่ในเครื่องเต็ม — ข้อมูลยังบันทึกขึ้นคลาวด์ตามปกติ');}
+  if(!booted)return;
+  if(readOnly()){setSync('readonly');return;}
+  if(!authed())return;
+  syncPending=true;setSync('saving');
+  clearTimeout(syncTimer);syncTimer=setTimeout(cloudSave,1500);
+}
+async function cloudSave(){
+  if(!authed()||readOnly())return;
+  syncPending=false;
+  try{
+    const body=JSON.stringify({user_id:AUTH.user.id,data:DB,updated_at:new Date().toISOString()});
+    if(body.length>4.5*1024*1024)toast('ข้อมูลใหญ่เกิน 4.5 MB แล้ว — ควรลบรูปเก่าที่ไม่ใช้ออก');
+    await sbFetch('user_data?on_conflict=user_id',{method:'POST',
+      headers:Object.assign(sbHeaders(),{Prefer:'resolution=merge-duplicates,return=minimal'}),body});
+    setSync('saved');setTimeout(()=>{if(syncState==='saved'&&!syncPending)setSync('idle');},2500);
+  }catch(e){setSync('offline');}
+}
+async function cloudLoad(userId){
+  const rows=await sbGet('user_data?select=data,updated_at&user_id=eq.'+userId);
+  return rows&&rows[0]?rows[0].data:null;
+}
+function load(){try{const r=localStorage.getItem(localKey())||localStorage.getItem(KEY);
+  if(r)return JSON.parse(r);}catch(e){}return null;}
 
 function seed(){
   const C=(name,contact,phone,email,channel,status,d,owner,extra={})=>Object.assign({
@@ -1086,14 +1131,14 @@ const certMenu=()=>imageMenu('cert','ตรารับรอง');
 
 /* โลโก้: ใช้ที่อัปโหลดไว้ก่อน ถ้าไม่มีให้ใช้ไฟล์ logo.png ที่วางไว้ข้างแอป */
 let assetLogo=null;
-const logoSrc=()=>DB.logo||assetLogo||null;
+const logoSrc=()=>(DB&&DB.logo)||assetLogo||null;
 (function probeLogo(){const i=new Image();
   i.onload=()=>{assetLogo='logo.png';if(typeof DB!=='undefined'&&DB)render();};
   i.src='logo.png';})();
 
 /* ================= เชื่อมต่อ Supabase (ส่งลิงก์เซ็นข้ามเครื่อง) ================= */
 const SB_DEFAULT={url:'https://vltsxzlbflayxnvtnhlv.supabase.co',key:'sb_publishable_3E_qdus9zBSonnfIDk3Nmw_szNB_Kb4'};
-const sbCfg=()=>Object.assign({},SB_DEFAULT,DB.sb||{});
+const sbCfg=()=>Object.assign({},SB_DEFAULT,(DB&&DB.sb)||{});
 const sbOn=()=>{const c=sbCfg();return !!(c.url&&c.key);};
 let sbReady=null;            /* null=ยังไม่ตรวจ, true=พร้อมใช้, false=ยังตั้งค่าไม่ครบ */
 let sbError='';
@@ -1103,11 +1148,74 @@ async function sbPing(){
   catch(e){sbReady=false;sbError=e.message;}
   return sbReady;
 }
+/* ---------- บัญชีผู้ใช้ ---------- */
+const AKEY='bwp_auth_v1';
+const AUTH={token:null,refresh:null,user:null,profile:null,viewing:null};
+const authed=()=>!!AUTH.token;
+const isManager=()=>!!(AUTH.profile&&/manager|admin/.test(AUTH.profile.role));
+const readOnly=()=>!!(AUTH.viewing&&AUTH.viewing!==(AUTH.user&&AUTH.user.id));
+function sbHeaders(){
+  const c=sbCfg();
+  return {apikey:c.key,Authorization:'Bearer '+(AUTH.token||c.key),'Content-Type':'application/json'};
+}
+function saveSession(){
+  try{localStorage.setItem(AKEY,JSON.stringify({token:AUTH.token,refresh:AUTH.refresh,user:AUTH.user}));}catch(e){}
+}
+function clearSession(){AUTH.token=AUTH.refresh=AUTH.user=AUTH.profile=null;AUTH.viewing=null;
+  try{localStorage.removeItem(AKEY);}catch(e){}}
+async function sbAuthCall(path,body){
+  const c=sbCfg();
+  const r=await fetch(c.url.replace(/\/$/,'')+'/auth/v1/'+path,{method:'POST',
+    headers:{apikey:c.key,'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok){
+    const m=j.msg||j.message||j.error_description||j.error||('เข้าสู่ระบบไม่สำเร็จ ('+r.status+')');
+    if(/invalid login/i.test(m))throw new Error('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+    if(/email not confirmed/i.test(m))throw new Error('บัญชียังไม่ได้ยืนยันอีเมล — ให้ผู้ดูแลปิด "Confirm email" ใน Supabase');
+    if(/already registered|already exists/i.test(m))throw new Error('อีเมลนี้มีบัญชีอยู่แล้ว กรุณาเข้าสู่ระบบ');
+    if(/password/i.test(m)&&/least|short/i.test(m))throw new Error('รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร');
+    throw new Error(m);
+  }
+  return j;
+}
+async function signIn(email,password){
+  const j=await sbAuthCall('token?grant_type=password',{email,password});
+  AUTH.token=j.access_token;AUTH.refresh=j.refresh_token;AUTH.user=j.user;saveSession();
+}
+async function signUp(email,password,name){
+  const j=await sbAuthCall('signup',{email,password,data:{name}});
+  if(j.access_token){AUTH.token=j.access_token;AUTH.refresh=j.refresh_token;AUTH.user=j.user;saveSession();return true;}
+  return false;   /* ต้องยืนยันอีเมลก่อน */
+}
+async function refreshSession(){
+  if(!AUTH.refresh)return false;
+  try{const j=await sbAuthCall('token?grant_type=refresh_token',{refresh_token:AUTH.refresh});
+    AUTH.token=j.access_token;AUTH.refresh=j.refresh_token;AUTH.user=j.user||AUTH.user;saveSession();return true;}
+  catch(e){clearSession();return false;}
+}
+async function loadProfile(){
+  const rows=await sbGet('profiles?select=id,name,email,role&id=eq.'+AUTH.user.id);
+  AUTH.profile=(rows&&rows[0])||{id:AUTH.user.id,name:(AUTH.user.email||'').split('@')[0],
+    email:AUTH.user.email,role:'sales'};
+}
+/* ---------- REST helper ---------- */
+async function sbFetch(path,opt,retry){
+  const c=sbCfg();
+  const r=await fetch(c.url.replace(/\/$/,'')+'/rest/v1/'+path,
+    Object.assign({headers:sbHeaders()},opt||{}));
+  if(r.status===401&&!retry&&AUTH.refresh){
+    if(await refreshSession())return sbFetch(path,opt,true);
+  }
+  const txt=await r.text();
+  if(!r.ok){let m=txt;try{m=JSON.parse(txt).message||txt;}catch(e){}throw new Error(m);}
+  return txt?JSON.parse(txt):null;
+}
+const sbGet=p=>sbFetch(p,{method:'GET'});
+
 async function sbRpc(fn,args){
   const c=sbCfg();
   const r=await fetch(c.url.replace(/\/$/,'')+'/rest/v1/rpc/'+fn,{method:'POST',
-    headers:{apikey:c.key,Authorization:'Bearer '+c.key,'Content-Type':'application/json'},
-    body:JSON.stringify(args||{})});
+    headers:sbHeaders(),body:JSON.stringify(args||{})});
   const txt=await r.text();
   if(!r.ok){
     let msg=txt;try{msg=JSON.parse(txt).message||txt;}catch(e){}
@@ -1769,6 +1877,7 @@ function loadView(){
 function go(p,extra){closeDrawer();S.page=p;Object.assign(S,extra||{});
   $('#side').classList.remove('open');$('#backdrop').classList.remove('on');window.scrollTo(0,0);render();}
 $('#burger').onclick=()=>{$('#side').classList.toggle('open');$('#backdrop').classList.toggle('on');};
+$('#userBtn').onclick=userMenu;
 $('#backdrop').onclick=()=>{$('#side').classList.remove('open');$('#backdrop').classList.remove('on');};
 
 /* ================= shared page parts ================= */
@@ -1853,6 +1962,13 @@ function render(){
 
   const v=$('#view');v.innerHTML='';$('#topActions').innerHTML='';
   ({dashboard:pgDashboard,customers:pgCustomers,documents:pgDocuments,po:pgPO,receipts:pgReceipts,profiles:pgProfiles}[S.page])(v);
+  if(readOnly()){
+    v.prepend(el(`<div class="hint" style="background:#eef0ff;border-color:#c7cdfb;color:#4338ca">
+      👁 กำลังดูข้อมูลของ <b>${esc(AUTH.viewingName||'เพื่อนร่วมทีม')}</b> — แก้ไขหรือสร้างเอกสารไม่ได้</div>`));
+    $('#topActions').querySelectorAll('.btn').forEach(b=>{
+      if(/เพิ่ม|สร้าง|ออกใบเสร็จ|แก้ไข/.test(b.textContent)){b.disabled=true;b.style.opacity=.45;b.style.cursor='not-allowed';}});
+  }
+  paintSync($('#syncDot'));
   saveView();
 }
 
@@ -3085,21 +3201,183 @@ function uploadPanel(c,title){
   return r;
 }
 
+/* ================= หน้าเข้าสู่ระบบ ================= */
+function loginScreen(msg){
+  document.querySelector('.app').style.display='none';
+  const old=document.getElementById('loginWrap');if(old)old.remove();
+  const w=el(`<div id="loginWrap" style="position:fixed;inset:0;background:linear-gradient(150deg,#0b2a63,#123f9e);
+      display:flex;align-items:center;justify-content:center;padding:20px;overflow:auto;z-index:200">
+    <div style="background:#fff;border-radius:18px;width:100%;max-width:430px;padding:34px 32px;box-shadow:0 24px 60px rgba(5,20,50,.4)">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:22px">
+        <div style="width:48px;height:48px;border-radius:13px;background:linear-gradient(150deg,#4f9cf9,#123f9e);
+          display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;overflow:hidden">
+          ${logoSrc()?`<img src="${imgSrc(logoSrc())}" style="width:100%;height:100%;object-fit:cover">`:'BWP'}</div>
+        <div><div style="font-size:20px;font-weight:700">BWP Sales</div>
+          <div class="tiny">ระบบจัดการงานขาย</div></div></div>
+      ${msg?`<div class="hint" style="margin-bottom:16px">${esc(msg)}</div>`:''}
+      <div id="lgErr" style="display:none;background:#fef2f2;border:1px solid #fbcaca;color:#b91c1c;
+        border-radius:10px;padding:11px 13px;font-size:13.5px;margin-bottom:14px"></div>
+      <div class="field" style="margin-bottom:14px"><label>อีเมล</label>
+        <input id="lgEmail" type="email" autocomplete="username" placeholder="you@company.com"></div>
+      <div class="field" style="margin-bottom:14px"><label>รหัสผ่าน</label>
+        <input id="lgPass" type="password" autocomplete="current-password" placeholder="อย่างน้อย 6 ตัวอักษร"></div>
+      <div class="field" id="lgNameWrap" style="margin-bottom:14px;display:none"><label>ชื่อ-นามสกุล</label>
+        <input id="lgName" placeholder="เช่น คุณวราลักษณ์ บุตะกุล"></div>
+      <button class="btn blk" id="lgGo" style="height:48px;margin-top:4px">เข้าสู่ระบบ</button>
+      <div style="text-align:center;margin-top:16px;font-size:13.5px;color:var(--mut)">
+        <span id="lgSwitchTxt">ยังไม่มีบัญชี?</span>
+        <a href="#" id="lgSwitch" style="font-weight:600">สมัครใช้งาน</a></div>
+      <div class="tiny" style="text-align:center;margin-top:18px">ข้อมูลของแต่ละคนแยกกัน เข้าจากเครื่องไหนก็เห็นงานของตัวเอง</div>
+    </div></div>`);
+  document.body.append(w);
+  let mode='in';
+  const err=t=>{const e=w.querySelector('#lgErr');e.style.display=t?'block':'none';e.textContent=t||'';};
+  w.querySelector('#lgSwitch').onclick=e=>{e.preventDefault();
+    mode=mode==='in'?'up':'in';err('');
+    w.querySelector('#lgNameWrap').style.display=mode==='up'?'flex':'none';
+    w.querySelector('#lgGo').textContent=mode==='up'?'สมัครใช้งาน':'เข้าสู่ระบบ';
+    w.querySelector('#lgSwitchTxt').textContent=mode==='up'?'มีบัญชีแล้ว?':'ยังไม่มีบัญชี?';
+    w.querySelector('#lgSwitch').textContent=mode==='up'?'เข้าสู่ระบบ':'สมัครใช้งาน';};
+  const go=async()=>{
+    const b=w.querySelector('#lgGo');
+    const email=w.querySelector('#lgEmail').value.trim();
+    const pass=w.querySelector('#lgPass').value;
+    if(!email||!pass){err('กรุณากรอกอีเมลและรหัสผ่าน');return;}
+    b.disabled=true;b.textContent='กำลังดำเนินการ…';err('');
+    try{
+      if(mode==='up'){
+        const ok=await signUp(email,pass,w.querySelector('#lgName').value.trim());
+        if(!ok){b.disabled=false;b.textContent='สมัครใช้งาน';
+          err('สมัครแล้ว — กรุณายืนยันอีเมลก่อนเข้าใช้งาน (หรือให้ผู้ดูแลปิด Confirm email ใน Supabase)');return;}
+      }else await signIn(email,pass);
+      w.remove();document.querySelector('.app').style.display='';
+      await startApp();
+    }catch(e){b.disabled=false;b.textContent=mode==='up'?'สมัครใช้งาน':'เข้าสู่ระบบ';err(e.message);}
+  };
+  w.querySelector('#lgGo').onclick=go;
+  w.addEventListener('keydown',e=>{if(e.key==='Enter')go();});
+  setTimeout(()=>w.querySelector('#lgEmail').focus(),80);
+}
+function userMenu(){
+  if(!authed()){loginScreen();return;}
+  const p=AUTH.profile||{},ro=readOnly();
+  const ov=el('<div class="ov"></div>');
+  const m=el(`<div class="modal" style="max-width:430px"><header><div><b>${esc(p.name||p.email||'ผู้ใช้')}</b>
+      <div class="tiny" style="margin-top:2px">${esc(p.email||'')} · ${isManager()?'ผู้จัดการ':'พนักงานขาย'}</div></div>
+      <button class="close">✕</button></header>
+    <div class="mb" style="display:flex;flex-direction:column;gap:10px">
+      ${ro?'<div class="hint">กำลังดูข้อมูลของคนอื่นอยู่ แก้ไขไม่ได้ กดปุ่มด้านล่างเพื่อกลับมาที่ข้อมูลของคุณ</div>':''}
+      ${isManager()?'<button class="btn gh blk" id="team">ดูข้อมูลของทีมขาย</button>':''}
+      ${ro?'<button class="btn blk" id="mine">กลับไปข้อมูลของฉัน</button>':''}
+      <button class="btn gh blk" id="sync">บันทึกขึ้นคลาวด์เดี๋ยวนี้</button>
+      <button class="btn dg blk" id="out">ออกจากระบบ</button>
+    </div></div>`);
+  const close=()=>ov.remove();
+  m.querySelector('.close').onclick=close;
+  if(m.querySelector('#team'))m.querySelector('#team').onclick=()=>{close();teamPicker();};
+  if(m.querySelector('#mine'))m.querySelector('#mine').onclick=()=>{close();viewUser(AUTH.user.id,'ฉัน',true);};
+  m.querySelector('#sync').onclick=async()=>{close();
+    if(readOnly()){toast('โหมดดูอย่างเดียว ไม่มีอะไรต้องบันทึก');return;}
+    setSync('saving');await cloudSave();
+    toast(syncState==='offline'?'บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง':'บันทึกขึ้นคลาวด์แล้ว');};
+  m.querySelector('#out').onclick=()=>{close();logout();};
+  ov.onclick=e=>{if(e.target===ov)close();};
+  ov.append(m);$('#layer').append(ov);
+}
+function logout(){
+  askConfirm('ออกจากระบบ','ต้องการออกจากระบบใช่ไหม? ข้อมูลถูกบันทึกขึ้นคลาวด์แล้ว','ออกจากระบบ',async()=>{
+    if(syncPending)await cloudSave();
+    clearSession();location.reload();});
+}
+/* หัวหน้าเลือกดูข้อมูลของเซลแต่ละคน */
+async function teamPicker(){
+  let team=[];
+  try{team=await sbRpc('team_list',{})||[];}catch(e){toast(e.message);return;}
+  const ov=el('<div class="ov"></div>');
+  const m=el(`<div class="modal" style="max-width:560px"><header><div><b>ข้อมูลของทีมขาย</b>
+      <div class="tiny" style="margin-top:2px">เลือกดูข้อมูลของแต่ละคน (ดูได้อย่างเดียว แก้ไม่ได้)</div></div>
+      <button class="close">✕</button></header><div class="mb"><div class="list2"></div></div></div>`);
+  const list=m.querySelector('.list2');
+  const me=AUTH.user.id;
+  [{id:me,name:(AUTH.profile.name||'ฉัน')+' (ข้อมูลของฉัน)',email:AUTH.profile.email,role:AUTH.profile.role,mine:true}]
+    .concat(team.filter(t=>t.id!==me))
+    .forEach(t=>{
+      const on=(AUTH.viewing||me)===t.id;
+      const r=el(`<div class="lrow" style="border-radius:10px;${on?'background:var(--blue-l);box-shadow:inset 3px 0 0 var(--blue)':''}">
+        <div class="lav">${esc(initials(t.name||t.email||'?'))}</div>
+        <div class="lmain"><div class="lt">${esc(t.name||t.email)}</div>
+          <div class="lm">${esc(t.email||'')} · ${esc(t.role||'sales')}${t.updated_at?' · แก้ล่าสุด '+ago(t.updated_at):''}${t.size_kb?' · '+t.size_kb+' KB':''}</div></div>
+        <div class="lright">${on?'<span class="pill" style="background:#dbeafe;color:#1d4ed8">กำลังดู</span>':''}</div></div>`);
+      r.onclick=async()=>{ov.remove();await viewUser(t.id,t.name||t.email,t.mine);};
+      list.append(r);});
+  if(!team.length)list.append(el('<div class="empty">ยังไม่มีผู้ใช้คนอื่นในระบบ</div>'));
+  m.querySelector('.close').onclick=()=>ov.remove();
+  ov.onclick=e=>{if(e.target===ov)ov.remove();};
+  ov.append(m);$('#layer').append(ov);
+}
+async function viewUser(id,name,mine){
+  toast('กำลังโหลดข้อมูล…');
+  try{
+    const d=await cloudLoad(id);
+    AUTH.viewing=mine?null:id;AUTH.viewingName=mine?null:name;
+    DB=d&&d.customers?d:seed();
+    migrate();
+    S.page='dashboard';S.docOpen=S.poOpen=S.rcOpen=S.profSel=null;
+    setSync(readOnly()?'readonly':'idle');render();
+    toast(mine?'กลับมาที่ข้อมูลของคุณแล้ว':'กำลังดูข้อมูลของ '+name+' (แก้ไขไม่ได้)');
+  }catch(e){toast(e.message);}
+}
+
 /* ================= boot ================= */
-DB=load();
-if(!DB||!DB.customers)DB=seed();
-/* อัปเกรดข้อมูลเดิมให้มีช่องใหม่ของใบเสนอราคาและหัวกระดาษ */
-if(!DB.company)DB.company=Object.assign({},COMPANY);
-if(DB.cert===undefined)DB.cert=null;
-DB.docs.filter(d=>d.type==='quotation').forEach(d=>{
-  ensureQuote(d);
-  if(!d.items.length&&d.amount)d.items=[{name:'สินค้าตามรายละเอียดที่เสนอ',qty:1,unit:'รายการ',price:d.amount}];
-});
-loadView();
-save();render();booted=true;
-handleHash();
+function migrate(){
+  if(!DB.company)DB.company=Object.assign({},COMPANY);
+  if(DB.cert===undefined)DB.cert=null;
+  (DB.docs||[]).filter(d=>d.type==='quotation').forEach(d=>{
+    ensureQuote(d);
+    if(!d.items.length&&d.amount)d.items=[{name:'สินค้าตามรายละเอียดที่เสนอ',qty:1,unit:'รายการ',price:d.amount}];
+  });
+}
+async function startApp(){
+  try{await loadProfile();}catch(e){}
+  let cloud=null,failed=false;
+  try{cloud=await cloudLoad(AUTH.user.id);}catch(e){failed=true;}
+  const local=load();
+  if(cloud&&cloud.customers)DB=cloud;
+  else if(local&&local.customers)DB=local;
+  else DB=seed();
+  migrate();
+  loadView();booted=true;
+  const nm=(AUTH.profile&&AUTH.profile.name)||(AUTH.user.email||'').split('@')[0];
+  $('#userName').textContent=nm;
+  $('#userRole').textContent=isManager()?'ผู้จัดการ':'พนักงานขาย';
+  $('#userAv').textContent=initials(nm);
+  render();
+  if(failed){setSync('offline');toast('เชื่อมคลาวด์ไม่ได้ — ใช้ข้อมูลในเครื่องไปก่อน แล้วจะบันทึกให้เมื่อกลับมาออนไลน์');}
+  else if(!cloud){save();}   /* ผู้ใช้ใหม่: อัปข้อมูลเริ่มต้นขึ้นคลาวด์ */
+  sbPing();
+}
+async function boot(){
+  /* ลิงก์เซ็นเอกสาร: เปิดได้เลยไม่ต้องล็อกอิน */
+  if(/^#(s=|a=|approve=|signed=)/.test(location.hash||'')){
+    DB=load()||seed();migrate();booted=true;
+    document.querySelector('.app').style.display='none';
+    await handleHash();
+    if(!document.querySelector('.prevov,.ov')){document.querySelector('.app').style.display='';render();}
+    return;
+  }
+  try{const s=JSON.parse(localStorage.getItem(AKEY)||'null');
+    if(s&&s.token){Object.assign(AUTH,s);}}catch(e){}
+  if(!sbOn()){DB=load()||seed();migrate();booted=true;render();
+    toast('ยังไม่ได้ตั้งค่าฐานข้อมูล — ใช้งานแบบเก็บในเครื่อง');return;}
+  if(authed()){
+    try{await sbGet('profiles?select=id&limit=1');}
+    catch(e){if(!await refreshSession()){clearSession();loginScreen('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่');return;}}
+    await startApp();
+  }else loginScreen();
+}
 window.addEventListener('hashchange',handleHash);
-sbPing().then(()=>{if(S.page==='documents'&&S.docOpen)render();});
+boot();
+
 </script>
 </body>
 </html>
