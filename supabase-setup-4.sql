@@ -13,6 +13,8 @@ update public.profiles
    and split_part(email, '@', 1) ~ '^0[0-9]{8,9}$';
 
 -- ให้หน้ารายชื่อทีมแสดงเบอร์ด้วย
+-- (ต้องลบของเดิมก่อน เพราะเพิ่มคอลัมน์ phone ทำให้ชนิดค่าที่คืนเปลี่ยนไป)
+drop function if exists public.team_list();
 create or replace function public.team_list()
 returns table (id uuid, name text, email text, phone text, role text,
                updated_at timestamptz, size_kb numeric)
