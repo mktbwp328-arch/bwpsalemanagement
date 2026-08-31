@@ -1030,28 +1030,40 @@ function printDocSheet(d){
   const mk=(t,c,fn)=>{const b=el(`<button class="btn ${c}">${esc(t)}</button>`);b.onclick=fn;bar.append(b);};
   mk('🖨  พิมพ์ / บันทึกเป็น PDF','',()=>window.print());
   mk('แก้ไขหัวกระดาษ','gh',companyForm);
+  mk(DB.logo?'โลโก้ (เปลี่ยน/ลบ)':'อัปโหลดโลโก้','gh',()=>{ov.remove();logoMenu();});
+  mk(DB.cert?'ตรารับรอง (เปลี่ยน/ลบ)':'อัปโหลดตรารับรอง','gh',()=>{ov.remove();certMenu();});
   mk('ปิด','gh',()=>ov.remove());
   ov.append(bar);
-  sheetsFor(d).forEach(s=>ov.append(s));
+  sheetsFor(d).forEach(s=>{
+    const ph=s.querySelector('.certph');
+    if(ph)ph.onclick=()=>{ov.remove();certMenu();};
+    ov.append(s);});
   $('#layer').append(ov);
 }
-const printCredit=printDocSheet;
-function printQuote(d){
-  const ov=el('<div class="prevov"></div>');
-  const bar=el('<div class="prevbar"></div>');
-  const mk=(label,cls,fn)=>{const b=el(`<button class="btn ${cls}">${esc(label)}</button>`);b.onclick=fn;bar.append(b);return b;};
-  mk('🖨  พิมพ์ / บันทึกเป็น PDF','',()=>window.print());
-  mk('แก้ไขหัวกระดาษ','gh',()=>companyForm());
-  mk(DB.cert?'เปลี่ยนตรารับรอง':'อัปโหลดตรารับรอง','gh',()=>pickFiles('image/*',false,async fs=>{
-    const im=await readImage(fs[0]);if(im){DB.cert=im.data;save();ov.remove();printQuote(d);}}));
-  mk('ปิด','gh',()=>ov.remove());
-  ov.append(bar);
-  const sheet=quoteSheet(d);
-  const ph=sheet.querySelector('.certph');
-  if(ph)ph.onclick=()=>pickFiles('image/*',false,async fs=>{const im=await readImage(fs[0]);if(im){DB.cert=im.data;save();ov.remove();printQuote(d);}});
-  ov.append(sheet);
-  $('#layer').append(ov);
+const printCredit=printDocSheet,printQuote=printDocSheet;
+
+/* เลือก/เปลี่ยน/ลบรูปบริษัท (โลโก้ และตรารับรอง) */
+function pickCompanyImage(key,label){
+  pickFiles('image/*',false,async fs=>{const im=await readImage(fs[0]);
+    if(im){DB[key]=im.data;save();render();toast('อัปโหลด'+label+'แล้ว');}});
 }
+function imageMenu(key,label){
+  if(!DB[key]){pickCompanyImage(key,label);return;}
+  const ov=el('<div class="ov"></div>');
+  const m=el(`<div class="modal" style="max-width:430px"><header><b>${esc(label)}</b><button class="close">✕</button></header>
+    <div class="mb" style="text-align:center;background:#f8fafc"><img src="${DB[key]}" style="max-height:150px;max-width:100%"></div>
+    <footer><button class="btn dg" id="del">ลบ${esc(label)}</button><div style="flex:1"></div>
+      <button class="btn gh" id="c">ปิด</button><button class="btn" id="ch">เปลี่ยนรูป</button></footer></div>`);
+  const close=()=>ov.remove();
+  m.querySelector('.close').onclick=close;m.querySelector('#c').onclick=close;
+  m.querySelector('#ch').onclick=()=>{close();pickCompanyImage(key,label);};
+  m.querySelector('#del').onclick=()=>{const old=DB[key];DB[key]=null;save();close();render();
+    toast('ลบ'+label+'แล้ว',()=>{DB[key]=old;save();render();});};
+  ov.onclick=e=>{if(e.target===ov)close();};
+  ov.append(m);$('#layer').append(ov);
+}
+const logoMenu=()=>imageMenu('logo','โลโก้บริษัท');
+const certMenu=()=>imageMenu('cert','ตรารับรอง');
 
 /* โลโก้: ใช้ที่อัปโหลดไว้ก่อน ถ้าไม่มีให้ใช้ไฟล์ logo.png ที่วางไว้ข้างแอป */
 let assetLogo=null;
@@ -1816,7 +1828,7 @@ function render(){
     }});
   const mk=$('#brandMark');
   mk.innerHTML=logoSrc()?`<img src="${logoSrc()}">`:'BWP';
-  mk.onclick=()=>pickFiles('image/*',false,async fs=>{const r=await readImage(fs[0]);if(r){DB.logo=r.data;save();render();toast('เปลี่ยนโลโก้แล้ว');}});
+  mk.onclick=logoMenu;
 
   const v=$('#view');v.innerHTML='';$('#topActions').innerHTML='';
   ({dashboard:pgDashboard,customers:pgCustomers,documents:pgDocuments,po:pgPO,receipts:pgReceipts,profiles:pgProfiles}[S.page])(v);
@@ -3029,11 +3041,20 @@ function uploadPanel(c,title){
   const r=el('<div class="card pad" style="display:flex;flex-direction:column;gap:16px;align-self:start"></div>');
   r.append(el(`<div class="h3" style="margin:0">${esc(title)}</div>`));
   const lb=el(`<div><div class="tiny" style="margin-bottom:8px">โลโก้บริษัท</div>
-    <div class="thumb" style="width:140px">${c.logo?`<img src="${c.logo}">`:'<div style="height:90px;display:flex;align-items:center;justify-content:center;color:#cbd5e1;font-size:13px">ยังไม่มีโลโก้</div>'}
+    <div class="thumb" style="width:140px">${c.logo?`<img src="${c.logo}"><button class="x rmlogo" title="ลบโลโก้">✕</button>`
+      :'<div style="height:90px;display:flex;align-items:center;justify-content:center;color:#cbd5e1;font-size:13px">ยังไม่มีโลโก้</div>'}
     <div class="nm">${c.logo?'โลโก้':'—'}</div></div>
-    <button class="btn gh sm" style="width:140px;margin-top:9px">${c.logo?'เปลี่ยนโลโก้':'อัปโหลดโลโก้'}</button></div>`);
-  if(c.logo)lb.querySelector('img').onclick=()=>lightbox(c.logo);
-  lb.querySelector('button').onclick=()=>pickFiles('image/*',false,async fs=>{const im=await readImage(fs[0]);if(im){c.logo=im.data;save();render();toast('อัปโหลดโลโก้แล้ว');}});
+    <div style="display:flex;gap:8px;margin-top:9px">
+      <button class="btn gh sm ch" style="flex:1">${c.logo?'เปลี่ยนโลโก้':'อัปโหลดโลโก้'}</button>
+      ${c.logo?'<button class="btn dg sm del">ลบ</button>':''}</div></div>`);
+  const removeLogo=()=>{const old=c.logo;c.logo=null;save();render();
+    toast('ลบโลโก้แล้ว',()=>{c.logo=old;save();render();});};
+  if(c.logo){
+    lb.querySelector('img').onclick=()=>lightbox(c.logo);
+    lb.querySelector('.rmlogo').onclick=e=>{e.stopPropagation();removeLogo();};
+    lb.querySelector('.del').onclick=removeLogo;
+  }
+  lb.querySelector('.ch').onclick=()=>pickFiles('image/*',false,async fs=>{const im=await readImage(fs[0]);if(im){c.logo=im.data;save();render();toast('อัปโหลดโลโก้แล้ว');}});
   r.append(lb);
   r.append(dropZone('JPG, PNG, PDF · รูปจะถูกย่อขนาดอัตโนมัติ',fs=>addUploads(fs,c.photos,c.files)));
   r.append(el(`<div style="font-size:14px;font-weight:600">รูปภาพ (${c.photos.length})</div>`));
