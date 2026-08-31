@@ -1176,6 +1176,11 @@ const fmtPhone=v=>{const s=normPhone(v);
   return /^0\d{9}$/.test(s)?s.slice(0,3)+'-'+s.slice(3,6)+'-'+s.slice(6)
     :/^0\d{8}$/.test(s)?s.slice(0,2)+'-'+s.slice(2,5)+'-'+s.slice(5):v;};
 const validLogin=u=>isPhone(u)||/^[a-zA-Z0-9._-]{3,32}$/.test(String(u||'').trim())||String(u||'').includes('@');
+/* บัญชีผู้ดูแลระบบ: พิมพ์ชื่อนี้แล้วเข้าได้เลย ไม่ต้องใส่ PIN
+   (รหัสด้านล่างเป็นค่าคงที่ของระบบ ต้องตั้งให้ตรงกันในบัญชี Supabase) */
+const ADMIN_USER='bwpsaleadmin';
+const ADMIN_PASS='bwp-sale-admin-2569-open-7f3ac91d';
+const isAdminUser=v=>String(v||'').trim().toLowerCase()===ADMIN_USER;
 const AUTH={token:null,refresh:null,user:null,profile:null,viewing:null};
 const authed=()=>!!AUTH.token;
 const isManager=()=>!!(AUTH.profile&&/manager|admin/.test(AUTH.profile.role));
@@ -1196,7 +1201,9 @@ async function sbAuthCall(path,body){
   const j=await r.json().catch(()=>({}));
   if(!r.ok){
     const m=j.msg||j.message||j.error_description||j.error||('เข้าสู่ระบบไม่สำเร็จ ('+r.status+')');
-    if(/invalid login/i.test(m))throw new Error('เบอร์โทรหรือรหัสผ่านไม่ถูกต้อง');
+    if(/invalid login/i.test(m))throw new Error('PIN ไม่ถูกต้อง');
+    if(/ทะเบียนพนักงาน/.test(m))throw new Error('เบอร์นี้ไม่มีในทะเบียนพนักงาน กรุณาติดต่อผู้ดูแลระบบ');
+    if(/database error saving|unexpected_failure/i.test(m))throw new Error('เบอร์นี้ไม่มีในทะเบียนพนักงาน กรุณาติดต่อผู้ดูแลระบบ');
     if(/email not confirmed/i.test(m))throw new Error('ระบบยังบังคับยืนยันอีเมลอยู่ — ให้ผู้ดูแลปิด "Confirm email" ใน Supabase');
     if(/already registered|already exists/i.test(m))throw new Error('ชื่อผู้ใช้นี้มีคนใช้แล้ว กรุณาใช้ชื่ออื่นหรือเข้าสู่ระบบ');
     if(/signups? not allowed|disabled/i.test(m))throw new Error('ระบบปิดการสมัครเอง — ติดต่อผู้ดูแลให้สร้างบัญชีให้');
@@ -1759,7 +1766,8 @@ function openForm(title,fields,values,onSubmit,opts){
     <header><div><b>${esc(title)}</b>${opts.sub?`<div class="tiny" style="margin-top:3px">${esc(opts.sub)}</div>`:''}</div>
       <button class="close" title="ปิด (Esc)">✕</button></header>
     <div class="mb"><div class="grid g2" id="ff" style="gap:16px"></div></div>
-    <footer><button class="btn gh" id="c">ยกเลิก</button><button class="btn" id="s">${svg('check','ic s')}${esc(opts.okLabel||'บันทึก')}</button></footer></div>`);
+    <footer>${opts.extra?`<button class="btn ${opts.extra.cls||'gh'}" id="x">${esc(opts.extra.label)}</button><div style="flex:1"></div>`:''}
+      <button class="btn gh" id="c">ยกเลิก</button><button class="btn" id="s">${svg('check','ic s')}${esc(opts.okLabel||'บันทึก')}</button></footer></div>`);
   const ff=m.querySelector('#ff');
   const custom={};let gi=0;
   fields.forEach(f=>{
@@ -1832,6 +1840,7 @@ function openForm(title,fields,values,onSubmit,opts){
     if(e.key==='Enter'&&e.target.tagName!=='TEXTAREA'&&!e.target.closest('.itbl'))submit();};
   document.addEventListener('keydown',key);
   m.querySelector('.close').onclick=close;m.querySelector('#c').onclick=close;m.querySelector('#s').onclick=submit;
+  if(m.querySelector('#x'))m.querySelector('#x').onclick=()=>{close();opts.extra.fn();};
   ov.onclick=e=>{if(e.target===ov)close();};
   ov.append(m);$('#layer').append(ov);
   setTimeout(()=>ff.querySelector('input,select,textarea')?.focus(),40);
@@ -3251,9 +3260,11 @@ function loginScreen(msg){
         border-radius:10px;padding:11px 13px;font-size:13.5px;margin-bottom:14px"></div>
       <div class="field" style="margin-bottom:14px"><label>เบอร์โทรศัพท์</label>
         <input id="lgEmail" autocomplete="username" inputmode="tel" placeholder="เช่น 081-234-5678" autocapitalize="off" spellcheck="false">
-        <div class="fh">เบอร์ที่ผู้ดูแลตั้งไว้ให้ (ใส่ขีดหรือไม่ใส่ก็ได้)</div></div>
-      <div class="field" style="margin-bottom:14px"><label>รหัสผ่าน</label>
-        <input id="lgPass" type="password" autocomplete="current-password" placeholder="อย่างน้อย 6 ตัวอักษร"></div>
+        <div class="fh">เบอร์ที่ผู้ดูแลลงทะเบียนไว้ให้</div></div>
+      <div class="field" id="lgPinWrap" style="margin-bottom:14px"><label>PIN 6 หลัก</label>
+        <input id="lgPass" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password"
+          placeholder="••••••" style="letter-spacing:6px;font-size:19px;text-align:center">
+        <div class="fh" id="lgPinHint">เข้าครั้งแรก: ตั้ง PIN ที่ต้องการได้เลย ระบบจะจำไว้</div></div>
       <div class="field" id="lgNameWrap" style="margin-bottom:14px;display:none"><label>ชื่อ-นามสกุล (แสดงในระบบ)</label>
         <input id="lgName" placeholder="เช่น คุณวราลักษณ์ บุตะกุล"></div>
       <button class="btn blk" id="lgGo" style="height:48px;margin-top:4px">เข้าสู่ระบบ</button>
@@ -3278,25 +3289,46 @@ function loginScreen(msg){
     w.querySelector('#lgGo').textContent=mode==='up'?'สมัครใช้งาน':'เข้าสู่ระบบ';
     w.querySelector('#lgSwitchTxt').textContent=mode==='up'?'มีบัญชีแล้ว?':'ยังไม่มีบัญชี?';
     w.querySelector('#lgSwitch').textContent=mode==='up'?'เข้าสู่ระบบ':'สมัครใช้งาน';};
+  /* พิมพ์ชื่อผู้ดูแล -> ซ่อนช่อง PIN ให้เข้าได้เลย */
+  const uEl=w.querySelector('#lgEmail');
+  const syncMode=()=>{
+    const adm=isAdminUser(uEl.value);
+    w.querySelector('#lgPinWrap').style.display=adm?'none':'flex';
+    w.querySelector('#lgGo').textContent=adm?'เข้าสู่ระบบผู้ดูแล':'เข้าสู่ระบบ';
+  };
+  uEl.addEventListener('input',syncMode);
+
   const go=async()=>{
     const b=w.querySelector('#lgGo');
-    const user=w.querySelector('#lgEmail').value.trim();
+    const user=uEl.value.trim();
     const pass=w.querySelector('#lgPass').value;
-    if(!user||!pass){err('กรุณากรอกเบอร์โทรศัพท์และรหัสผ่าน');return;}
-    if(!validLogin(user)){err('เบอร์โทรไม่ถูกต้อง — ใส่เบอร์ที่ผู้ดูแลตั้งไว้ เช่น 081-234-5678');return;}
-    if(mode==='up'&&pass.length<6){err('รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร');return;}
-    b.disabled=true;b.textContent='กำลังดำเนินการ…';err('');
+    const adm=isAdminUser(user);
+    if(!user){err('กรุณากรอกเบอร์โทรศัพท์');return;}
+    if(!adm){
+      if(!isPhone(user)){err('เบอร์โทรไม่ถูกต้อง เช่น 081-234-5678');return;}
+      if(!/^\d{6}$/.test(pass)){err('PIN ต้องเป็นตัวเลข 6 หลัก');return;}
+    }
+    b.disabled=true;b.textContent='กำลังเข้าระบบ…';err('');
     try{
-      if(mode==='up'){
-        const ok=await signUp(user,pass,w.querySelector('#lgName').value.trim());
-        if(!ok){b.disabled=false;b.textContent='สมัครใช้งาน';
-          err('สมัครแล้วแต่ระบบยังบังคับยืนยันอีเมล — ให้ผู้ดูแลปิด "Confirm email" ใน Supabase แล้วลองเข้าสู่ระบบอีกครั้ง');return;}
-      }else await signIn(user,pass);
+      if(adm){
+        await signIn(ADMIN_USER,ADMIN_PASS);
+      }else{
+        try{
+          await signIn(user,pass);                       // มี PIN อยู่แล้ว
+        }catch(e1){
+          if(!/ไม่ถูกต้อง/.test(e1.message))throw e1;
+          /* ยังไม่เคยตั้ง PIN -> ตั้งครั้งแรก (ฐานข้อมูลจะเช็คทะเบียนพนักงานให้) */
+          const ok=await signUp(user,pass);
+          if(!ok){b.disabled=false;syncMode();
+            err('ตั้ง PIN แล้วแต่ระบบยังบังคับยืนยันอีเมล — ให้ผู้ดูแลปิด "Confirm email" ใน Supabase');return;}
+        }
+      }
       w.remove();document.querySelector('.app').style.display='';
       await startApp();
-    }catch(e){b.disabled=false;b.textContent=mode==='up'?'สมัครใช้งาน':'เข้าสู่ระบบ';err(e.message);}
+    }catch(e){b.disabled=false;syncMode();err(e.message);}
   };
   w.querySelector('#lgGo').onclick=go;
+  setTimeout(syncMode,10);
   w.addEventListener('keydown',e=>{if(e.key==='Enter')go();});
   setTimeout(()=>w.querySelector('#lgEmail').focus(),80);
 }
@@ -3310,7 +3342,7 @@ function userMenu(){
     <div class="mb" style="display:flex;flex-direction:column;gap:10px">
       ${ro?'<div class="hint">กำลังดูข้อมูลของคนอื่นอยู่ แก้ไขไม่ได้ กดปุ่มด้านล่างเพื่อกลับมาที่ข้อมูลของคุณ</div>':''}
       ${isManager()?'<button class="btn gh blk" id="team">ดูข้อมูลของทีมขาย</button>':''}
-      ${isManager()?'<button class="btn gh blk" id="users">จัดการบัญชีพนักงาน</button>':''}
+      ${isManager()?'<button class="btn gh blk" id="emp">ข้อมูลพนักงาน</button>':''}
       ${ro?'<button class="btn blk" id="mine">กลับไปข้อมูลของฉัน</button>':''}
       <button class="btn gh blk" id="sync">บันทึกขึ้นคลาวด์เดี๋ยวนี้</button>
       <button class="btn dg blk" id="out">ออกจากระบบ</button>
@@ -3318,7 +3350,7 @@ function userMenu(){
   const close=()=>ov.remove();
   m.querySelector('.close').onclick=close;
   if(m.querySelector('#team'))m.querySelector('#team').onclick=()=>{close();teamPicker();};
-  if(m.querySelector('#users'))m.querySelector('#users').onclick=()=>{close();userAdmin();};
+  if(m.querySelector('#emp'))m.querySelector('#emp').onclick=()=>{close();employeePage();};
   if(m.querySelector('#mine'))m.querySelector('#mine').onclick=()=>{close();viewUser(AUTH.user.id,'ฉัน',true);};
   m.querySelector('#sync').onclick=async()=>{close();
     if(readOnly()){toast('โหมดดูอย่างเดียว ไม่มีอะไรต้องบันทึก');return;}
@@ -3333,6 +3365,71 @@ function logout(){
     if(syncPending)await cloudSave();
     clearSession();location.reload();});
 }
+/* ---------- ทะเบียนพนักงาน (ผูกกับเบอร์ที่ใช้เข้าระบบ) ---------- */
+async function employeePage(){
+  let rows=[];
+  try{rows=await sbRpc('employee_list',{})||[];}
+  catch(e){toast(/employee_list/.test(e.message)?'ยังไม่ได้รันไฟล์ supabase-setup-5.sql ใน Supabase':e.message);return;}
+  const ov=el('<div class="ov"></div>');
+  const m=el(`<div class="modal" style="max-width:660px"><header><div><b>ข้อมูลพนักงาน</b>
+      <div class="tiny" style="margin-top:2px">${rows.length} คน · เบอร์ที่อยู่ในทะเบียนเท่านั้นถึงจะเข้าระบบและตั้ง PIN ได้</div></div>
+      <button class="close">✕</button></header>
+    <div class="mb"><div class="elist"></div></div>
+    <footer><button class="btn blk" id="add">+ เพิ่มพนักงาน</button></footer></div>`);
+  const list=m.querySelector('.elist');
+  if(!rows.length)list.append(emptyState('ยังไม่มีพนักงานในทะเบียน','เพิ่มพนักงานแล้วแจ้งเบอร์ให้เขาเข้าเว็บตั้ง PIN เอง'));
+  const roleTh=r=>r==='admin'?'ผู้ดูแลระบบ':r==='manager'?'ผู้จัดการ':'พนักงานขาย';
+  rows.forEach(u=>{
+    const r=el(`<div class="lrow" style="border-radius:10px;${u.active?'':'opacity:.55'}">
+      <div class="lav">${esc(initials(u.name||u.phone))}</div>
+      <div class="lmain"><div class="lt">${esc(u.name||'(ยังไม่ระบุชื่อ)')}${u.active?'':' · ปิดใช้งาน'}</div>
+        <div class="lm">📱 ${esc(fmtPhone(u.phone))}${u.position?' · '+esc(u.position):''} · ${roleTh(u.role)}</div></div>
+      <div class="lright">
+        <span class="pill" style="background:${u.has_pin?'#dcfce7':'#fef3c7'};color:${u.has_pin?'#15803d':'#b45309'}">
+          ${u.has_pin?'ตั้ง PIN แล้ว':'รอตั้ง PIN'}</span>
+        <button class="btn gh sm ed">แก้ไข</button></div></div>`);
+    r.querySelector('.ed').onclick=()=>{ov.remove();employeeEdit(u);};
+    list.append(r);});
+  m.querySelector('#add').onclick=()=>{ov.remove();employeeEdit(null);};
+  m.querySelector('.close').onclick=()=>ov.remove();
+  ov.onclick=e=>{if(e.target===ov)ov.remove();};
+  ov.append(m);$('#layer').append(ov);
+}
+function employeeEdit(u){
+  const isNew=!u;
+  openForm(isNew?'เพิ่มพนักงาน':'แก้ไข — '+(u.name||fmtPhone(u.phone)),[
+    {key:'phone',label:'เบอร์โทรศัพท์ (ใช้เข้าระบบ)',req:true,ph:'081-234-5678',
+      hint:isNew?'พนักงานจะใช้เบอร์นี้เข้าเว็บแล้วตั้ง PIN เอง':'เปลี่ยนเบอร์แล้ว พนักงานต้องตั้ง PIN ใหม่'},
+    {key:'name',label:'ชื่อ-นามสกุล',ph:'เช่น คุณสมชาย ไชยวัฒน์'},
+    {key:'position',label:'ตำแหน่ง',ph:'เช่น พนักงานขาย ภาคกลาง'},
+    {key:'role',label:'สิทธิ์',type:'select',options:['พนักงานขาย','ผู้จัดการ','ผู้ดูแลระบบ'],
+      def:'พนักงานขาย',hint:'ผู้จัดการขึ้นไปเห็นข้อมูลของทุกคน'},
+    {key:'active',label:'สถานะ',type:'select',options:['ใช้งาน','ปิดใช้งาน'],def:'ใช้งาน',
+      hint:'ปิดใช้งานแล้วเข้าระบบไม่ได้ แต่ข้อมูลยังอยู่'},
+    {key:'note',label:'หมายเหตุ',type:'textarea',full:true}
+  ],isNew?{}:{phone:fmtPhone(u.phone),name:u.name||'',position:u.position||'',
+    role:u.role==='admin'?'ผู้ดูแลระบบ':u.role==='manager'?'ผู้จัดการ':'พนักงานขาย',
+    active:u.active?'ใช้งาน':'ปิดใช้งาน',note:u.note||''},
+  async d=>{
+    if(!isPhone(d.phone)){toast('เบอร์โทรไม่ถูกต้อง เช่น 081-234-5678');return;}
+    const body={phone:normPhone(d.phone),name:d.name||null,position:d.position||null,
+      role:d.role==='ผู้ดูแลระบบ'?'admin':d.role==='ผู้จัดการ'?'manager':'sales',
+      active:d.active==='ใช้งาน',note:d.note||null};
+    try{
+      if(isNew)await sbFetch('employees',{method:'POST',
+        headers:Object.assign(sbHeaders(),{Prefer:'return=minimal'}),body:JSON.stringify(body)});
+      else await sbFetch('employees?id=eq.'+u.id,{method:'PATCH',
+        headers:Object.assign(sbHeaders(),{Prefer:'return=minimal'}),body:JSON.stringify(body)});
+      toast(isNew?'เพิ่มพนักงานแล้ว — แจ้งเบอร์ให้เขาเข้าเว็บตั้ง PIN':'บันทึกแล้ว');
+      employeePage();
+    }catch(e){toast(/duplicate|unique/i.test(e.message)?'เบอร์นี้มีในทะเบียนแล้ว':e.message);}
+  },{okLabel:isNew?'เพิ่มพนักงาน':'บันทึก',
+     extra:isNew?null:{label:'ลบออกจากทะเบียน',cls:'dg',fn:()=>{
+       askConfirm('ลบพนักงาน','ลบ "'+(u.name||fmtPhone(u.phone))+'" ออกจากทะเบียน? เขาจะเข้าระบบไม่ได้อีก','ลบ',
+         async()=>{try{await sbFetch('employees?id=eq.'+u.id,{method:'DELETE',headers:sbHeaders()});
+           toast('ลบออกจากทะเบียนแล้ว');employeePage();}catch(e){toast(e.message);}});}}});
+}
+
 /* ---------- ผู้ดูแลจัดการบัญชีพนักงาน (ผ่าน Edge Function) ---------- */
 async function sbFn(body){
   const c=sbCfg();
