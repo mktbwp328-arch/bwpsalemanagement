@@ -1712,6 +1712,23 @@ let S={page:'dashboard',
   rcQ:'',rcFilter:'ทั้งหมด',rcMonth:null,rcOpen:null,
   profSel:null,profTab:'info',profQ:'',
   dash:{period:'year',year:new Date().getFullYear(),chart:'line'}};
+/* จำหน้าที่เปิดอยู่ ไม่ให้รีเฟรชแล้วเด้งกลับหน้าแรก */
+const VKEY='bwp_view_v1';
+function saveView(){try{localStorage.setItem(VKEY,JSON.stringify(S));}catch(e){}}
+function loadView(){
+  try{
+    const raw=localStorage.getItem(VKEY);if(!raw)return;
+    const v=JSON.parse(raw);
+    Object.assign(S,v,{dash:Object.assign({},S.dash,v.dash||{})});
+    if(!PAGES.some(p=>p.id===S.page))S.page='dashboard';
+    if(!DOC_TYPES.some(t=>t[0]===S.docType))S.docType='quotation';
+    /* ถ้ารายการที่เปิดค้างไว้ถูกลบไปแล้ว ให้กลับไปหน้ารายการแทน */
+    if(S.docOpen&&!DB.docs.some(x=>x.id===S.docOpen))S.docOpen=null;
+    if(S.poOpen&&!DB.pos.some(x=>x.id===S.poOpen))S.poOpen=null;
+    if(S.rcOpen&&!DB.receipts.some(x=>x.id===S.rcOpen))S.rcOpen=null;
+    if(S.profSel&&!DB.customers.some(x=>x.id===S.profSel))S.profSel=null;
+  }catch(e){}
+}
 function go(p,extra){closeDrawer();S.page=p;Object.assign(S,extra||{});
   $('#side').classList.remove('open');$('#backdrop').classList.remove('on');window.scrollTo(0,0);render();}
 $('#burger').onclick=()=>{$('#side').classList.toggle('open');$('#backdrop').classList.toggle('on');};
@@ -1799,6 +1816,7 @@ function render(){
 
   const v=$('#view');v.innerHTML='';$('#topActions').innerHTML='';
   ({dashboard:pgDashboard,customers:pgCustomers,documents:pgDocuments,po:pgPO,receipts:pgReceipts,profiles:pgProfiles}[S.page])(v);
+  saveView();
 }
 
 /* ---------- 1. DASHBOARD ---------- */
@@ -3013,6 +3031,7 @@ DB.docs.filter(d=>d.type==='quotation').forEach(d=>{
   ensureQuote(d);
   if(!d.items.length&&d.amount)d.items=[{name:'สินค้าตามรายละเอียดที่เสนอ',qty:1,unit:'รายการ',price:d.amount}];
 });
+loadView();
 save();render();booted=true;
 handleHash();
 window.addEventListener('hashchange',handleHash);
