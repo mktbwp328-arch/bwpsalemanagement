@@ -2,9 +2,12 @@
 -- BWP Sales — ระบบผู้ใช้หลายคน (ล็อกอิน + ข้อมูลบนคลาวด์ แยกตามเซล)
 -- วิธีใช้: Supabase → SQL Editor → New query → วางทั้งไฟล์ → Run (ครั้งเดียวพอ)
 --
--- ⚠️ ก่อนใช้งานจริง ต้องตั้งค่าอีกจุด:
---    Authentication → Sign In / Providers → Email → ปิด "Confirm email"
---    (ถ้าไม่ปิด ผู้ใช้ต้องกดยืนยันจากอีเมลก่อนถึงจะเข้าระบบได้)
+-- ⚠️ สำคัญ! ต้องตั้งค่าใน Supabase อีก 1 จุด ไม่งั้นเข้าระบบไม่ได้เลย:
+--    Authentication → Sign In / Providers → Email → ปิด "Confirm email" → Save
+--
+--    เพราะระบบนี้ล็อกอินด้วย "ชื่อผู้ใช้ + รหัสผ่าน" ไม่ใช้อีเมลจริง
+--    แอปจะแปลงชื่อผู้ใช้เป็นอีเมลภายในให้เอง เช่น somchai -> somchai@bwp.local
+--    ซึ่งเป็นโดเมนสมมติ ส่งอีเมลยืนยันไปไม่ถึงแน่นอน
 -- ============================================================
 
 -- ---------- 1) โปรไฟล์ผู้ใช้ + สิทธิ์ ----------
@@ -105,8 +108,18 @@ grant execute on function public.team_list() to authenticated;
 grant execute on function public.is_manager() to authenticated;
 
 -- ============================================================
--- ตั้งคนแรกให้เป็นผู้จัดการ (แก้อีเมลให้ตรงกับที่สมัคร แล้วรันบรรทัดนี้)
---   update public.profiles set role='admin' where email='bestworld.bwp328@gmail.com';
--- ดูรายชื่อผู้ใช้ทั้งหมด:
---   select email, name, role from public.profiles order by created_at;
+-- คำสั่งที่ใช้บ่อย (คัดลอกไปรันใน SQL Editor ได้เลย)
+--
+-- ดูรายชื่อผู้ใช้ทั้งหมด (ชื่อผู้ใช้คือส่วนหน้า @)
+--   select split_part(email,'@',1) as username, name, role, created_at
+--   from public.profiles order by created_at;
+--
+-- ตั้งให้เป็นผู้จัดการ (เห็นข้อมูลของทุกคน) — เปลี่ยน somchai เป็นชื่อผู้ใช้จริง
+--   update public.profiles set role='admin' where email='somchai@bwp.local';
+--
+-- ลดสิทธิ์กลับเป็นพนักงานขาย
+--   update public.profiles set role='sales' where email='somchai@bwp.local';
+--
+-- ลบบัญชีพนักงานที่ลาออก (ข้อมูลงานขายของคนนั้นจะถูกลบตามไปด้วย)
+--   delete from auth.users where email='somchai@bwp.local';
 -- ============================================================

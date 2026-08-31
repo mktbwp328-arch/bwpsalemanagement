@@ -1148,8 +1148,15 @@ async function sbPing(){
   catch(e){sbReady=false;sbError=e.message;}
   return sbReady;
 }
-/* ---------- บัญชีผู้ใช้ ---------- */
+/* ---------- บัญชีผู้ใช้ (ชื่อผู้ใช้ + รหัสผ่าน ไม่ต้องมีอีเมลจริง) ---------- */
 const AKEY='bwp_auth_v1';
+const USER_DOMAIN='bwp.local';
+/* ชื่อผู้ใช้ -> อีเมลภายในระบบ (ถ้าพิมพ์อีเมลจริงมาก็ใช้ตามนั้น) */
+const toEmail=u=>{const v=String(u||'').trim();
+  return v.includes('@')?v.toLowerCase():v.toLowerCase().replace(/\s+/g,'')+'@'+USER_DOMAIN;};
+/* อีเมลภายใน -> ชื่อผู้ใช้ที่แสดงผล */
+const toUsername=e=>String(e||'').replace(new RegExp('@'+USER_DOMAIN+'$','i'),'');
+const validUsername=u=>/^[a-zA-Z0-9._-]{3,32}$/.test(String(u||'').trim())||String(u||'').includes('@');
 const AUTH={token:null,refresh:null,user:null,profile:null,viewing:null};
 const authed=()=>!!AUTH.token;
 const isManager=()=>!!(AUTH.profile&&/manager|admin/.test(AUTH.profile.role));
@@ -1170,20 +1177,23 @@ async function sbAuthCall(path,body){
   const j=await r.json().catch(()=>({}));
   if(!r.ok){
     const m=j.msg||j.message||j.error_description||j.error||('เข้าสู่ระบบไม่สำเร็จ ('+r.status+')');
-    if(/invalid login/i.test(m))throw new Error('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
-    if(/email not confirmed/i.test(m))throw new Error('บัญชียังไม่ได้ยืนยันอีเมล — ให้ผู้ดูแลปิด "Confirm email" ใน Supabase');
-    if(/already registered|already exists/i.test(m))throw new Error('อีเมลนี้มีบัญชีอยู่แล้ว กรุณาเข้าสู่ระบบ');
+    if(/invalid login/i.test(m))throw new Error('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+    if(/email not confirmed/i.test(m))throw new Error('ระบบยังบังคับยืนยันอีเมลอยู่ — ให้ผู้ดูแลปิด "Confirm email" ใน Supabase');
+    if(/already registered|already exists/i.test(m))throw new Error('ชื่อผู้ใช้นี้มีคนใช้แล้ว กรุณาใช้ชื่ออื่นหรือเข้าสู่ระบบ');
+    if(/signups? not allowed|disabled/i.test(m))throw new Error('ระบบปิดการสมัครเอง — ติดต่อผู้ดูแลให้สร้างบัญชีให้');
+    if(/invalid.*email|email.*invalid/i.test(m))throw new Error('ชื่อผู้ใช้ใช้ได้เฉพาะ a-z 0-9 . _ - (3 ตัวขึ้นไป)');
     if(/password/i.test(m)&&/least|short/i.test(m))throw new Error('รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร');
     throw new Error(m);
   }
   return j;
 }
-async function signIn(email,password){
-  const j=await sbAuthCall('token?grant_type=password',{email,password});
+async function signIn(user,password){
+  const j=await sbAuthCall('token?grant_type=password',{email:toEmail(user),password});
   AUTH.token=j.access_token;AUTH.refresh=j.refresh_token;AUTH.user=j.user;saveSession();
 }
-async function signUp(email,password,name){
-  const j=await sbAuthCall('signup',{email,password,data:{name}});
+async function signUp(user,password,name){
+  const email=toEmail(user);
+  const j=await sbAuthCall('signup',{email,password,data:{name:name||toUsername(email)}});
   if(j.access_token){AUTH.token=j.access_token;AUTH.refresh=j.refresh_token;AUTH.user=j.user;saveSession();return true;}
   return false;   /* ต้องยืนยันอีเมลก่อน */
 }
@@ -1195,8 +1205,10 @@ async function refreshSession(){
 }
 async function loadProfile(){
   const rows=await sbGet('profiles?select=id,name,email,role&id=eq.'+AUTH.user.id);
-  AUTH.profile=(rows&&rows[0])||{id:AUTH.user.id,name:(AUTH.user.email||'').split('@')[0],
+  AUTH.profile=(rows&&rows[0])||{id:AUTH.user.id,name:toUsername(AUTH.user.email),
     email:AUTH.user.email,role:'sales'};
+  AUTH.profile.username=toUsername(AUTH.profile.email||AUTH.user.email);
+  if(!AUTH.profile.name)AUTH.profile.name=AUTH.profile.username;
 }
 /* ---------- REST helper ---------- */
 async function sbFetch(path,opt,retry){
@@ -3217,11 +3229,12 @@ function loginScreen(msg){
       ${msg?`<div class="hint" style="margin-bottom:16px">${esc(msg)}</div>`:''}
       <div id="lgErr" style="display:none;background:#fef2f2;border:1px solid #fbcaca;color:#b91c1c;
         border-radius:10px;padding:11px 13px;font-size:13.5px;margin-bottom:14px"></div>
-      <div class="field" style="margin-bottom:14px"><label>อีเมล</label>
-        <input id="lgEmail" type="email" autocomplete="username" placeholder="you@company.com"></div>
+      <div class="field" style="margin-bottom:14px"><label>ชื่อผู้ใช้</label>
+        <input id="lgEmail" autocomplete="username" placeholder="เช่น somchai" autocapitalize="off" spellcheck="false">
+        <div class="fh">ตัวอักษรอังกฤษ ตัวเลข . _ - (ไม่ต้องใส่อีเมล)</div></div>
       <div class="field" style="margin-bottom:14px"><label>รหัสผ่าน</label>
         <input id="lgPass" type="password" autocomplete="current-password" placeholder="อย่างน้อย 6 ตัวอักษร"></div>
-      <div class="field" id="lgNameWrap" style="margin-bottom:14px;display:none"><label>ชื่อ-นามสกุล</label>
+      <div class="field" id="lgNameWrap" style="margin-bottom:14px;display:none"><label>ชื่อ-นามสกุล (แสดงในระบบ)</label>
         <input id="lgName" placeholder="เช่น คุณวราลักษณ์ บุตะกุล"></div>
       <button class="btn blk" id="lgGo" style="height:48px;margin-top:4px">เข้าสู่ระบบ</button>
       <div style="text-align:center;margin-top:16px;font-size:13.5px;color:var(--mut)">
@@ -3240,16 +3253,18 @@ function loginScreen(msg){
     w.querySelector('#lgSwitch').textContent=mode==='up'?'เข้าสู่ระบบ':'สมัครใช้งาน';};
   const go=async()=>{
     const b=w.querySelector('#lgGo');
-    const email=w.querySelector('#lgEmail').value.trim();
+    const user=w.querySelector('#lgEmail').value.trim();
     const pass=w.querySelector('#lgPass').value;
-    if(!email||!pass){err('กรุณากรอกอีเมลและรหัสผ่าน');return;}
+    if(!user||!pass){err('กรุณากรอกชื่อผู้ใช้และรหัสผ่าน');return;}
+    if(!validUsername(user)){err('ชื่อผู้ใช้ใช้ได้เฉพาะ a-z 0-9 . _ - และยาว 3 ตัวขึ้นไป');return;}
+    if(mode==='up'&&pass.length<6){err('รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร');return;}
     b.disabled=true;b.textContent='กำลังดำเนินการ…';err('');
     try{
       if(mode==='up'){
-        const ok=await signUp(email,pass,w.querySelector('#lgName').value.trim());
+        const ok=await signUp(user,pass,w.querySelector('#lgName').value.trim());
         if(!ok){b.disabled=false;b.textContent='สมัครใช้งาน';
-          err('สมัครแล้ว — กรุณายืนยันอีเมลก่อนเข้าใช้งาน (หรือให้ผู้ดูแลปิด Confirm email ใน Supabase)');return;}
-      }else await signIn(email,pass);
+          err('สมัครแล้วแต่ระบบยังบังคับยืนยันอีเมล — ให้ผู้ดูแลปิด "Confirm email" ใน Supabase แล้วลองเข้าสู่ระบบอีกครั้ง');return;}
+      }else await signIn(user,pass);
       w.remove();document.querySelector('.app').style.display='';
       await startApp();
     }catch(e){b.disabled=false;b.textContent=mode==='up'?'สมัครใช้งาน':'เข้าสู่ระบบ';err(e.message);}
@@ -3262,8 +3277,8 @@ function userMenu(){
   if(!authed()){loginScreen();return;}
   const p=AUTH.profile||{},ro=readOnly();
   const ov=el('<div class="ov"></div>');
-  const m=el(`<div class="modal" style="max-width:430px"><header><div><b>${esc(p.name||p.email||'ผู้ใช้')}</b>
-      <div class="tiny" style="margin-top:2px">${esc(p.email||'')} · ${isManager()?'ผู้จัดการ':'พนักงานขาย'}</div></div>
+  const m=el(`<div class="modal" style="max-width:430px"><header><div><b>${esc(p.name||toUsername(p.email)||'ผู้ใช้')}</b>
+      <div class="tiny" style="margin-top:2px">ชื่อผู้ใช้: ${esc(toUsername(p.email))} · ${isManager()?'ผู้จัดการ':'พนักงานขาย'}</div></div>
       <button class="close">✕</button></header>
     <div class="mb" style="display:flex;flex-direction:column;gap:10px">
       ${ro?'<div class="hint">กำลังดูข้อมูลของคนอื่นอยู่ แก้ไขไม่ได้ กดปุ่มด้านล่างเพื่อกลับมาที่ข้อมูลของคุณ</div>':''}
@@ -3299,14 +3314,15 @@ async function teamPicker(){
       <button class="close">✕</button></header><div class="mb"><div class="list2"></div></div></div>`);
   const list=m.querySelector('.list2');
   const me=AUTH.user.id;
-  [{id:me,name:(AUTH.profile.name||'ฉัน')+' (ข้อมูลของฉัน)',email:AUTH.profile.email,role:AUTH.profile.role,mine:true}]
+  [{id:me,name:(AUTH.profile.name||'ฉัน')+' (ข้อมูลของฉัน)',email:AUTH.profile.email,role:AUTH.profile.role,mine:true,
+    updated_at:null,size_kb:null}]
     .concat(team.filter(t=>t.id!==me))
     .forEach(t=>{
       const on=(AUTH.viewing||me)===t.id;
       const r=el(`<div class="lrow" style="border-radius:10px;${on?'background:var(--blue-l);box-shadow:inset 3px 0 0 var(--blue)':''}">
-        <div class="lav">${esc(initials(t.name||t.email||'?'))}</div>
-        <div class="lmain"><div class="lt">${esc(t.name||t.email)}</div>
-          <div class="lm">${esc(t.email||'')} · ${esc(t.role||'sales')}${t.updated_at?' · แก้ล่าสุด '+ago(t.updated_at):''}${t.size_kb?' · '+t.size_kb+' KB':''}</div></div>
+        <div class="lav">${esc(initials(t.name||toUsername(t.email)||'?'))}</div>
+        <div class="lmain"><div class="lt">${esc(t.name||toUsername(t.email))}</div>
+          <div class="lm">${esc(toUsername(t.email))} · ${esc(t.role==='sales'?'พนักงานขาย':t.role==='manager'?'ผู้จัดการ':'ผู้ดูแล')}${t.updated_at?' · แก้ล่าสุด '+ago(t.updated_at):''}${t.size_kb?' · '+t.size_kb+' KB':''}</div></div>
         <div class="lright">${on?'<span class="pill" style="background:#dbeafe;color:#1d4ed8">กำลังดู</span>':''}</div></div>`);
       r.onclick=async()=>{ov.remove();await viewUser(t.id,t.name||t.email,t.mine);};
       list.append(r);});
@@ -3347,7 +3363,7 @@ async function startApp(){
   else DB=seed();
   migrate();
   loadView();booted=true;
-  const nm=(AUTH.profile&&AUTH.profile.name)||(AUTH.user.email||'').split('@')[0];
+  const nm=(AUTH.profile&&AUTH.profile.name)||toUsername(AUTH.user.email);
   $('#userName').textContent=nm;
   $('#userRole').textContent=isManager()?'ผู้จัดการ':'พนักงานขาย';
   $('#userAv').textContent=initials(nm);
