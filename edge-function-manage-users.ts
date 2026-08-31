@@ -24,10 +24,23 @@ const json = (status: number, body: unknown) =>
   });
 
 const DOMAIN = "bwp.invalid";
-const toEmail = (u: string) =>
-  String(u || "").trim().includes("@")
-    ? String(u).trim().toLowerCase()
-    : String(u || "").trim().toLowerCase().replace(/\s+/g, "") + "@" + DOMAIN;
+
+// เบอร์โทร -> ตัวเลขล้วน (รับ 081-234-5678, +66812345678)
+function normPhone(v: unknown): string {
+  let s = String(v || "").replace(/[^\d+]/g, "");
+  if (s.startsWith("+66")) s = "0" + s.slice(3);
+  else if (s.startsWith("66") && s.length >= 11) s = "0" + s.slice(2);
+  return s;
+}
+const isPhone = (v: unknown) => /^0\d{8,9}$/.test(normPhone(v));
+
+// เบอร์โทร/ชื่อผู้ใช้ -> อีเมลภายในระบบ
+const toEmail = (u: unknown) => {
+  const v = String(u || "").trim();
+  if (v.includes("@")) return v.toLowerCase();
+  if (isPhone(v)) return normPhone(v) + "@" + DOMAIN;
+  return v.toLowerCase().replace(/\s+/g, "") + "@" + DOMAIN;
+};
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -67,9 +80,10 @@ Deno.serve(async (req) => {
 
     // ---- 4) สร้างบัญชีใหม่ (ยืนยันอัตโนมัติ ไม่ต้องส่งอีเมล) ----
     if (action === "create") {
-      const email = toEmail(body.username);
+      const idf = body.phone ?? body.username;          // รับได้ทั้งเบอร์โทรและชื่อผู้ใช้
+      const email = toEmail(idf);
       if (!/^[a-z0-9._-]{3,32}@/.test(email)) {
-        return json(400, { error: "ชื่อผู้ใช้ใช้ได้เฉพาะ a-z 0-9 . _ - และยาว 3 ตัวขึ้นไป" });
+        return json(400, { error: "เบอร์โทรไม่ถูกต้อง เช่น 081-234-5678" });
       }
       if (!body.password || String(body.password).length < 6) {
         return json(400, { error: "รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร" });
@@ -82,14 +96,34 @@ Deno.serve(async (req) => {
       });
       if (error) {
         const m = /already/i.test(error.message)
-          ? "ชื่อผู้ใช้นี้มีคนใช้แล้ว" : error.message;
+          ? "เบอร์นี้มีบัญชีอยู่แล้ว" : error.message;
         return json(400, { error: m });
       }
       const role = ["sales", "manager", "admin"].includes(body.role) ? body.role : "sales";
       await admin.from("profiles")
-        .update({ name: body.name || null, role })
+        .update({ name: body.name || null, role, phone: email.split("@")[0] })
         .eq("id", data.user!.id);
       return json(200, { ok: true, id: data.user!.id, email });
+    }
+
+    // ---- 4.1) เปลี่ยนเบอร์โทรที่ใช้เข้าระบบ ----
+    if (action === "phone") {
+      if (!body.id) return json(400, { error: "ไม่พบผู้ใช้" });
+      if (!isPhone(body.phone)) return json(400, { error: "เบอร์โทรไม่ถูกต้อง" });
+      const email = toEmail(body.phone);
+      const { error } = await admin.auth.admin.updateUserById(String(body.id), {
+        email,
+        email_confirm: true,
+      });
+      if (error) {
+        const m = /already/i.test(error.message)
+          ? "เบอร์นี้มีบัญชีอยู่แล้ว" : error.message;
+        return json(400, { error: m });
+      }
+      await admin.from("profiles")
+        .update({ email, phone: normPhone(body.phone) })
+        .eq("id", String(body.id));
+      return json(200, { ok: true, email });
     }
 
     // ---- 5) ตั้งรหัสผ่านใหม่ให้พนักงาน ----

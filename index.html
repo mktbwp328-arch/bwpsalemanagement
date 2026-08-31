@@ -1154,12 +1154,28 @@ const AKEY='bwp_auth_v1';
    ใช้ .invalid ตาม RFC 2606 — เป็นโดเมนสงวนที่ไม่มีใครเป็นเจ้าของได้
    จึงไม่มีทางส่งอีเมลออกไปหาคนจริง (Supabase ไม่รับ .local) */
 const USER_DOMAIN='bwp.invalid';
-/* ชื่อผู้ใช้ -> อีเมลภายในระบบ (ถ้าพิมพ์อีเมลจริงมาก็ใช้ตามนั้น) */
-const toEmail=u=>{const v=String(u||'').trim();
-  return v.includes('@')?v.toLowerCase():v.toLowerCase().replace(/\s+/g,'')+'@'+USER_DOMAIN;};
-/* อีเมลภายใน -> ชื่อผู้ใช้ที่แสดงผล */
+/* เบอร์โทร -> ตัวเลขล้วน (รับได้ทั้ง 081-234-5678, 081 234 5678, +66812345678) */
+function normPhone(v){
+  let s=String(v||'').replace(/[^\d+]/g,'');
+  if(s.startsWith('+66'))s='0'+s.slice(3);
+  else if(s.startsWith('66')&&s.length>=11)s='0'+s.slice(2);
+  return s;
+}
+const isPhone=v=>/^0\d{8,9}$/.test(normPhone(v));
+/* ตัวระบุตัวตน (เบอร์โทร หรือ ชื่อผู้ใช้) -> อีเมลภายในระบบ */
+const toEmail=u=>{
+  const v=String(u||'').trim();
+  if(v.includes('@'))return v.toLowerCase();
+  if(isPhone(v))return normPhone(v)+'@'+USER_DOMAIN;
+  return v.toLowerCase().replace(/\s+/g,'')+'@'+USER_DOMAIN;
+};
+/* อีเมลภายใน -> สิ่งที่แสดงผล (เบอร์โทร/ชื่อผู้ใช้) */
 const toUsername=e=>String(e||'').replace(new RegExp('@'+USER_DOMAIN+'$','i'),'');
-const validUsername=u=>/^[a-zA-Z0-9._-]{3,32}$/.test(String(u||'').trim())||String(u||'').includes('@');
+/* จัดรูปเบอร์ให้อ่านง่าย 081-234-5678 */
+const fmtPhone=v=>{const s=normPhone(v);
+  return /^0\d{9}$/.test(s)?s.slice(0,3)+'-'+s.slice(3,6)+'-'+s.slice(6)
+    :/^0\d{8}$/.test(s)?s.slice(0,2)+'-'+s.slice(2,5)+'-'+s.slice(5):v;};
+const validLogin=u=>isPhone(u)||/^[a-zA-Z0-9._-]{3,32}$/.test(String(u||'').trim())||String(u||'').includes('@');
 const AUTH={token:null,refresh:null,user:null,profile:null,viewing:null};
 const authed=()=>!!AUTH.token;
 const isManager=()=>!!(AUTH.profile&&/manager|admin/.test(AUTH.profile.role));
@@ -1180,7 +1196,7 @@ async function sbAuthCall(path,body){
   const j=await r.json().catch(()=>({}));
   if(!r.ok){
     const m=j.msg||j.message||j.error_description||j.error||('เข้าสู่ระบบไม่สำเร็จ ('+r.status+')');
-    if(/invalid login/i.test(m))throw new Error('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+    if(/invalid login/i.test(m))throw new Error('เบอร์โทรหรือรหัสผ่านไม่ถูกต้อง');
     if(/email not confirmed/i.test(m))throw new Error('ระบบยังบังคับยืนยันอีเมลอยู่ — ให้ผู้ดูแลปิด "Confirm email" ใน Supabase');
     if(/already registered|already exists/i.test(m))throw new Error('ชื่อผู้ใช้นี้มีคนใช้แล้ว กรุณาใช้ชื่ออื่นหรือเข้าสู่ระบบ');
     if(/signups? not allowed|disabled/i.test(m))throw new Error('ระบบปิดการสมัครเอง — ติดต่อผู้ดูแลให้สร้างบัญชีให้');
@@ -3233,9 +3249,9 @@ function loginScreen(msg){
       ${msg?`<div class="hint" style="margin-bottom:16px">${esc(msg)}</div>`:''}
       <div id="lgErr" style="display:none;background:#fef2f2;border:1px solid #fbcaca;color:#b91c1c;
         border-radius:10px;padding:11px 13px;font-size:13.5px;margin-bottom:14px"></div>
-      <div class="field" style="margin-bottom:14px"><label>ชื่อผู้ใช้</label>
-        <input id="lgEmail" autocomplete="username" placeholder="เช่น somchai" autocapitalize="off" spellcheck="false">
-        <div class="fh">ตัวอักษรอังกฤษ ตัวเลข . _ - (ไม่ต้องใส่อีเมล)</div></div>
+      <div class="field" style="margin-bottom:14px"><label>เบอร์โทรศัพท์</label>
+        <input id="lgEmail" autocomplete="username" inputmode="tel" placeholder="เช่น 081-234-5678" autocapitalize="off" spellcheck="false">
+        <div class="fh">เบอร์ที่ผู้ดูแลตั้งไว้ให้ (ใส่ขีดหรือไม่ใส่ก็ได้)</div></div>
       <div class="field" style="margin-bottom:14px"><label>รหัสผ่าน</label>
         <input id="lgPass" type="password" autocomplete="current-password" placeholder="อย่างน้อย 6 ตัวอักษร"></div>
       <div class="field" id="lgNameWrap" style="margin-bottom:14px;display:none"><label>ชื่อ-นามสกุล (แสดงในระบบ)</label>
@@ -3266,8 +3282,8 @@ function loginScreen(msg){
     const b=w.querySelector('#lgGo');
     const user=w.querySelector('#lgEmail').value.trim();
     const pass=w.querySelector('#lgPass').value;
-    if(!user||!pass){err('กรุณากรอกชื่อผู้ใช้และรหัสผ่าน');return;}
-    if(!validUsername(user)){err('ชื่อผู้ใช้ใช้ได้เฉพาะ a-z 0-9 . _ - และยาว 3 ตัวขึ้นไป');return;}
+    if(!user||!pass){err('กรุณากรอกเบอร์โทรศัพท์และรหัสผ่าน');return;}
+    if(!validLogin(user)){err('เบอร์โทรไม่ถูกต้อง — ใส่เบอร์ที่ผู้ดูแลตั้งไว้ เช่น 081-234-5678');return;}
     if(mode==='up'&&pass.length<6){err('รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร');return;}
     b.disabled=true;b.textContent='กำลังดำเนินการ…';err('');
     try{
@@ -3334,19 +3350,20 @@ async function userAdmin(){
   let users=[];
   try{users=(await sbFn({action:'list'})).users||[];}catch(e){toast(e.message);return;}
   const ov=el('<div class="ov"></div>');
-  const m=el(`<div class="modal" style="max-width:620px"><header><div><b>จัดการบัญชีพนักงาน</b>
-      <div class="tiny" style="margin-top:2px">${users.length} บัญชี · สร้างบัญชีให้พนักงานแล้วแจกชื่อผู้ใช้/รหัสผ่าน</div></div>
+  const m=el(`<div class="modal" style="max-width:620px"><header><div><b>ข้อมูลพนักงาน</b>
+      <div class="tiny" style="margin-top:2px">${users.length} คน · พนักงานเข้าระบบด้วยเบอร์โทรที่ตั้งไว้</div></div>
       <button class="close">✕</button></header>
     <div class="mb"><div class="ulist"></div></div>
-    <footer><button class="btn blk" id="add">+ สร้างบัญชีพนักงานใหม่</button></footer></div>`);
+    <footer><button class="btn blk" id="add">+ เพิ่มพนักงานใหม่</button></footer></div>`);
   const list=m.querySelector('.ulist');
   const roleTh=r=>r==='admin'?'ผู้ดูแลระบบ':r==='manager'?'ผู้จัดการ':'พนักงานขาย';
   users.forEach(u=>{
     const meRow=u.id===AUTH.user.id;
+    const login=toUsername(u.email);
     const r=el(`<div class="lrow" style="cursor:default;border-radius:10px">
-      <div class="lav">${esc(initials(u.name||toUsername(u.email)))}</div>
-      <div class="lmain"><div class="lt">${esc(u.name||toUsername(u.email))}${meRow?' (คุณ)':''}</div>
-        <div class="lm">ชื่อผู้ใช้: ${esc(toUsername(u.email))} · ${roleTh(u.role)}</div></div>
+      <div class="lav">${esc(initials(u.name||login))}</div>
+      <div class="lmain"><div class="lt">${esc(u.name||fmtPhone(login))}${meRow?' (คุณ)':''}</div>
+        <div class="lm">📱 ${esc(isPhone(login)?fmtPhone(login):login)} · ${roleTh(u.role)}</div></div>
       <div class="lright"><button class="btn gh sm ed">จัดการ</button></div></div>`);
     r.querySelector('.ed').onclick=()=>{ov.remove();userEdit(u,meRow);};
     list.append(r);});
@@ -3356,41 +3373,52 @@ async function userAdmin(){
   ov.append(m);$('#layer').append(ov);
 }
 function userCreate(){
-  openForm('สร้างบัญชีพนักงานใหม่',[
-    {key:'username',label:'ชื่อผู้ใช้ (สำหรับเข้าระบบ)',req:true,ph:'เช่น somchai',
-      hint:'ตัวอักษรอังกฤษ ตัวเลข . _ - เท่านั้น'},
-    {key:'name',label:'ชื่อ-นามสกุล (แสดงในระบบ)',ph:'เช่น คุณสมชาย ไชยวัฒน์'},
+  openForm('เพิ่มพนักงานใหม่',[
+    {key:'phone',label:'เบอร์โทรศัพท์ (ใช้เข้าระบบ)',req:true,ph:'081-234-5678',
+      hint:'พนักงานจะใช้เบอร์นี้ล็อกอิน'},
+    {key:'name',label:'ชื่อ-นามสกุล',ph:'เช่น คุณสมชาย ไชยวัฒน์'},
     {key:'password',label:'รหัสผ่านเริ่มต้น',req:true,ph:'อย่างน้อย 6 ตัวอักษร',
       hint:'แจ้งรหัสนี้ให้พนักงาน เปลี่ยนให้ทีหลังได้'},
     {key:'role',label:'สิทธิ์',type:'select',options:['พนักงานขาย','ผู้จัดการ','ผู้ดูแลระบบ'],def:'พนักงานขาย',
       hint:'ผู้จัดการและผู้ดูแลเห็นข้อมูลของทุกคน'}
   ],{},async d=>{
+    if(!isPhone(d.phone)){toast('เบอร์โทรไม่ถูกต้อง เช่น 081-234-5678');return;}
     const role=d.role==='ผู้ดูแลระบบ'?'admin':d.role==='ผู้จัดการ'?'manager':'sales';
-    try{await sbFn({action:'create',username:d.username,name:d.name,password:d.password,role});
-      toast('สร้างบัญชี '+d.username+' แล้ว');userAdmin();}
+    try{await sbFn({action:'create',phone:normPhone(d.phone),name:d.name,password:d.password,role});
+      toast('เพิ่มพนักงาน '+fmtPhone(d.phone)+' แล้ว');userAdmin();}
     catch(e){toast(e.message);}
-  },{okLabel:'สร้างบัญชี'});
+  },{okLabel:'เพิ่มพนักงาน'});
 }
 function userEdit(u,isMe){
   const ov=el('<div class="ov"></div>');
-  const m=el(`<div class="modal" style="max-width:430px"><header><div><b>${esc(u.name||toUsername(u.email))}</b>
-      <div class="tiny" style="margin-top:2px">ชื่อผู้ใช้: ${esc(toUsername(u.email))}</div></div>
+  const login=toUsername(u.email);
+  const m=el(`<div class="modal" style="max-width:430px"><header><div><b>${esc(u.name||fmtPhone(login))}</b>
+      <div class="tiny" style="margin-top:2px">เข้าระบบด้วย: ${esc(isPhone(login)?fmtPhone(login):login)}</div></div>
       <button class="close">✕</button></header>
     <div class="mb" style="display:flex;flex-direction:column;gap:10px">
       <button class="btn gh blk" id="pw">ตั้งรหัสผ่านใหม่</button>
+      <button class="btn gh blk" id="ph">เปลี่ยนเบอร์โทร (เบอร์ที่ใช้เข้าระบบ)</button>
       <button class="btn gh blk" id="rl">เปลี่ยนชื่อ / สิทธิ์</button>
       ${isMe?'':'<button class="btn dg blk" id="del">ลบบัญชีนี้</button>'}
     </div></div>`);
   const close=()=>ov.remove();
   m.querySelector('.close').onclick=close;
   m.querySelector('#pw').onclick=()=>{close();
-    openForm('ตั้งรหัสผ่านใหม่ — '+toUsername(u.email),
+    openForm('ตั้งรหัสผ่านใหม่ — '+(u.name||fmtPhone(login)),
       [{key:'password',label:'รหัสผ่านใหม่',req:true,full:true,ph:'อย่างน้อย 6 ตัวอักษร'}],{},
       async d=>{try{await sbFn({action:'password',id:u.id,password:d.password});
         toast('เปลี่ยนรหัสผ่านแล้ว — แจ้งพนักงานด้วย');userAdmin();}catch(e){toast(e.message);}},
       {okLabel:'บันทึกรหัสผ่าน'});};
+  m.querySelector('#ph').onclick=()=>{close();
+    openForm('เปลี่ยนเบอร์โทร — '+(u.name||fmtPhone(login)),
+      [{key:'phone',label:'เบอร์โทรใหม่ (ใช้เข้าระบบ)',req:true,full:true,ph:'081-234-5678',
+        hint:'พนักงานต้องใช้เบอร์ใหม่นี้ล็อกอินครั้งต่อไป'}],{phone:fmtPhone(login)},
+      async d=>{if(!isPhone(d.phone)){toast('เบอร์โทรไม่ถูกต้อง');return;}
+        try{await sbFn({action:'phone',id:u.id,phone:normPhone(d.phone)});
+          toast('เปลี่ยนเบอร์เป็น '+fmtPhone(d.phone)+' แล้ว');userAdmin();}catch(e){toast(e.message);}},
+      {okLabel:'บันทึกเบอร์ใหม่'});};
   m.querySelector('#rl').onclick=()=>{close();
-    openForm('แก้ไข — '+toUsername(u.email),[
+    openForm('แก้ไข — '+(u.name||fmtPhone(login)),[
       {key:'name',label:'ชื่อ-นามสกุล',full:true},
       {key:'role',label:'สิทธิ์',type:'select',full:true,options:['พนักงานขาย','ผู้จัดการ','ผู้ดูแลระบบ']}
     ],{name:u.name||'',role:u.role==='admin'?'ผู้ดูแลระบบ':u.role==='manager'?'ผู้จัดการ':'พนักงานขาย'},
