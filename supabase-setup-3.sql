@@ -67,8 +67,12 @@ create policy profiles_update_self on public.profiles
 create or replace function public.lock_role()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
-  if new.role is distinct from old.role and not public.is_manager() then
-    new.role := old.role;      -- เปลี่ยนสิทธิ์ตัวเองไม่ได้
+  -- auth.uid() เป็น null = สั่งจาก SQL Editor หรือ Edge Function (service role) -> อนุญาต
+  -- มีค่า = สั่งจากหน้าเว็บ -> ต้องเป็นผู้จัดการ/ผู้ดูแลเท่านั้นถึงเปลี่ยนสิทธิ์ได้
+  if auth.uid() is not null
+     and new.role is distinct from old.role
+     and not public.is_manager() then
+    new.role := old.role;
   end if;
   return new;
 end $$;
