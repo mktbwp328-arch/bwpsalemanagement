@@ -6,7 +6,8 @@
 <title>BWP Sales — ระบบจัดการงานขาย</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Sarabun:wght@400;600;700&family=Noto+Serif+Thai:wght@600;700&display=swap">
+<!-- ฟอนต์หน้าจอโหลดทันที ส่วนฟอนต์สำหรับพิมพ์เอกสารโหลดตอนเปิดหน้าพิมพ์ครั้งแรก -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap">
 <style>
 :root{
   --navy:#0b2a63; --blue:#2563eb; --blue-d:#1d4ed8; --blue-l:#eff5ff;
@@ -428,6 +429,15 @@ a{color:var(--blue);text-decoration:none}
 const $=(s,r=document)=>r.querySelector(s);
 const el=h=>{const t=document.createElement('template');t.innerHTML=h.trim();return t.content.firstElementChild;};
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+/* กรอง src ของรูปก่อนใส่ลง HTML — กันสคริปต์แฝงมากับข้อมูลจากลิงก์เซ็น/ฐานข้อมูล
+   อนุญาตเฉพาะ data:image ที่เป็น base64 ล้วน กับชื่อไฟล์รูปในเครื่องเท่านั้น */
+function imgSrc(s){
+  if(typeof s!=='string')return '';
+  const v=s.trim();
+  if(/^data:image\/(png|jpeg|jpg|gif|webp|svg\+xml);base64,[A-Za-z0-9+/=]+$/.test(v))return v;
+  if(/^[\w.\-]+\.(png|jpe?g|gif|webp|svg)$/i.test(v))return v;
+  return '';
+}
 const uid=()=>Math.random().toString(36).slice(2,10);
 const num=n=>Number(n||0).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
 const num0=n=>Number(n||0).toLocaleString('th-TH');
@@ -594,7 +604,7 @@ function thumbGrid(arr){
   const w=el('<div class="thumbs"></div>');
   if(!arr.length)return el('<div class="tiny">ยังไม่มีรูปภาพ</div>');
   arr.forEach((im,i)=>{
-    const t=el(`<div class="thumb"><img src="${im.data}" alt="${esc(im.name)}"><div class="nm">${esc(im.name)}</div><button class="x" title="ลบรูป">✕</button></div>`);
+    const t=el(`<div class="thumb"><img src="${imgSrc(im.data)}" alt="${esc(im.name)}"><div class="nm">${esc(im.name)}</div><button class="x" title="ลบรูป">✕</button></div>`);
     t.querySelector('img').onclick=()=>lightbox(im.data);
     t.querySelector('.x').onclick=e=>{e.stopPropagation();const g=arr.splice(i,1)[0];save();render();
       toast('ลบรูปแล้ว',()=>{arr.splice(i,0,g);save();render();});};
@@ -620,7 +630,7 @@ function fileList(arr){
     w.append(r);});
   return w;
 }
-function lightbox(src){const b=el(`<div class="lightbox"><img src="${src}"></div>`);b.onclick=()=>b.remove();$('#layer').append(b);}
+function lightbox(src){const b=el(`<div class="lightbox"><img src="${imgSrc(src)}"></div>`);b.onclick=()=>b.remove();$('#layer').append(b);}
 
 /* ================= หัวกระดาษบริษัท + ใบเสนอราคาแบบพิมพ์ ================= */
 const COMPANY={
@@ -656,7 +666,7 @@ function companyForm(){
 }
 function sigCell(label,sig){
   const line=sig&&sig.img
-    ? `<div class="ln" style="position:relative"><img src="${sig.img}" style="position:absolute;left:50%;bottom:1px;transform:translateX(-50%);max-height:13mm;max-width:48mm"></div>
+    ? `<div class="ln" style="position:relative"><img src="${imgSrc(sig.img)}" style="position:absolute;left:50%;bottom:1px;transform:translateX(-50%);max-height:13mm;max-width:48mm"></div>
        <div>${esc(sig.name||'')}</div><div>(วันที่ ${fmtShort(sig.date)})</div>`
     : `<div class="ln"></div><div>${esc(label)}</div><div>(วันที่.../.../...)</div>`;
   return `<div>${sig&&sig.img?line+`<div style="font-size:10px;color:#555">${esc(label)}</div>`:line}</div>`;
@@ -676,8 +686,8 @@ function quoteSheet(d){
       <td class="am">${amt?num(amt):''}</td></tr>`;}).join('');
   const noteLines=String(d.notes||'').split('\n').filter(x=>x.trim());
   const lg=logoSrc();
-  const logo=lg?`<img src="${lg}">`:'<div class="ph">คลิกโลโก้ในเมนูซ้ายเพื่ออัปโหลด</div>';
-  const cert=DB.cert?`<img src="${DB.cert}">`:'<div class="ph certph">+ ตรารับรอง</div>';
+  const logo=lg?`<img src="${imgSrc(lg)}">`:'<div class="ph">คลิกโลโก้ในเมนูซ้ายเพื่ออัปโหลด</div>';
+  const cert=DB.cert?`<img src="${imgSrc(DB.cert)}">`:'<div class="ph certph">+ ตรารับรอง</div>';
   return el(`<div class="sheet">
     <div class="sh-top">
       <div class="sh-logo">${logo}</div>
@@ -737,7 +747,7 @@ function creditSheets(d){
   const D=isNaN(dt)?['','','']:[dt.getDate(),dt.getMonth()+1,dt.getFullYear()+543];
   const lg=logoSrc();
   const head=`<div class="sh-top" style="align-items:center">
-      <div class="sh-logo">${lg?`<img src="${lg}">`:''}</div>
+      <div class="sh-logo">${lg?`<img src="${imgSrc(lg)}">`:''}</div>
       <div class="sh-mid">
         <div class="co-th" style="font-size:17px">${esc(co.nameTh)}</div>
         <div class="co-ad">${esc(co.address)}</div>
@@ -802,7 +812,7 @@ function creditSheets(d){
         <th style="width:29%">${CREDIT_ROLES[pair[0]][1]}</th><th style="width:29%">${CREDIT_ROLES[pair[1]][1]}</th></tr>
       <tr><td class="va">${d.approvedAmount?num(d.approvedAmount):''}</td><td class="va">${d.creditDays||''}</td>
         ${pair.map(i=>{const r=CREDIT_ROLES[i],s=d.sigs[r[0]];
-          return `<td class="sg">${s&&s.img?`<img src="${s.img}">`:''}
+          return `<td class="sg">${s&&s.img?`<img src="${imgSrc(s.img)}">`:''}
             <div class="nm">( ${esc(s?s.name:'')}${s?'':'.'.repeat(30)} )</div>
             <div class="dtl">${s?fmtShort(s.date).replace(/\//g,' / '):'........../.........../.............'}</div></td>`;}).join('')}
       </tr></table>`).join('')}
@@ -812,7 +822,7 @@ function creditSheets(d){
 /* ---------- แบบพิมพ์ใบขอตัวอย่าง (1 หน้า) ---------- */
 function sgBox(label,sig,w){
   return `<div style="flex:1;text-align:center;padding:0 6px">
-    <div style="height:16mm;position:relative">${sig&&sig.img?`<img src="${sig.img}" style="position:absolute;left:50%;bottom:0;transform:translateX(-50%);max-height:15mm;max-width:90%">`:''}</div>
+    <div style="height:16mm;position:relative">${sig&&sig.img?`<img src="${imgSrc(sig.img)}" style="position:absolute;left:50%;bottom:0;transform:translateX(-50%);max-height:15mm;max-width:90%">`:''}</div>
     <div style="border-top:1px dashed #000;padding-top:3px">${sig&&sig.name?esc(sig.name):''}</div>
     <div>${esc(label)}</div>
     <div style="font-size:11px">วันที่ ${sig?fmtShort(sig.date).replace(/\//g,' / '):'........./.........../.........'}</div></div>`;
@@ -822,7 +832,7 @@ function sampleSheet(d){
   const bx=(on,t)=>`<span style="white-space:nowrap">${chk(on)} ${esc(t)}</span>`;
   return el(`<div class="sheet frm">
     <div class="fhead">
-      <div class="fh-logo">${lg?`<img src="${lg}">`:''}<div class="fh-en">BEST WOLRD INTERPLAS CO.,LTD</div></div>
+      <div class="fh-logo">${lg?`<img src="${imgSrc(lg)}">`:''}<div class="fh-en">BEST WOLRD INTERPLAS CO.,LTD</div></div>
       <div class="fh-mid"><div class="t-en">Product Development and Improvement Form</div>
         <div class="t-th">ใบร้องขอความต้องการผลิตภัณฑ์</div></div>
       <div class="fh-right">
@@ -884,7 +894,7 @@ function requirementSheet(d){
   const bx=(on,t)=>`<span style="white-space:nowrap">${chk(on)} ${esc(t)}</span>`;
   return el(`<div class="sheet frm">
     <div class="fhead" style="border:0;padding:0 0 6px">
-      <div class="fh-logo">${lg?`<img src="${lg}">`:''}<div class="fh-en">BEST WOLRD INTERPLAS CO.,LTD</div></div>
+      <div class="fh-logo">${lg?`<img src="${imgSrc(lg)}">`:''}<div class="fh-en">BEST WOLRD INTERPLAS CO.,LTD</div></div>
       <div class="fh-mid"><div class="t-th" style="font-size:16px">ข้อกำหนดในการส่งสินค้า</div>
         <div class="t-en" style="font-size:13px">( Delivery Requirements )</div></div>
       <div class="fh-right">
@@ -943,7 +953,7 @@ function receiptSheet(r){
   const rows=r.items.length?r.items:[{code:'',name:'',qty:'',unit:'',price:0}];
   return el(`<div class="sheet inv">
     <div class="ih">
-      <div class="ih-logo">${lg?`<img src="${lg}">`:''}</div>
+      <div class="ih-logo">${lg?`<img src="${imgSrc(lg)}">`:''}</div>
       <div class="ih-mid">
         <div class="c1">${esc(co.nameTh)}</div>
         <div class="c2">สำนักงานใหญ่ : ${esc(co.address)}</div>
@@ -1024,7 +1034,16 @@ function sheetsFor(d){
   if(d.type==='receipt')return [receiptSheet(d)];
   return [quoteSheet(d)];
 }
+/* โหลดฟอนต์เอกสารเมื่อเปิดหน้าพิมพ์ครั้งแรก (ไม่ถ่วงตอนเปิดแอป) */
+let printFontsLoaded=false;
+function loadPrintFonts(){
+  if(printFontsLoaded)return;printFontsLoaded=true;
+  const l=document.createElement('link');l.rel='stylesheet';
+  l.href='https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=Noto+Serif+Thai:wght@600;700&display=swap';
+  document.head.append(l);
+}
 function printDocSheet(d){
+  loadPrintFonts();
   const ov=el('<div class="prevov"></div>');
   const bar=el('<div class="prevbar"></div>');
   const mk=(t,c,fn)=>{const b=el(`<button class="btn ${c}">${esc(t)}</button>`);b.onclick=fn;bar.append(b);};
@@ -1051,7 +1070,7 @@ function imageMenu(key,label){
   if(!DB[key]){pickCompanyImage(key,label);return;}
   const ov=el('<div class="ov"></div>');
   const m=el(`<div class="modal" style="max-width:430px"><header><b>${esc(label)}</b><button class="close">✕</button></header>
-    <div class="mb" style="text-align:center;background:#f8fafc"><img src="${DB[key]}" style="max-height:150px;max-width:100%"></div>
+    <div class="mb" style="text-align:center;background:#f8fafc"><img src="${imgSrc(DB[key])}" style="max-height:150px;max-width:100%"></div>
     <footer><button class="btn dg" id="del">ลบ${esc(label)}</button><div style="flex:1"></div>
       <button class="btn gh" id="c">ปิด</button><button class="btn" id="ch">เปลี่ยนรูป</button></footer></div>`);
   const close=()=>ov.remove();
@@ -1236,6 +1255,7 @@ async function shareApproval(d){
 }
 /* ---- หน้าจอผู้บริหาร: ดูเอกสาร แล้วเซ็นบนหน้าจอ ---- */
 function approveView(p,onlineId){
+  loadPrintFonts();
   const doc=Object.assign({},p,{items:p.items||[],notes:p.notes||DEFAULT_NOTES});
   const saveCo=DB.company,saveLogo=DB.logo,saveCert=DB.cert;
   if(p.company)DB.company=p.company;if(p.logo)DB.logo=p.logo;if(p.cert)DB.cert=p.cert;
@@ -1371,6 +1391,7 @@ async function shareCredit(d){
 }
 /* หน้าจอผู้เซ็น (เปิดจากลิงก์) */
 function creditSignView(row,id,role){
+  loadPrintFonts();
   const type=row.doc_type||'credit',roles=rolesOf(type);
   const d=ensureByType(Object.assign({},row.payload,{type,sigs:row.sigs||{}}));
   const saveCo=DB.company,saveLogo=DB.logo;
@@ -1393,7 +1414,7 @@ function creditSignView(row,id,role){
     <div class="mut">${esc(d.customer)} · ${subline}</div>
     <div style="margin-top:10px;font-size:15px">คุณกำลังเซ็นในฐานะ <b style="color:var(--blue-d)">${esc(roleName(role,type))}</b></div>
     <div class="tiny" style="margin-top:6px">ลายเซ็นที่ครบแล้ว: ${roles.filter(r=>row.sigs&&row.sigs[r[0]]).map(r=>r[1]).join(' · ')||'ยังไม่มี'}</div>
-    ${d._attachN?`<div class="tiny" style="margin-top:4px">📎 มีเอกสารแนบ ${d._attachN} ไฟล์ในระบบ (ดูได้ที่หน้าเอกสารในโปรแกรม)</div>`:''}</div>`));
+    ${+d._attachN>0?`<div class="tiny" style="margin-top:4px">📎 มีเอกสารแนบ ${+d._attachN} ไฟล์ในระบบ (ดูได้ที่หน้าเอกสารในโปรแกรม)</div>`:''}</div>`));
   sheets.forEach(s=>ov.append(s));
 
   if(done){
@@ -1827,7 +1848,7 @@ function render(){
       nav.append(sub);
     }});
   const mk=$('#brandMark');
-  mk.innerHTML=logoSrc()?`<img src="${logoSrc()}">`:'BWP';
+  mk.innerHTML=logoSrc()?`<img src="${imgSrc(logoSrc())}">`:'BWP';
   mk.onclick=logoMenu;
 
   const v=$('#view');v.innerHTML='';$('#topActions').innerHTML='';
@@ -2049,7 +2070,7 @@ function pgCustomers(v){
     (!q||[c.name,c.contact,c.phone,c.email].join(' ').toLowerCase().includes(q)));
   v.append(el(`<div class="tiny">พบ ${items.length} รายการ</div>`));
   v.append(listCard(items,{
-    avatar:c=>c.logo?`<img src="${c.logo}">`:esc(initials(c.name)),
+    avatar:c=>c.logo?`<img src="${imgSrc(c.logo)}">`:esc(initials(c.name)),
     title:c=>esc(c.name),
     meta:c=>[esc(c.contact||'ไม่ระบุผู้ติดต่อ'),esc(c.phone||''),'ติดต่อ '+ago(c.date)].filter(Boolean).join(' · '),
     status:c=>pill(c.status,CUST_ST),
@@ -2326,7 +2347,7 @@ function signCard(d,onSigned){
         font-size:12px;font-weight:700;background:${done?'#dcfce7':'#eef2f8'};color:${done?'#15803d':'#94a3b8'}">${done?'✓':i+1}</div>
       <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">${esc(label)}</div>
       <div class="tiny">${done?esc(s.name||'')+' · '+fmtDate(s.date):'ยังไม่ได้เซ็น'}</div>
-      ${done?`<img src="${s.img}" style="max-height:40px;margin-top:7px;display:block">`:''}</div></div>`);
+      ${done?`<img src="${imgSrc(s.img)}" style="max-height:40px;margin-top:7px;display:block">`:''}</div></div>`);
     if(!done){
       const b=el('<button class="btn gh sm">เซ็นที่เครื่องนี้</button>');
       b.onclick=()=>signModal('เซ็น — '+label,d.no,'',s2=>{
@@ -2450,7 +2471,7 @@ function creditDetail(v,d){
         font-size:12px;font-weight:700;background:${done?'#dcfce7':'#eef2f8'};color:${done?'#15803d':'#94a3b8'}">${done?'✓':i+1}</div>
       <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">${esc(label)}</div>
       <div class="tiny">${done?esc(s.name||'')+' · '+fmtDate(s.date):'ยังไม่ได้เซ็น'}</div>
-      ${done?`<img src="${s.img}" style="max-height:40px;margin-top:7px;display:block">`:''}</div></div>`);
+      ${done?`<img src="${imgSrc(s.img)}" style="max-height:40px;margin-top:7px;display:block">`:''}</div></div>`);
     if(!done){
       const b=el('<button class="btn gh sm">เซ็นที่เครื่องนี้</button>');
       b.onclick=()=>signModal('เซ็นอนุมัติ — '+label,'ใบขอเครดิต '+d.no,'',s2=>{
@@ -2561,7 +2582,7 @@ function quoteDetail(v,d){
         font-size:12px;font-weight:700;background:${done?'#dcfce7':'#eef2f8'};color:${done?'#15803d':'#94a3b8'}">${done?'✓':n}</div>
       <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">${esc(label)}</div>
       <div class="tiny">${done?esc(sig.name||'')+' · '+fmtDate(sig.date):locked?'รอขั้นตอนก่อนหน้า':'ยังไม่ได้เซ็น'}</div>
-      ${done?`<img src="${sig.img}" style="max-height:42px;margin-top:7px;display:block">`:''}</div></div>`);
+      ${done?`<img src="${imgSrc(sig.img)}" style="max-height:42px;margin-top:7px;display:block">`:''}</div></div>`);
     if(!locked){
       const b=el(`<button class="btn ${done?'gh':''} sm">${done?'เซ็นใหม่':btnLabel}</button>`);
       b.onclick=onSign;w.append(b);
@@ -2938,7 +2959,7 @@ function pgProfiles(v){
     const q=S.profQ.toLowerCase();
     const items=DB.customers.filter(x=>!q||[x.name,x.contact,x.phone,x.email].join(' ').toLowerCase().includes(q));
     v.append(listCard(items,{
-      avatar:x=>x.logo?`<img src="${x.logo}">`:esc(initials(x.name)),
+      avatar:x=>x.logo?`<img src="${imgSrc(x.logo)}">`:esc(initials(x.name)),
       title:x=>esc(x.name),
       meta:x=>[esc(x.biz||'ไม่ระบุประเภทธุรกิจ'),esc(x.contact||''),
         ((x.photos.length+x.files.length+(x.logo?1:0))||0)+' ไฟล์'].filter(Boolean).join(' · '),
@@ -3041,7 +3062,7 @@ function uploadPanel(c,title){
   const r=el('<div class="card pad" style="display:flex;flex-direction:column;gap:16px;align-self:start"></div>');
   r.append(el(`<div class="h3" style="margin:0">${esc(title)}</div>`));
   const lb=el(`<div><div class="tiny" style="margin-bottom:8px">โลโก้บริษัท</div>
-    <div class="thumb" style="width:140px">${c.logo?`<img src="${c.logo}"><button class="x rmlogo" title="ลบโลโก้">✕</button>`
+    <div class="thumb" style="width:140px">${c.logo?`<img src="${imgSrc(c.logo)}"><button class="x rmlogo" title="ลบโลโก้">✕</button>`
       :'<div style="height:90px;display:flex;align-items:center;justify-content:center;color:#cbd5e1;font-size:13px">ยังไม่มีโลโก้</div>'}
     <div class="nm">${c.logo?'โลโก้':'—'}</div></div>
     <div style="display:flex;gap:8px;margin-top:9px">
