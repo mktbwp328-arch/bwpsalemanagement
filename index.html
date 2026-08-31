@@ -290,6 +290,75 @@ a{color:var(--blue);text-decoration:none}
 .sheet.crd table.apv td.sg img{position:absolute;left:50%;transform:translateX(-50%);bottom:30px;max-height:16mm;max-width:80%}
 .sheet.crd table.apv td.sg .nm{font-size:11.5px}
 .sheet.crd table.apv td.sg .dtl{font-size:11.5px}
+/* ---- ฟอร์มแบบมีกรอบ (ใบขอตัวอย่าง / ใบข้อกำหนด) ---- */
+.sheet.frm{font-size:11.5px;line-height:1.6;display:block;padding:9mm 9mm 8mm}
+.sheet.frm .ln{margin-bottom:2px;overflow:hidden}
+.sheet.frm .lb{display:inline-block;width:80px}
+.sheet.frm .dt{display:inline-block;border-bottom:1px dotted #000;text-align:center;padding:0 3px;
+  vertical-align:bottom;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.sheet.frm .cb{display:inline-block;width:11px;height:11px;border:1px solid #000;text-align:center;
+  line-height:10px;font-size:10px;vertical-align:-1px;margin:0 2px}
+.sheet.frm .fhead{display:flex;align-items:flex-start;gap:8px;border:1px solid #000;border-bottom:0;padding:6px 8px}
+.sheet.frm .fh-logo{width:30mm;flex-shrink:0;text-align:center}
+.sheet.frm .fh-logo img{max-width:24mm;max-height:18mm}
+.sheet.frm .fh-en{font-size:8px;font-weight:700;font-family:'Times New Roman',serif}
+.sheet.frm .fh-mid{flex:1;text-align:center;padding-top:4px}
+.sheet.frm .t-en{font-family:'Times New Roman',serif;font-size:15px;font-weight:700}
+.sheet.frm .t-th{font-family:'Noto Serif Thai',serif;font-size:15px;font-weight:700}
+.sheet.frm .fh-right{width:52mm;flex-shrink:0;font-size:11px;text-align:right}
+.sheet.frm .fh-right>div{margin-bottom:5px}
+.sheet.frm .ul{display:inline-block;min-width:26mm;border-bottom:1px solid #000;text-align:center}
+.sheet.frm .bx{border:1px solid #000;padding:5px 8px;margin-bottom:-1px}
+.sheet.frm .bxh{font-weight:700;margin-bottom:2px}
+.sheet.frm .band{background:#d9d9d9;text-align:center;font-weight:700;font-family:'Times New Roman',serif;
+  margin:4px -8px 3px;padding:1px 0;font-size:11px}
+.sheet.frm .g4c{display:grid;grid-template-columns:repeat(4,1fr);gap:2px 8px}
+.sheet.frm .free{min-height:16mm;white-space:pre-line;padding:2px 0}
+.sheet.frm .sh-foot{text-align:right;font-size:10px;font-weight:700;margin-top:5px}
+/* ---- ใบกำกับภาษี/ใบส่งของ ---- */
+.sheet.inv{font-size:11.5px;line-height:1.5;display:flex;flex-direction:column;padding:9mm 9mm 8mm;color:#0d1b4b}
+.sheet.inv .dt{display:inline-block;border-bottom:1px dotted #6b7ba8;padding:0 3px;vertical-align:bottom;
+  line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.sheet.inv .ih{display:flex;gap:8px;align-items:flex-start}
+.sheet.inv .ih-logo{width:26mm;flex-shrink:0}
+.sheet.inv .ih-logo img{max-width:100%;max-height:22mm}
+.sheet.inv .ih-mid{flex:1}
+.sheet.inv .c1{font-family:'Noto Serif Thai',serif;font-size:15px;font-weight:700}
+.sheet.inv .c2{font-size:11px}
+.sheet.inv .c3{font-family:'Times New Roman',serif;font-size:14px;font-weight:700}
+.sheet.inv .c4{font-size:10.5px}
+.sheet.inv .ih-right{width:56mm;flex-shrink:0;text-align:center}
+.sheet.inv .tbox{border:1px solid #0d1b4b;padding:4px 6px;margin-bottom:6px}
+.sheet.inv .t1{font-weight:700;font-size:12.5px}
+.sheet.inv .t2{font-size:9px;font-family:'Times New Roman',serif}
+.sheet.inv .obox{border:1px solid #0d1b4b;border-radius:16px;padding:3px 8px;width:32mm;margin:0 auto;font-size:11.5px}
+.sheet.inv .imeta{display:flex;gap:12px;margin-top:8px}
+.sheet.inv .imeta .lft{flex:1}
+.sheet.inv .imeta .rgt{width:74mm;flex-shrink:0}
+.sheet.inv .imeta .ln{margin-top:1px}
+.sheet.inv .sm{font-size:8.5px;font-family:'Times New Roman',serif;color:#3a4d84;margin-bottom:2px}
+.sheet.inv .itemswrap{flex:1;display:flex;min-height:0;margin-top:7px}
+.sheet.inv table.inv-items{width:100%;height:100%;border-collapse:collapse;table-layout:fixed}
+.sheet.inv table.inv-items th,.sheet.inv table.inv-items td{border:1px solid #0d1b4b;padding:3px 5px;font-size:11px;vertical-align:top}
+.sheet.inv table.inv-items th{text-align:center;font-weight:600;padding:3px 2px}
+.sheet.inv table.inv-items .en{font-size:8px;font-family:'Times New Roman',serif;font-weight:400;color:#3a4d84}
+.sheet.inv table.inv-items td.c{text-align:center}
+.sheet.inv table.inv-items td.r{text-align:right}
+.sheet.inv table.inv-items td.dsc{white-space:pre-line}
+.sheet.inv .ifoot{display:flex;border:1px solid #0d1b4b;border-top:0}
+.sheet.inv .ifoot .notes{flex:1;padding:5px 7px;font-size:10px;line-height:1.55;border-right:1px solid #0d1b4b}
+.sheet.inv .ifoot .notes .i2{padding-left:52px}
+.sheet.inv .ifoot .sums{width:31%;flex-shrink:0;display:flex;flex-direction:column}
+.sheet.inv .ifoot .sums>div{flex:1;display:flex;justify-content:space-between;align-items:center;gap:8px;
+  padding:4px 7px;border-bottom:1px solid #0d1b4b}
+.sheet.inv .ifoot .sums>div:last-child{border-bottom:0}
+.sheet.inv .ifoot .sums b{font-size:12.5px}
+.sheet.inv .ifoot .sums .tt b{font-weight:700}
+.sheet.inv .isign{display:flex;border:1px solid #0d1b4b;border-top:0}
+.sheet.inv .isign .cell{flex:1;padding:7px 9px;border-right:1px solid #0d1b4b;min-height:26mm}
+.sheet.inv .isign .cell:last-child{border-right:0}
+.sheet.inv .isign .hdd{font-size:10.5px;margin-bottom:10px}
+.sheet.inv .isign .sl{margin-top:9px;font-size:11px}
 @media print{
   body *{visibility:hidden!important}
   .prevov,.prevov *{visibility:visible!important}
@@ -720,7 +789,222 @@ function creditSheets(d){
     <div class="pg">หน้า 2/2</div></div>`);
   return [p1,p2];
 }
-function printCredit(d){
+/* ---------- แบบพิมพ์ใบขอตัวอย่าง (1 หน้า) ---------- */
+function sgBox(label,sig,w){
+  return `<div style="flex:1;text-align:center;padding:0 6px">
+    <div style="height:16mm;position:relative">${sig&&sig.img?`<img src="${sig.img}" style="position:absolute;left:50%;bottom:0;transform:translateX(-50%);max-height:15mm;max-width:90%">`:''}</div>
+    <div style="border-top:1px dashed #000;padding-top:3px">${sig&&sig.name?esc(sig.name):''}</div>
+    <div>${esc(label)}</div>
+    <div style="font-size:11px">วันที่ ${sig?fmtShort(sig.date).replace(/\//g,' / '):'........./.........../.........'}</div></div>`;
+}
+function sampleSheet(d){
+  ensureSample(d);const co=DB.company,lg=logoSrc(),s=d.sigs||{};
+  const bx=(on,t)=>`<span style="white-space:nowrap">${chk(on)} ${esc(t)}</span>`;
+  return el(`<div class="sheet frm">
+    <div class="fhead">
+      <div class="fh-logo">${lg?`<img src="${lg}">`:''}<div class="fh-en">BEST WOLRD INTERPLAS CO.,LTD</div></div>
+      <div class="fh-mid"><div class="t-en">Product Development and Improvement Form</div>
+        <div class="t-th">ใบร้องขอความต้องการผลิตภัณฑ์</div></div>
+      <div class="fh-right">
+        <div>เอกสารเลขที่ <span class="ul">${esc(d.no)}</span></div>
+        <div>Rev. <span class="ul">${esc(d.rev||'')}</span></div>
+        <div>วัน/เดือน/ปี <span class="ul">${fmtShort(d.date)}</span></div></div>
+    </div>
+    <div class="bx"><div class="bxh">1. ข้อมูลรายละเอียดงานเบื้องต้น</div>
+      <div class="ln">ชื่อลูกค้า ${dots(d.customer,520)}</div>
+      <div class="ln">ขนาดผลิตภัณฑ์ที่ต้องการ ${dots(d.size,470)}</div>
+      <div class="ln" style="display:flex;gap:6px"><span style="width:76px;flex-shrink:0">งานที่ต้องการ</span>
+        <div style="flex:1">
+          <div>${chk(d.workType==='ตัวอย่าง')} ตัวอย่าง น้ำหนักต่อม้วน ${dots(d.wPerRoll,58)} กก. จำนวน ${dots(d.rolls,52)} ม้วน วันที่กำหนดส่ง ${dots(fmtShort(d.dueDate),96)} รวม ${dots(d.totalKg,60)} กก.</div>
+          <div>${chk(d.workType==='ยอดสั่งซื้อตัวอย่าง')} ยอดสั่งซื้อตัวอย่าง น้ำหนักต่อม้วน ${dots(d.wPerRoll,58)} กก. จำนวน ${dots(d.rolls,52)} ม้วน วันที่กำหนดส่ง ${dots(fmtShort(d.dueDate),96)} รวม ${dots(d.totalKg,54)}</div>
+        </div></div>
+      <div style="color:#c00;font-size:10.5px">หมายเหตุ : ในกรณีที่เป็นฟิล์มใสระยะเวลาในการเตรียมตัวอย่าง อย่างน้อย 7 วัน ส่วนงานพิมพ์ระยะเวลาในการเตรียมตัวอย่าง อย่างน้อย15 วัน</div>
+    </div>
+    <div class="bx"><div class="bxh">2. ประเภทงานที่ต้องการ</div>
+      <div class="g4c">${SAMPLE_KINDS.map(k=>`<div>${chk(d.kinds.includes(k))} ${esc(k)}${k==='อื่นๆ'?' '+dots(d.kindOther,70):''}</div>`).join('')}</div>
+    </div>
+    <div class="bx"><div class="bxh">3. รายละเอียดผลิตภัณฑ์ตัวอย่างที่ต้องการ</div>
+      <div class="band">CLEAR FILM</div>
+      <div class="ln"><span class="lb">แกน</span> ${bx(d.cfCore==='PVC','PVC')} &nbsp; ${bx(d.cfCore==='แกนกระดาษ','แกนกระดาษ')} ความหนาแกน ${dots(d.cfCoreThick,120)} mm.</div>
+      <div class="ln"><span class="lb">การกรอ</span> ${bx(d.cfWind.includes('กรอต่อได้'),'กรอต่อได้จำนวน')} ${dots(d.cfJoins,90)} ต่อ &nbsp; ${bx(d.cfWind.includes('ติดเทปแดง'),'ติดเทปแดง')} &nbsp; ${bx(d.cfWind.includes('ติดจำนวนรอยต่อ'),'ติดจำนวนรอยต่อ')}</div>
+      <div class="ln"><span class="lb">ผิวฟิล์ม</span> ${bx(d.cfSurface==='ระเบิดผิว','ระเบิดผิว')} &nbsp; ${bx(d.cfSurface==='ไม่ระเบิดผิว','ไม่ระเบิดผิว')}</div>
+      <div class="band">PRINTED</div>
+      <div class="ln"><span class="lb">ประเภทงานพิมพ์</span> ${bx(d.prType==='งานพิมพ์ล่าง','งานพิมพ์ล่าง')} &nbsp; ${bx(d.prType==='งานพิมพ์บน','งานพิมพ์บน')}
+        <span style="float:right">จำนวนสีที่พิมพ์ ${dots(d.prColors,60)} สี</span></div>
+      <div class="ln"><span class="lb">แกน</span> ${bx(d.prCore==='PVC','PVC')} &nbsp; ${bx(d.prCore==='แกนกระดาษ','แกนกระดาษความหนาแกน')} ${dots(d.prCoreThick,110)} mm.</div>
+      <div class="ln"><span class="lb">การกรอ</span> ${bx(d.prWind.includes('กรอต่อได้'),'กรอต่อได้จำนวน')} ${dots(d.prJoins,90)} ต่อ &nbsp; ${bx(d.prWind.includes('ติดเทปแดง'),'ติดเทปแดง')} &nbsp; ${bx(d.prWind.includes('ติดจำนวนรอยต่อ'),'ติดจำนวนรอยต่อ')}</div>
+      <div class="ln">ทิศทางการดึงม้วน</div>
+      <div class="ln" style="display:flex;gap:10px;font-size:10.5px">${WIND_DIR.map(x=>`<span>${chk(d.windDir===x)} ${esc(x)}</span>`).join('')}</div>
+    </div>
+    <div class="bx"><div class="bxh">4. ข้อมูลเชิงเทคนิค (ฝ่ายขาย)</div>
+      <div class="ln">4.1. ค่าหดที่ต้องการ &nbsp; ด้าน TD ${dots(d.shrinkTD,90)}% &nbsp; ด้าน MD ${dots(d.shrinkMD,90)}%</div>
+      <div class="ln">4.2. ลักษณะการแพ็คและประเภทสินค้าที่ลูกค้าจะบรรจุ ${dots(d.packDesc,250)} ${chk(d.hasLabel==='มีฉลาก')} มีฉลาก ${chk(d.hasLabel==='ไม่มีฉลาก')} ไม่มีฉลาก</div>
+      <div class="ln">4.3. เครื่องจักรที่ลูกค้าใช้ในการทำงาน ${dots(d.machine,420)}</div>
+      <div class="ln">4.4. รายละเอียดความต้องการพิเศษเชิงเทคนิคและคุณภาพ</div>
+      <div class="free">${esc(d.special||'')}</div>
+    </div>
+    <div class="bx" style="display:flex;padding:0">
+      <div style="flex:1;padding:10px;border-right:1px solid #000;display:flex;align-items:flex-end">
+        ${sgBox('ผู้ร้องขอ (ฝ่ายขาย)',s.sales)}</div>
+      <div style="flex:1;padding:10px">
+        <div class="ln">${chk(d.canMake==='สามารถจัดทำผลิตภัณฑ์')} สามารถจัดทำผลิตภัณฑ์ &nbsp; ${chk(d.canMake&&d.canMake!=='สามารถจัดทำผลิตภัณฑ์')} ไม่สามารถจัดทำผลิตภัณฑ์ได้</div>
+        <div class="ln">ข้อเสนอแนะ ${dots((d.suggestion||'').split('\n')[0],230)}</div>
+        <div class="ln">${dots((d.suggestion||'').split('\n').slice(1).join(' '),330)}</div>
+        <div style="display:flex;margin-top:6px">${sgBox('ผู้รับเรื่อง (ฝ่ายวิจัยและพัฒนา)',s.rd)}</div></div>
+    </div>
+    <div class="bx" style="display:flex;padding:10px 6px">
+      ${sgBox('ผู้อนุมัติเบื้องต้น (ผู้ช่วยกรรมการผู้จัดการ)',s.preApprove)}
+      ${sgBox('ผู้อนุมัติ (กรรมการผู้จัดการ)',s.md)}
+    </div>
+    <div class="sh-foot">FQP-RD-01:03 REV.01</div></div>`);
+}
+/* ---------- แบบพิมพ์ใบข้อกำหนดในการส่งสินค้า (1 หน้า) ---------- */
+function requirementSheet(d){
+  ensureReq(d);const lg=logoSrc(),s=d.sigs||{};
+  const bx=(on,t)=>`<span style="white-space:nowrap">${chk(on)} ${esc(t)}</span>`;
+  return el(`<div class="sheet frm">
+    <div class="fhead" style="border:0;padding:0 0 6px">
+      <div class="fh-logo">${lg?`<img src="${lg}">`:''}<div class="fh-en">BEST WOLRD INTERPLAS CO.,LTD</div></div>
+      <div class="fh-mid"><div class="t-th" style="font-size:16px">ข้อกำหนดในการส่งสินค้า</div>
+        <div class="t-en" style="font-size:13px">( Delivery Requirements )</div></div>
+      <div class="fh-right">
+        <div>เอกสารเลขที่ <span class="ul">${esc(d.no)}</span></div>
+        <div>REV. <span class="ul">${esc(d.rev||'')}</span></div>
+        <div>วัน/เดือน/ปี <span class="ul">${fmtShort(d.date)}</span></div></div>
+    </div>
+    <div style="padding:6px 0 0">
+      <div class="ln">เรียน &nbsp; ฝ่ายผลิตส่วนงานเป่า / ฝ่ายวางแผน / ฝ่ายควบคุมคุณภาพ / ฝ่ายคลังสินค้า / ฝ่ายขนส่ง</div>
+      <div class="ln">ชื่อลูกค้า ${dots(d.customer,330)} Matcode ${dots(d.matcode,140)}</div>
+      <div class="ln">ขนาดผลิตภัณฑ์ ${dots(d.size,230)} เกรด ${bx(d.grade==='A','A')} &nbsp; ${bx(d.grade==='B','B')}</div>
+      <div class="ln">ประเภทงาน ${dots(d.workType,520)}</div>
+      <div class="ln">น้ำหนักต่อม้วน ${dots(d.weightPerRoll,190)} KG &nbsp; แกน ${bx(d.core==='PVC','PVC')} &nbsp; ${bx(d.core==='แกนกระดาษ','แกนกระดาษ')} ${dots(d.coreThick,60)} มิล</div>
+      <div class="ln">ความยาวต่อม้วน ${dots(d.lengthPerRoll,180)} เมตร &nbsp; จำนวน ${dots(d.qty,140)} ใบ / มัด</div>
+      <div class="ln">รอยต่อ ${dots(d.joins,200)} รอย &nbsp; ${bx(d.joinMark.includes('ติดเทปแดง'),'ติดเทปแดง')} &nbsp; ${bx(d.joinMark.includes('ติดจำนวนรอยต่อ'),'ติดจำนวนรอยต่อ')}</div>
+      <div class="ln">ใบปะหน้า ${bx(d.coverSheet==='ใบปะหน้าสั้น','ใบปะหน้าสั้น')} &nbsp; ${bx(d.coverSheet==='ใบปะหน้ายาว','ใบปะหน้ายาว')} &nbsp; ${bx(d.coverSheet==='อื่นๆ','อื่นๆ')}</div>
+      <div class="ln">พาเลท ${bx(d.pallet==='พาเลทไม้','พาเลทไม้')} &nbsp; ${bx(d.pallet==='LOSCAM','LOSCAM')} &nbsp; ${bx(d.pallet==='พาเลทพลาสติก','พาเลทพลาสติก')} &nbsp; จำนวน ${dots(d.perPallet,110)} ม้วน/พาเลท</div>
+      <div class="ln">รายละเอียดเพิ่มเติม</div>
+      ${[0,1,2,3].map(i=>`<div class="ln">${dots((d.detail||'').split('\n')[i]||'',700)}</div>`).join('')}
+      <div style="text-align:right;margin-top:14px">จึงเรียนมาเพื่อทราบและโปรดดำเนินการ</div>
+      <div style="text-align:right">ขอแสดงความนับถือ</div>
+      <div style="display:flex;justify-content:flex-end;margin-top:6px"><div style="width:260px">${sgBox('เจ้าหน้าที่ฝ่ายขาย',s.sales||(d.salesName?{name:d.salesName}:null))}</div></div>
+      <div style="display:flex;gap:8px;margin-top:16px">
+        ${sgBox('ฝ่ายผลิตส่วนงานเป่า',s.blow)}${sgBox('ฝ่ายควบคุมคุณภาพ',s.qc)}${sgBox('ผู้ช่วยกรรมการผู้จัดการ',s.asstMd)}</div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        ${sgBox('ฝ่ายผลิตส่วนงานพิมพ์',s.print)}${sgBox('ฝ่ายคลังสินค้า',s.store)}<div style="flex:1"></div></div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        ${sgBox('ฝ่ายวางแผน',s.plan)}${sgBox('ฝ่ายขนส่ง',s.logistics)}<div style="flex:1"></div></div>
+    </div></div>`);
+}
+/* ---------- แบบพิมพ์ใบกำกับภาษี/ใบส่งของ/ใบแจ้งหนี้ ---------- */
+function bahtText(n){
+  n=Math.round((+n||0)*100)/100;
+  const U=['','หนึ่ง','สอง','สาม','สี่','ห้า','หก','เจ็ด','แปด','เก้า'],P=['','สิบ','ร้อย','พัน','หมื่น','แสน'];
+  const conv=s=>{let r='';const L=s.length;
+    for(let i=0;i<L;i++){const dg=+s[i],pos=L-i-1;
+      if(!dg)continue;
+      if(pos===0&&dg===1&&L>1)r+='เอ็ด';
+      else if(pos===1&&dg===2)r+='ยี่';
+      else if(pos===1&&dg===1)r+='';
+      else r+=U[dg];
+      r+=P[pos];}
+    return r;};
+  const whole=s=>{let t='',x=s.replace(/^0+/,'')||'0';
+    if(x==='0')return 'ศูนย์';
+    while(x.length>6){t+=conv(x.slice(0,x.length-6))+'ล้าน';x=x.slice(-6);}
+    return t+conv(x);};
+  const [i,f]=n.toFixed(2).split('.');
+  return whole(i)+'บาท'+(+f===0?'ถ้วน':whole(f)+'สตางค์');
+}
+function receiptSheet(r){
+  r.sigs=r.sigs||{};r.items=r.items||[];
+  const co=DB.company,lg=logoSrc(),cust=DB.customers.find(c=>c.name===r.customer)||{};
+  const sub=r.items.length?r.items.reduce((a,i)=>a+(+i.qty||0)*(+i.price||0),0):(r.amount||0)/1.07;
+  const vat=sub*.07,tot=sub+vat;
+  const rows=r.items.length?r.items:[{code:'',name:'',qty:'',unit:'',price:0}];
+  return el(`<div class="sheet inv">
+    <div class="ih">
+      <div class="ih-logo">${lg?`<img src="${lg}">`:''}</div>
+      <div class="ih-mid">
+        <div class="c1">${esc(co.nameTh)}</div>
+        <div class="c2">สำนักงานใหญ่ : ${esc(co.address)}</div>
+        <div class="c3">${esc(co.nameEn)}</div>
+        <div class="c4">Head office : 328 Moo 6 T. Klongniyomyatra, A. Bangbor, Samutprakarn 10560</div>
+        <div class="c4">TEL. : 0-2317-5470-3 &nbsp; FAX : 0-2317-5474</div>
+        <div class="c4">เลขประจำตัวผู้เสียภาษี 0115545001637 &nbsp;&nbsp;&nbsp; <b>เอกสารออกเป็นชุด</b></div>
+      </div>
+      <div class="ih-right">
+        <div class="tbox"><div class="t1">ใบกำกับภาษี / ใบส่งของ / ใบแจ้งหนี้</div>
+          <div class="t2">TAX INVOICE / DELIVERY ORDER / INVOICE</div></div>
+        <div class="obox"><div>ต้นฉบับ</div><div class="t2">ORIGINAL</div></div>
+      </div>
+    </div>
+    <div class="imeta">
+      <div class="lft">
+        <div class="ln">ลูกค้า : ${dots(r.customer,290)}</div><div class="sm">Customer</div>
+        <div class="ln">${dots((cust.address||'').replace(/\n/g,' '),350)}</div>
+        <div class="ln" style="margin-top:6px">สถานที่ส่ง : ${dots(r.shipTo,160)} โทรศัพท์ : ${dots(r.phone||cust.phone,110)}</div>
+        <div class="sm">Delivery To<span style="display:inline-block;width:150px"></span>Telephone</div>
+      </div>
+      <div class="rgt">
+        <div class="ln">เลขที่ใบกำกับ : ${dots(r.invNo||r.no,140)}</div><div class="sm">Invoice No.</div>
+        <div class="ln">วันที่ : ${dots(fmtShort(r.date),140)}</div><div class="sm">Date</div>
+        <div class="ln">เครดิต : ${dots(r.creditDays,62)} ครบกำหนด : ${dots(fmtShort(r.dueDate),84)}</div>
+        <div class="sm">Payment Term<span style="display:inline-block;width:52px"></span>Due Date</div>
+        <div class="ln">เลขที่ใบสั่งขาย : ${dots(r.soNo,132)}</div><div class="sm">Sales Order No</div>
+        <div class="ln">พนักงานขาย : ${dots(r.salesman,140)}</div><div class="sm">Salesman</div>
+        <div class="ln">เลขที่ใบสั่งซื้อ : ${dots(r.poRef,140)}</div><div class="sm">Purchase Order No.</div>
+      </div>
+    </div>
+    <div class="itemswrap"><table class="inv-items">
+      <thead><tr>
+        <th style="width:9%">ลำดับ<div class="en">Item</div></th>
+        <th style="width:16%">รหัสสินค้า<div class="en">Product Code</div></th>
+        <th>รายละเอียดสินค้า<div class="en">Description</div></th>
+        <th style="width:13%">จำนวน<div class="en">Quantity</div></th>
+        <th style="width:14%">ราคา / หน่วย<div class="en">Unit Price</div></th>
+        <th style="width:17%">จำนวนเงิน<div class="en">Amount (Baht)</div></th></tr></thead>
+      <tbody>
+        ${rows.map((it,i)=>{const amt=(+it.qty||0)*(+it.price||0);
+          return `<tr><td class="c">${(it.name||it.code)?i+1:''}</td><td>${esc(it.code||'')}</td>
+            <td class="dsc">${esc(it.name||'')}</td>
+            <td class="r">${it.qty?num(it.qty)+' '+esc(it.unit||''):''}</td>
+            <td class="r">${it.price?num(it.price):''}</td><td class="r">${amt?num(amt):''}</td></tr>`;}).join('')}
+        <tr class="fill"><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+      </tbody></table></div>
+    <div class="ifoot">
+      <div class="notes">
+        <div><b>หมายเหตุ :</b> 1. แม้สินค้าจะส่งมอบแก่ผู้ซื้อแล้วก็ยังเป็นกรรมสิทธิ์ของผู้ขาย จนกว่าผู้ซื้อได้ชำระเงินเรียบร้อยแล้ว</div>
+        <div class="i2">2. ใบเสร็จรับเงินฉบับนี้จะสมบูรณ์ต่อเมื่อ ได้รับการชำระเงินด้วยเงินสดหรือเช็คที่เรียกเก็บเงินได้เรียบร้อยแล้ว</div>
+        <div class="i2">3. บริษัทฯ จะคิดค่าปรับในอัตรา 1.5% ต่อเดือน เมื่อเกินกำหนดของเวลาการชำระเงิน</div>
+        <div class="i2">4. โปรดสั่งจ่ายในนาม " ${esc(co.nameTh)} " เท่านั้นและขีดฆ่าผู้ถือ</div>
+        <div style="margin-top:7px">ตัวอักษร : <b>${esc(bahtText(tot))}</b></div>
+      </div>
+      <div class="sums">
+        <div><span>ราคาสินค้า<div class="en">Sub Total</div></span><b>${num(sub)}</b></div>
+        <div><span>ภาษีมูลค่าเพิ่ม<div class="en">Value Added Tax</div></span><b>${num(vat)}</b></div>
+        <div class="tt"><span>รวมทั้งสิ้น<div class="en">Total Amount</div></span><b>${num(tot)}</b></div>
+      </div>
+    </div>
+    <div class="isign">
+      <div class="cell"><div class="hdd">ได้รับสินค้าตามรายการข้างบน ไว้ถูกต้องแล้ว</div>
+        <div class="sl">ผู้รับสินค้า <span class="dt" style="min-width:130px"></span></div>
+        <div class="sl">วันที่ <span class="dt" style="min-width:155px"></span></div></div>
+      <div class="cell" style="display:flex;align-items:flex-end">${sgBox('ผู้ส่งสินค้า',r.sigs.sender)}</div>
+      <div class="cell"><div class="hdd" style="text-align:center;font-weight:600">${esc(co.nameTh)}</div>
+        <div style="display:flex">${sgBox('ผู้มีอำนาจลงนาม',r.sigs.authorized)}</div></div>
+    </div>
+    <div style="text-align:right;font-size:11px;margin-top:3px">สำหรับลูกค้า</div></div>`);
+}
+
+/* รวมศูนย์: สร้างแผ่นพิมพ์ตามชนิดเอกสาร */
+function sheetsFor(d){
+  if(d.type==='credit')return creditSheets(d);
+  if(d.type==='sample')return [sampleSheet(d)];
+  if(d.type==='requirement')return [requirementSheet(d)];
+  if(d.type==='receipt')return [receiptSheet(d)];
+  return [quoteSheet(d)];
+}
+function printDocSheet(d){
   const ov=el('<div class="prevov"></div>');
   const bar=el('<div class="prevbar"></div>');
   const mk=(t,c,fn)=>{const b=el(`<button class="btn ${c}">${esc(t)}</button>`);b.onclick=fn;bar.append(b);};
@@ -728,9 +1012,10 @@ function printCredit(d){
   mk('แก้ไขหัวกระดาษ','gh',companyForm);
   mk('ปิด','gh',()=>ov.remove());
   ov.append(bar);
-  creditSheets(d).forEach(s=>ov.append(s));
+  sheetsFor(d).forEach(s=>ov.append(s));
   $('#layer').append(ov);
 }
+const printCredit=printDocSheet;
 function printQuote(d){
   const ov=el('<div class="prevov"></div>');
   const bar=el('<div class="prevbar"></div>');
@@ -1014,33 +1299,36 @@ function pasteCodeModal(){
     else toast('รหัสไม่ถูกต้อง');});
 }
 /* ================= ใบขอเครดิต: เซ็น 4 ลายเซ็น ================= */
-const roleName=k=>(CREDIT_ROLES.find(r=>r[0]===k)||[,k])[1];
+const roleName=(k,t)=>(rolesOf(t||'credit').find(r=>r[0]===k)||[,k])[1];
+const ensureByType=d=>d.type==='sample'?ensureSample(d):d.type==='requirement'?ensureReq(d)
+  :d.type==='receipt'?(d.sigs=d.sigs||{},d):ensureCredit(d);
 async function shareCredit(d){
-  ensureCredit(d);
+  ensureByType(d);
   if(!sbOn()||sbReady===false){toast('ต้องเชื่อมฐานข้อมูลก่อน — รันไฟล์ supabase-setup-2.sql ใน Supabase');return;}
   const cust=DB.customers.find(c=>c.name===d.customer)||{};
   const payload=Object.assign({},d,{_cust:{address:cust.address,phone:cust.phone,email:cust.email,taxId:cust.taxId},
     company:DB.company,logo:DB.logo});
+  const roles=rolesOf(d.type);
   let id=d.sigDocId;
   try{
-    if(!id){id=await sbRpc('create_doc_signature',{p_payload:payload,p_doc_no:d.no,p_doc_type:'credit',p_customer:d.customer});
+    if(!id){id=await sbRpc('create_doc_signature',{p_payload:payload,p_doc_no:d.no,p_doc_type:d.type||'credit',p_customer:d.customer});
       d.sigDocId=typeof id==='string'?id:(id&&id.id)||id;save();}
   }catch(e){toast(e.message);return;}
   const ov=el('<div class="ov"></div>');
-  const links=CREDIT_ROLES.map(([k,label])=>
+  const links=roles.map(([k,label])=>
     `<div class="field" style="margin-bottom:12px"><label>${esc(label)}${d.sigs[k]?' ✅ เซ็นแล้ว':''}</label>
       <textarea rows="2" readonly data-k="${k}" style="font-size:11.5px">${esc(baseUrl()+'#s='+d.sigDocId+'&r='+k)}</textarea>
       <button class="btn gh sm cp" data-k="${k}" style="margin-top:6px;width:150px">คัดลอกลิงก์</button></div>`).join('');
-  const m=el(`<div class="modal" style="max-width:760px"><header><div><b>ส่งลิงก์ให้เซ็น 4 ท่าน</b>
+  const m=el(`<div class="modal" style="max-width:760px"><header><div><b>ส่งลิงก์ให้เซ็น ${roles.length} ท่าน</b>
       <div class="tiny" style="margin-top:2px">${esc(d.no)} · ${esc(d.customer)}</div></div>
       <button class="close">✕</button></header>
-    <div class="mb"><div class="hint" style="margin-bottom:16px">ส่งลิงก์ของแต่ละท่านทางไลน์ เปิดบนมือถือหรือ iPad แล้วเซ็นได้เลย เซ็นครบทั้ง 4 ลายเซ็นเอกสารจะขึ้นสถานะอนุมัติสมบูรณ์</div>
+    <div class="mb"><div class="hint" style="margin-bottom:16px">ส่งลิงก์ของแต่ละท่านทางไลน์ เปิดบนมือถือหรือ iPad แล้วเซ็นได้เลย เซ็นครบทั้ง ${roles.length} ลายเซ็นเอกสารจะขึ้นสถานะอนุมัติสมบูรณ์</div>
       ${links}</div>
     <footer><button class="btn" id="dn">เสร็จสิ้น</button></footer></div>`);
   m.querySelectorAll('.cp').forEach(b=>b.onclick=()=>{
     const t=m.querySelector(`textarea[data-k="${b.dataset.k}"]`);t.select();
     (navigator.clipboard?navigator.clipboard.writeText(t.value).catch(()=>document.execCommand('copy'))
-      :Promise.resolve(document.execCommand('copy'))).then(()=>toast('คัดลอกลิงก์ '+roleName(b.dataset.k)+' แล้ว'));});
+      :Promise.resolve(document.execCommand('copy'))).then(()=>toast('คัดลอกลิงก์ '+roleName(b.dataset.k,d.type)+' แล้ว'));});
   const close=()=>ov.remove();
   m.querySelector('.close').onclick=close;m.querySelector('#dn').onclick=close;
   ov.onclick=e=>{if(e.target===ov)close();};
@@ -1048,22 +1336,28 @@ async function shareCredit(d){
 }
 /* หน้าจอผู้เซ็น (เปิดจากลิงก์) */
 function creditSignView(row,id,role){
-  const d=ensureCredit(Object.assign({},row.payload,{sigs:row.sigs||{}}));
+  const type=row.doc_type||'credit',roles=rolesOf(type);
+  const d=ensureByType(Object.assign({},row.payload,{type,sigs:row.sigs||{}}));
   const saveCo=DB.company,saveLogo=DB.logo;
   if(d.company)DB.company=d.company;if(d.logo)DB.logo=d.logo;
   const cust=DB.customers.find(c=>c.name===d.customer);
   const tmp=!cust&&d._cust?(DB.customers.push(Object.assign({id:'__tmp',name:d.customer,timeline:[],photos:[],files:[]},d._cust)),true):false;
-  const sheets=creditSheets(d);
+  const sheets=sheetsFor(d);
   if(tmp)DB.customers=DB.customers.filter(c=>c.id!=='__tmp');
   DB.company=saveCo;DB.logo=saveLogo;
 
   const ov=el('<div class="prevov"></div>');
   const done=!!(row.sigs&&row.sigs[role]);
+  const title=type==='sample'?'ใบขอตัวอย่าง':type==='requirement'?'ใบข้อกำหนดในการส่งสินค้า'
+    :type==='receipt'?'ใบกำกับภาษี/ใบส่งของ':'ใบขอเครดิต';
+  const subline=type==='credit'?`วงเงินขออนุมัติ ${d.approvedAmount?num(d.approvedAmount):'-'} บาท · เครดิต ${esc(d.creditDays||'-')} วัน`
+    :type==='receipt'?`ยอดรวม ${num(d.amount||0)} บาท`
+    :type==='sample'?esc(d.size||'-'):esc(d.workType||d.size||'-');
   ov.append(el(`<div style="max-width:210mm;margin:0 auto 18px;background:#fff;border-radius:14px;padding:18px 20px">
-    <div style="font-size:19px;font-weight:700">ใบขอเครดิต ${esc(d.no)}</div>
-    <div class="mut">${esc(d.customer)} · วงเงินขออนุมัติ ${d.approvedAmount?num(d.approvedAmount):'-'} บาท · เครดิต ${esc(d.creditDays||'-')} วัน</div>
-    <div style="margin-top:10px;font-size:15px">คุณกำลังเซ็นในฐานะ <b style="color:var(--blue-d)">${esc(roleName(role))}</b></div>
-    <div class="tiny" style="margin-top:6px">ลายเซ็นที่ครบแล้ว: ${CREDIT_ROLES.filter(r=>row.sigs&&row.sigs[r[0]]).map(r=>r[1]).join(' · ')||'ยังไม่มี'}</div></div>`));
+    <div style="font-size:19px;font-weight:700">${title} ${esc(d.no)}</div>
+    <div class="mut">${esc(d.customer)} · ${subline}</div>
+    <div style="margin-top:10px;font-size:15px">คุณกำลังเซ็นในฐานะ <b style="color:var(--blue-d)">${esc(roleName(role,type))}</b></div>
+    <div class="tiny" style="margin-top:6px">ลายเซ็นที่ครบแล้ว: ${roles.filter(r=>row.sigs&&row.sigs[r[0]]).map(r=>r[1]).join(' · ')||'ยังไม่มี'}</div></div>`));
   sheets.forEach(s=>ov.append(s));
 
   if(done){
@@ -1073,7 +1367,7 @@ function creditSignView(row,id,role){
     $('#layer').append(ov);return;
   }
   const box=el(`<div style="max-width:210mm;margin:18px auto 0;background:#fff;border-radius:14px;padding:20px">
-    <div class="h3">ลายเซ็น — ${esc(roleName(role))}</div>
+    <div class="h3">ลายเซ็น — ${esc(roleName(role,type))}</div>
     <div class="field" style="margin-bottom:14px"><label>ชื่อผู้เซ็น</label><input id="an" placeholder="ชื่อ-นามสกุล"></div></div>`);
   const pad=signaturePad();box.append(pad.el);
   const bar=el('<div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap"></div>');
@@ -1091,47 +1385,49 @@ function creditSignView(row,id,role){
     try{
       const res=await sbRpc('add_doc_signature',{p_id:id,p_role:role,
         p_name:box.querySelector('#an').value.trim(),p_sig:img,p_ok:ok,p_note:null,
-        p_roles_required:CREDIT_ROLES.map(r=>r[0])});
+        p_roles_required:roles.map(r=>r[0])});
       ov.remove();
       const st=res&&res.status;
       const ov2=el('<div class="ov"></div>');
       ov2.append(el(`<div class="modal" style="max-width:460px"><header><b>${
         st==='complete'?'เซ็นครบทุกท่านแล้ว ✓':st==='rejected'?'บันทึกผลไม่อนุมัติแล้ว':'บันทึกลายเซ็นเรียบร้อย ✓'}</b></header>
         <div class="mb" style="font-size:15px;color:#41546f">${
-          st==='complete'?'ใบขอเครดิตนี้ได้รับอนุมัติครบทั้ง 4 ลายเซ็นแล้ว':
+          st==='complete'?'เอกสารนี้ได้รับอนุมัติครบทั้ง '+roles.length+' ลายเซ็นแล้ว':
           st==='rejected'?'ระบบบันทึกว่าไม่อนุมัติ และแจ้งกลับฝ่ายขายแล้ว':
-          'ส่งกลับให้ฝ่ายขายเรียบร้อย รออีก '+(4-Object.keys(res.sigs||{}).length)+' ลายเซ็น'}
-          <div class="tiny" style="margin-top:8px">${esc(d.no)} · ${esc(roleName(role))}</div></div>
+          'ส่งกลับให้ฝ่ายขายเรียบร้อย รออีก '+(roles.length-Object.keys(res.sigs||{}).length)+' ลายเซ็น'}
+          <div class="tiny" style="margin-top:8px">${esc(d.no)} · ${esc(roleName(role,type))}</div></div>
         <footer><button class="btn" onclick="location.hash='';location.reload()">ปิด</button></footer></div>`));
       $('#layer').append(ov2);
-      applyCreditSigs(d.no,res.sigs,st,true);
+      applyCreditSigs(d.no,res.sigs,st,true,type);
     }catch(e){bOk.disabled=bNo.disabled=false;bOk.textContent='บันทึกลายเซ็น';toast(e.message);}
   };
   bOk.onclick=()=>finish(true);
   bNo.onclick=()=>askConfirm('ไม่อนุมัติ','บันทึกว่าไม่อนุมัติใบขอเครดิตนี้?','ยืนยัน',()=>finish(false));
 }
-function applyCreditSigs(no,sigs,status,silent){
-  const d=DB.docs.find(x=>x.no===no&&x.type==='credit');
+function applyCreditSigs(no,sigs,status,silent,type){
+  const d=(type==='receipt'?DB.receipts:DB.docs).find(x=>x.no===no&&(type==='receipt'||x.type===(type||'credit')));
   if(!d)return false;
-  ensureCredit(d);d.sigs=sigs||{};
-  if(status==='complete')d.status='อนุมัติแล้ว';
+  ensureByType(Object.assign(d,{type:d.type||type}));d.sigs=sigs||{};
+  const isRc=d.type==='receipt'||DB.receipts.includes(d);
+  if(status==='complete')d.status=isRc?d.status:'อนุมัติแล้ว';
   else if(status==='rejected')d.status='ยกเลิก';
-  else if(Object.keys(d.sigs).length)d.status='รออนุมัติ';
+  else if(Object.keys(d.sigs).length&&!isRc)d.status='รออนุมัติ';
   save();if(!silent)render();
   return true;
 }
 async function checkCredit(d,silent){
   if(!d.sigDocId||!sbOn())return null;
+  const n=rolesOf(d.type).length;
   try{
     const rows=await sbRpc('get_doc_signature',{p_id:d.sigDocId});
     const row=Array.isArray(rows)?rows[0]:rows;
     if(!row){if(!silent)toast('ไม่พบเอกสารนี้ในฐานข้อมูล');return null;}
     const before=Object.keys(d.sigs||{}).length;
-    applyCreditSigs(d.no,row.sigs,row.status,true);
+    applyCreditSigs(d.no,row.sigs,row.status,true,d.type);
     const after=Object.keys(d.sigs||{}).length;
     render();
-    if(!silent||after>before)toast(row.status==='complete'?'เซ็นครบ 4 ลายเซ็นแล้ว ✓'
-      :row.status==='rejected'?'มีผู้ไม่อนุมัติเอกสารนี้':after>before?'ได้รับลายเซ็นเพิ่ม ('+after+'/4)':'ยังรอลายเซ็นอยู่ ('+after+'/4)');
+    if(!silent||after>before)toast(row.status==='complete'?'เซ็นครบ '+n+' ลายเซ็นแล้ว ✓'
+      :row.status==='rejected'?'มีผู้ไม่อนุมัติเอกสารนี้':after>before?'ได้รับลายเซ็นเพิ่ม ('+after+'/'+n+')':'ยังรอลายเซ็นอยู่ ('+after+'/'+n+')');
     return row.status;
   }catch(e){if(!silent)toast(e.message);return null;}
 }
@@ -1172,7 +1468,7 @@ async function handleHash(){
   history.replaceState(null,'',baseUrl());
   if(ms){
     const [,id,role]=ms;
-    if(!CREDIT_ROLES.some(r=>r[0]===role)){toast('ลิงก์ไม่ถูกต้อง');return false;}
+    if(!Object.values(SIGN_ROLES).some(rs=>rs.some(r=>r[0]===role))){toast('ลิงก์ไม่ถูกต้อง');return false;}
     toast('กำลังโหลดเอกสาร…');
     try{
       const rows=await sbRpc('get_doc_signature',{p_id:id});
@@ -1393,7 +1689,7 @@ let S={page:'dashboard',
   custFilter:'ทั้งหมด',custQ:'',
   docType:'quotation',docQ:'',docFilter:'ทั้งหมด',docOpen:null,
   poQ:'',poFilter:'ทั้งหมด',poOpen:null,
-  rcQ:'',rcFilter:'ทั้งหมด',rcMonth:null,
+  rcQ:'',rcFilter:'ทั้งหมด',rcMonth:null,rcOpen:null,
   profSel:null,profTab:'info',profQ:'',
   dash:{period:'year',year:new Date().getFullYear(),chart:'line'}};
 function go(p,extra){closeDrawer();S.page=p;Object.assign(S,extra||{});
@@ -1464,7 +1760,8 @@ function render(){
   PAGES.forEach(p=>{
     const c=p.count();
     const b=el(`<button class="nv ${S.page===p.id?'on':''}">${svg(p.icon)}<span>${esc(p.label)}</span>${c!=null?`<span class="cnt">${c}</span>`:''}</button>`);
-    b.onclick=()=>go(p.id,p.id==='profiles'?{profSel:null}:p.id==='po'?{poOpen:null}:p.id==='documents'?{docOpen:null}:null);
+    b.onclick=()=>go(p.id,p.id==='profiles'?{profSel:null}:p.id==='po'?{poOpen:null}
+      :p.id==='documents'?{docOpen:null}:p.id==='receipts'?{rcOpen:null}:null);
     nav.append(b);
     /* หัวข้อย่อยของเอกสารการขาย */
     if(p.id==='documents'&&S.page==='documents'){
@@ -1763,13 +2060,25 @@ function docFields(type){
     {group:'บันทึกภายใน',sub:'ไม่พิมพ์บนเอกสาร'},
     {key:'note',label:'บันทึกช่วยจำ',type:'textarea',full:true,ph:'เช่น ลูกค้าขอส่วนลดเพิ่ม รอยืนยันจากผู้จัดการ'}];
   if(type==='credit')return creditFields();
+  if(type==='sample')return sampleFields();
+  if(type==='requirement')return requirementFields();
   return base.concat([
     {key:'amount',label:money?'ยอดรวม (บาท)':'มูลค่าอ้างอิง (บาท)',type:'number',def:0,hint:money?'':'ไม่บังคับ'},
     {key:'note',label:'รายละเอียด',type:'textarea',full:true,ph:'ระบุสิ่งที่ลูกค้าต้องการ / เงื่อนไข'}]);
 }
 /* ---------- ใบขอเครดิต: ฟอร์มตามแบบฟอร์มบริษัท ---------- */
-const CREDIT_ROLES=[['sales','ผู้ขาย'],['salesMgr','ผู้จัดการฝ่ายขาย'],
-  ['accMgr','ผู้จัดการฝ่ายบัญชีและการเงิน'],['md','กรรมการผู้จัดการ']];
+const SIGN_ROLES={
+  credit:[['sales','ผู้ขาย'],['salesMgr','ผู้จัดการฝ่ายขาย'],
+    ['accMgr','ผู้จัดการฝ่ายบัญชีและการเงิน'],['md','กรรมการผู้จัดการ']],
+  sample:[['sales','ผู้ร้องขอ (ฝ่ายขาย)'],['rd','ผู้รับเรื่อง (ฝ่ายวิจัยและพัฒนา)'],
+    ['preApprove','ผู้อนุมัติเบื้องต้น (ผู้ช่วยกรรมการผู้จัดการ)'],['md','ผู้อนุมัติ (กรรมการผู้จัดการ)']],
+  requirement:[['sales','เจ้าหน้าที่ฝ่ายขาย'],['blow','ฝ่ายผลิตส่วนงานเป่า'],['print','ฝ่ายผลิตส่วนงานพิมพ์'],
+    ['qc','ฝ่ายควบคุมคุณภาพ'],['store','ฝ่ายคลังสินค้า'],['plan','ฝ่ายวางแผน'],
+    ['logistics','ฝ่ายขนส่ง'],['asstMd','ผู้ช่วยกรรมการผู้จัดการ']],
+  receipt:[['sender','ผู้ส่งสินค้า'],['authorized','ผู้มีอำนาจลงนาม']]
+};
+const CREDIT_ROLES=SIGN_ROLES.credit;
+const rolesOf=t=>SIGN_ROLES[t]||SIGN_ROLES.credit;
 const CONTACT_ROLES=['กรรมการผู้จัดการ','ผู้จัดการฝ่ายจัดซื้อ','เจ้าหน้าที่จัดซื้อ','เจ้าหน้าที่บัญชีการเงิน','อื่น ๆ (โปรดระบุตำแหน่ง)'];
 const CREDIT_DOCS=['ทะเบียนภาษีมูลค่าเพิ่ม ภ.พ. 20 , ภ.พ.09','หนังสือรับรองบริษัท (ไม่เกิน 3 เดือน)',
   'แผนที่ (สำหรับส่งสินค้า, รับเช็ค-วางบิล)','สำเนาบัตรประชาชนผู้มีอำนาจลงนาม','ระเบียบวางบิล / รับเช็ค'];
@@ -1811,6 +2120,84 @@ function creditFields(){return [
   {key:'approvedAmount',label:'วงเงินอนุมัติ (บาท)',type:'number'},
   {key:'creditDays',label:'เครดิต (วัน)',type:'number',def:30},
   {key:'note',label:'บันทึกภายใน',type:'textarea',full:true}];}
+/* ---------- ใบขอตัวอย่าง (FQP-RD-01:03 REV.01) ---------- */
+const SAMPLE_KINDS=['สินค้าใหม่','แก้ไขผลิตภัณฑ์เดิม','ปรับปรุงกระบวนการผลิต','เปลี่ยนแปลงวัตถุดิบ',
+  'งานพิมพ์ใหม่','ปรับปรุงแบบพิมพ์','ขอตัวอย่าง','อื่นๆ'];
+const WIND_DIR=['ดึงท้าย ข้อความอ่านออกด้านใน','ดึงหัว ข้อความอ่านออกด้านใน',
+  'ดึงท้าย ข้อความอ่านออกด้านนอก','ดึงหัว ข้อความอ่านออกด้านนอก'];
+function sampleFields(){return [
+  {group:'ข้อมูลรายละเอียดงานเบื้องต้น',sub:'ข้อ 1'},
+  {key:'no',label:'เอกสารเลขที่',req:true,def:nextNo('SMP')},
+  {key:'rev',label:'Rev.',def:'01'},
+  {key:'date',label:'วัน/เดือน/ปี',type:'date',def:today()},
+  {key:'status',label:'สถานะ',type:'select',options:Object.keys(DOC_ST),def:'ร่าง'},
+  {key:'customer',label:'ชื่อลูกค้า',type:'select',options:DB.customers.map(c=>c.name),req:true,full:true},
+  {key:'size',label:'ขนาดผลิตภัณฑ์ที่ต้องการ',full:true},
+  {key:'workType',label:'งานที่ต้องการ',type:'radio',full:true,options:['ตัวอย่าง','ยอดสั่งซื้อตัวอย่าง']},
+  {key:'wPerRoll',label:'น้ำหนักต่อม้วน (กก.)',type:'number'},
+  {key:'rolls',label:'จำนวน (ม้วน)',type:'number'},
+  {key:'dueDate',label:'วันที่กำหนดส่ง',type:'date'},
+  {key:'totalKg',label:'รวม (กก.)',type:'number'},
+  {group:'ประเภทงานที่ต้องการ',sub:'ข้อ 2'},
+  {key:'kinds',label:'เลือกได้มากกว่า 1 ข้อ',type:'checks',full:true,options:SAMPLE_KINDS},
+  {key:'kindOther',label:'อื่นๆ (ระบุ)',full:true},
+  {group:'รายละเอียดผลิตภัณฑ์ตัวอย่าง — CLEAR FILM',sub:'ข้อ 3'},
+  {key:'cfCore',label:'แกน',type:'radio',options:['PVC','แกนกระดาษ']},
+  {key:'cfCoreThick',label:'ความหนาแกน (mm.)'},
+  {key:'cfWind',label:'การกรอ',type:'checks',full:true,options:['กรอต่อได้','ติดเทปแดง','ติดจำนวนรอยต่อ']},
+  {key:'cfJoins',label:'กรอต่อได้จำนวน (ต่อ)'},
+  {key:'cfSurface',label:'ผิวฟิล์ม',type:'radio',options:['ระเบิดผิว','ไม่ระเบิดผิว']},
+  {group:'รายละเอียดผลิตภัณฑ์ตัวอย่าง — PRINTED'},
+  {key:'prType',label:'ประเภทงานพิมพ์',type:'radio',options:['งานพิมพ์ล่าง','งานพิมพ์บน']},
+  {key:'prColors',label:'จำนวนสีที่พิมพ์ (สี)',type:'number'},
+  {key:'prCore',label:'แกน',type:'radio',options:['PVC','แกนกระดาษ']},
+  {key:'prCoreThick',label:'ความหนาแกน (mm.)'},
+  {key:'prWind',label:'การกรอ',type:'checks',full:true,options:['กรอต่อได้','ติดเทปแดง','ติดจำนวนรอยต่อ']},
+  {key:'prJoins',label:'กรอต่อได้จำนวน (ต่อ)'},
+  {key:'windDir',label:'ทิศทางการดึงม้วน',type:'radio',full:true,options:WIND_DIR},
+  {group:'ข้อมูลเชิงเทคนิค (ฝ่ายขาย)',sub:'ข้อ 4'},
+  {key:'shrinkTD',label:'4.1 ค่าหดที่ต้องการ ด้าน TD (%)'},
+  {key:'shrinkMD',label:'ด้าน MD (%)'},
+  {key:'packDesc',label:'4.2 ลักษณะการแพ็คและประเภทสินค้าที่ลูกค้าจะบรรจุ',full:true},
+  {key:'hasLabel',label:'ฉลาก',type:'radio',options:['มีฉลาก','ไม่มีฉลาก']},
+  {key:'machine',label:'4.3 เครื่องจักรที่ลูกค้าใช้ในการทำงาน',full:true},
+  {key:'special',label:'4.4 รายละเอียดความต้องการพิเศษเชิงเทคนิคและคุณภาพ',type:'textarea',full:true,
+    ph:'เช่น ลูกค้าต้องการฟิล์มขนาด 56 x 55 ที่มีเนื้อมากกว่าเดิม'},
+  {group:'ผลการพิจารณา (ฝ่ายวิจัยและพัฒนา)'},
+  {key:'canMake',label:'ผลการพิจารณา',type:'radio',full:true,options:['สามารถจัดทำผลิตภัณฑ์','ไม่สามารถจัดทำผลิตภัณฑ์ได้']},
+  {key:'suggestion',label:'ข้อเสนอแนะ',type:'textarea',full:true},
+  {key:'note',label:'บันทึกภายใน',type:'textarea',full:true}];}
+
+/* ---------- ใบข้อกำหนดลูกค้า (ข้อกำหนดในการส่งสินค้า) ---------- */
+function requirementFields(){return [
+  {group:'ข้อมูลเอกสาร'},
+  {key:'no',label:'เอกสารเลขที่',req:true,def:nextNo('REQ')},
+  {key:'rev',label:'REV.',def:'01'},
+  {key:'date',label:'วัน/เดือน/ปี',type:'date',def:today()},
+  {key:'status',label:'สถานะ',type:'select',options:Object.keys(DOC_ST),def:'ร่าง'},
+  {group:'ข้อมูลสินค้า'},
+  {key:'customer',label:'ชื่อลูกค้า',type:'select',options:DB.customers.map(c=>c.name),req:true},
+  {key:'matcode',label:'Matcode'},
+  {key:'size',label:'ขนาดผลิตภัณฑ์'},
+  {key:'grade',label:'เกรด',type:'radio',options:['A','B']},
+  {key:'workType',label:'ประเภทงาน',full:true},
+  {key:'weightPerRoll',label:'น้ำหนักต่อม้วน (KG)'},
+  {key:'core',label:'แกน',type:'radio',options:['PVC','แกนกระดาษ']},
+  {key:'coreThick',label:'ความหนาแกน (มิล)'},
+  {key:'lengthPerRoll',label:'ความยาวต่อม้วน (เมตร)'},
+  {key:'qty',label:'จำนวน (ใบ/มัด)'},
+  {group:'ข้อกำหนดการผลิตและบรรจุ'},
+  {key:'joins',label:'รอยต่อ (รอย)'},
+  {key:'joinMark',label:'การทำเครื่องหมายรอยต่อ',type:'checks',options:['ติดเทปแดง','ติดจำนวนรอยต่อ']},
+  {key:'coverSheet',label:'ใบปะหน้า',type:'radio',full:true,options:['ใบปะหน้าสั้น','ใบปะหน้ายาว','อื่นๆ']},
+  {key:'pallet',label:'พาเลท',type:'radio',options:['พาเลทไม้','LOSCAM','พาเลทพลาสติก']},
+  {key:'perPallet',label:'จำนวน (ม้วน/พาเลท)'},
+  {key:'detail',label:'รายละเอียดเพิ่มเติม',type:'textarea',full:true},
+  {key:'salesName',label:'ชื่อเจ้าหน้าที่ฝ่ายขาย',full:true,def:'นางสาววราลักษณ์ บุตะกุล'},
+  {key:'note',label:'บันทึกภายใน',type:'textarea',full:true}];}
+
+function ensureSample(d){if(!d.kinds)d.kinds=[];if(!d.cfWind)d.cfWind=[];if(!d.prWind)d.prWind=[];if(!d.sigs)d.sigs={};return d;}
+function ensureReq(d){if(!d.joinMark)d.joinMark=[];if(!d.sigs)d.sigs={};return d;}
 function ensureCredit(d){
   if(!d.contacts)d.contacts=CONTACT_ROLES.map(r=>({role:r,name:'',pos:''}));
   if(!d.products)d.products=[];
@@ -1822,13 +2209,11 @@ function ensureCredit(d){
 function nextNo(prefix){const yr=new Date().getFullYear()+543;
   const n=DB.docs.filter(d=>d.no.startsWith(prefix)).length+1;
   return `${prefix}-${yr}-${String(n).padStart(4,'0')}`;}
-function openDocSmart(d){
-  if(d.type==='quotation'||d.type==='credit')go('documents',{docType:d.type,docOpen:d.id});
-  else openDoc(d);
-}
+function openDocSmart(d){go('documents',{docType:d.type,docOpen:d.id});}
 function pgDocuments(v){
   if(S.docOpen){const d=DB.docs.find(x=>x.id===S.docOpen);
-    if(d)return d.type==='credit'?creditDetail(v,d):quoteDetail(v,d);
+    if(d)return d.type==='credit'?creditDetail(v,d)
+      :(d.type==='sample'||d.type==='requirement')?formDocDetail(v,d):quoteDetail(v,d);
     S.docOpen=null;}
   const t=DOC_TYPES.find(x=>x[0]===S.docType);
   header('เอกสารการขาย',[t[1]]);
@@ -1837,9 +2222,10 @@ function pgDocuments(v){
     const doc=Object.assign({id:uid(),type:S.docType},d);
     if(doc.type==='quotation'){ensureQuote(doc);doc.amount=qtTotal(doc);}
     if(doc.type==='credit'){ensureCredit(doc);doc.amount=doc.approvedAmount||0;}
+    if(doc.type==='sample'||doc.type==='requirement'){ensureByType(doc);doc.amount=doc.amount||0;}
     DB.docs.unshift(doc);save();render();toast('สร้างเอกสารแล้ว');openDocSmart(doc);},
     isQ?{wide:true,sub:'กรอกข้อมูลตามลำดับ 1 → 4 แล้วกดสร้าง',okLabel:'สร้างใบเสนอราคา'}
-    :isC?{wide:true,sub:'กรอกตามแบบฟอร์มขอเครดิต ข้อ 1 → 5',okLabel:'สร้างใบขอเครดิต'}:null));
+    :{wide:true,sub:'กรอกตามแบบฟอร์มบริษัท แล้วกดสร้าง',okLabel:'สร้าง'+t[1]}));
 
   v.append(hint('เลือกประเภทเอกสารได้จากหัวข้อย่อยใต้ "เอกสารการขาย" ในเมนูซ้าย · คลิกที่รายการเพื่อดูหรือแก้ไข'));
 
@@ -1870,6 +2256,90 @@ function pgDocuments(v){
   }));
 }
 /* ---- หน้ารายละเอียดใบขอเครดิต (พิมพ์ 2 หน้า + เซ็น 4 ลายเซ็น) ---- */
+/* การ์ดลายเซ็น ใช้ร่วมกันทุกเอกสาร */
+function signCard(d,onSigned){
+  const roles=rolesOf(d.type),n=Object.keys(d.sigs||{}).length;
+  const sg=el(`<div class="card pad"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px">
+    <div class="h3" style="margin:0">ลายเซ็นอนุมัติ</div>
+    <span class="pill" style="background:${n===roles.length?'#dcfce7':'#fef3c7'};color:${n===roles.length?'#15803d':'#b45309'}">${n}/${roles.length} ลายเซ็น</span></div></div>`);
+  roles.forEach(([k,label],i)=>{
+    const s=(d.sigs||{})[k],done=!!(s&&s.img);
+    const row=el(`<div style="display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--bd2)">
+      <div style="width:26px;height:26px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+        font-size:12px;font-weight:700;background:${done?'#dcfce7':'#eef2f8'};color:${done?'#15803d':'#94a3b8'}">${done?'✓':i+1}</div>
+      <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">${esc(label)}</div>
+      <div class="tiny">${done?esc(s.name||'')+' · '+fmtDate(s.date):'ยังไม่ได้เซ็น'}</div>
+      ${done?`<img src="${s.img}" style="max-height:40px;margin-top:7px;display:block">`:''}</div></div>`);
+    if(!done){
+      const b=el('<button class="btn gh sm">เซ็นที่เครื่องนี้</button>');
+      b.onclick=()=>signModal('เซ็น — '+label,d.no,'',s2=>{
+        d.sigs=d.sigs||{};d.sigs[k]=s2;
+        if(onSigned)onSigned();
+        save();render();toast('บันทึกลายเซ็น '+label+' แล้ว');});
+      row.append(b);}
+    sg.append(row);});
+  const send=el(`<button class="btn blk" style="margin-top:14px">${svg('doc','ic s')}ส่งลิงก์ให้เซ็น ${roles.length} ท่าน</button>`);
+  send.onclick=()=>shareCredit(d);
+  sg.append(send);
+  if(d.sigDocId){
+    const rf=el('<button class="btn gh blk" style="margin-top:9px">ตรวจสอบลายเซ็นล่าสุด</button>');
+    rf.onclick=()=>checkCredit(d);sg.append(rf);
+    if(n<roles.length&&sbReady!==false){clearInterval(pollTimer);
+      pollTimer=setInterval(()=>{if(!document.body.contains(sg)){clearInterval(pollTimer);return;}checkCredit(d,true);},15000);}
+  }
+  sg.append(el(`<div class="tiny" style="margin-top:10px">${sbReady===true?'🟢 พร้อมส่งลิงก์ให้เซ็นข้ามเครื่อง'
+    :sbReady===false?'🟠 '+esc(sbError):'⏳ กำลังตรวจสอบการเชื่อมต่อ…'}</div>`));
+  return sg;
+}
+/* หน้ารายละเอียดกลาง สำหรับใบขอตัวอย่าง / ใบข้อกำหนดลูกค้า */
+function formDocDetail(v,d){
+  ensureByType(d);
+  const isSample=d.type==='sample';
+  header(d.no,['เอกสารการขาย',isSample?'ใบขอตัวอย่าง':'ใบข้อกำหนดของลูกค้า']);
+  backBtn('กลับ',()=>go('documents',{docOpen:null}));
+  actionBtn('แก้ไขข้อมูล','edit',()=>openForm('แก้ไข '+d.no,isSample?sampleFields():requirementFields(),d,o=>{
+    Object.assign(d,o);save();render();toast('บันทึกแล้ว');},{wide:true,okLabel:'บันทึกการแก้ไข'}),'btn gh');
+  actionBtn('ดูตัวอย่าง / พิมพ์','print',()=>printDocSheet(d));
+
+  const wrap=el('<div class="split"></div>');
+  const left=el('<div style="display:flex;flex-direction:column;gap:16px;min-width:0"></div>');
+  const fl=(s,b)=>`<div class="fl"><span>${esc(s)}</span><b>${esc(b||'-')}</b></div>`;
+  left.append(el(`<div class="card pad">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px">
+      <div class="h3" style="margin:0">ข้อมูลเอกสาร</div>${pill(d.status,DOC_ST)}</div>
+    <div class="grid g3">
+      ${fl('ลูกค้า',d.customer)}${fl('เอกสารเลขที่',d.no)}${fl('Rev.',d.rev)}
+      ${fl('วันที่',fmtDate(d.date))}
+      ${isSample?fl('ขนาดผลิตภัณฑ์',d.size)+fl('งานที่ต้องการ',d.workType)
+        +fl('น้ำหนัก/ม้วน',d.wPerRoll?d.wPerRoll+' กก.':'')+fl('จำนวน',d.rolls?d.rolls+' ม้วน':'')
+        +fl('กำหนดส่ง',fmtDate(d.dueDate))+fl('ประเภทงาน',(d.kinds||[]).join(', '))
+        +fl('ผลพิจารณา R&D',d.canMake)
+        :fl('Matcode',d.matcode)+fl('ขนาดผลิตภัณฑ์',d.size)+fl('เกรด',d.grade)
+        +fl('ประเภทงาน',d.workType)+fl('น้ำหนัก/ม้วน',d.weightPerRoll?d.weightPerRoll+' KG':'')
+        +fl('แกน',d.core)+fl('ความยาว/ม้วน',d.lengthPerRoll?d.lengthPerRoll+' เมตร':'')
+        +fl('จำนวน',d.qty)+fl('พาเลท',d.pallet)}
+    </div></div>`));
+  if(isSample&&d.special)left.append(el(`<div class="card pad"><div class="h3">ความต้องการพิเศษ</div>
+    <div style="white-space:pre-line;font-size:14px">${esc(d.special)}</div></div>`));
+  if(!isSample&&d.detail)left.append(el(`<div class="card pad"><div class="h3">รายละเอียดเพิ่มเติม</div>
+    <div style="white-space:pre-line;font-size:14px">${esc(d.detail)}</div></div>`));
+  wrap.append(left);
+
+  const right=el('<div style="display:flex;flex-direction:column;gap:16px;align-self:start"></div>');
+  right.append(signCard(d,()=>{if(Object.keys(d.sigs).length===rolesOf(d.type).length)d.status='อนุมัติแล้ว';else d.status='รออนุมัติ';}));
+  const pv=el('<div class="card pad"><div class="h3">พิมพ์เอกสาร</div></div>');
+  pv.append(el('<div class="tiny" style="margin-bottom:12px">พิมพ์ตามแบบฟอร์มบริษัท A4 พร้อมลายเซ็นที่เซ็นแล้ว</div>'));
+  const b1=el(`<button class="btn blk">${svg('print','ic s')}ดูตัวอย่างก่อนพิมพ์</button>`);
+  b1.onclick=()=>printDocSheet(d);pv.append(b1);
+  right.append(pv);
+  const del=el(`<button class="btn dg blk">${svg('trash','ic s')}ลบเอกสารนี้</button>`);
+  del.onclick=()=>askConfirm('ลบเอกสาร','ลบ '+d.no+' ออกจากระบบ?','ลบ',()=>{
+    const i=DB.docs.indexOf(d);DB.docs.splice(i,1);save();go('documents',{docOpen:null});
+    toast('ลบเอกสารแล้ว',()=>{DB.docs.splice(i,0,d);save();render();});});
+  right.append(del);
+  wrap.append(right);v.append(wrap);
+}
+
 function creditDetail(v,d){
   ensureCredit(d);
   header(d.no,['เอกสารการขาย','ใบขอเครดิต']);
@@ -2243,20 +2713,38 @@ function poDetail(v,p){
 
 /* ---------- 5. RECEIPTS ---------- */
 function rcFields(){return [
+  {group:'ข้อมูลเอกสาร'},
   {key:'no',label:'เลขที่ใบเสร็จ',req:true},
   {key:'invNo',label:'เลขที่ใบกำกับภาษี'},
   {key:'customer',label:'ลูกค้า',type:'select',options:DB.customers.map(c=>c.name),req:true},
   {key:'date',label:'วันที่',type:'date',def:today()},
-  {key:'amount',label:'ยอดรวม (บาท)',type:'number',def:0,req:true,hint:'รวมภาษีแล้ว'},
+  {key:'creditDays',label:'เครดิต (วัน)'},
+  {key:'dueDate',label:'ครบกำหนด',type:'date'},
+  {key:'soNo',label:'เลขที่ใบสั่งขาย'},
+  {key:'salesman',label:'พนักงานขาย'},
+  {key:'poRef',label:'อ้างอิง PO / ใบเสนอราคา',full:true,hint:'ใส่เลขที่ PO หรือเลขที่ใบเสนอราคาก็ได้ — ใช้กันไม่ให้ยอดถูกนับซ้ำ'},
+  {group:'การจัดส่ง'},
+  {key:'shipTo',label:'สถานที่ส่ง',full:true},
+  {key:'phone',label:'โทรศัพท์'},
+  {group:'รายการสินค้า',sub:'จำนวนเงิน ภาษี และตัวอักษรคำนวณให้อัตโนมัติ'},
+  {key:'items',type:'items'},
+  {group:'การชำระเงิน'},
   {key:'status',label:'สถานะการชำระ',type:'select',options:Object.keys(RC_ST),def:'รอชำระ'},
   {key:'method',label:'ชำระโดย',type:'select',options:['เงินโอน','เงินสด','เช็ค','บัตรเครดิต']},
-  {key:'poRef',label:'อ้างอิง PO / ใบเสนอราคา',hint:'ใส่เลขที่ PO หรือเลขที่ใบเสนอราคาก็ได้ — ใช้กันไม่ให้ยอดถูกนับซ้ำ'},
+  {key:'amount',label:'ยอดรวมทั้งสิ้น (บาท)',type:'number',def:0,
+    hint:'ถ้ากรอกรายการสินค้าแล้ว ระบบจะคำนวณให้อัตโนมัติ'},
   {key:'note',label:'หมายเหตุ',type:'textarea',full:true}];}
+const rcTotal=r=>(r.items&&r.items.length)
+  ? r.items.reduce((a,i)=>a+(+i.qty||0)*(+i.price||0),0)*1.07 : (+r.amount||0);
 function pgReceipts(v){
+  if(S.rcOpen){const r=DB.receipts.find(x=>x.id===S.rcOpen);if(r)return receiptDetail(v,r);S.rcOpen=null;}
   header('ใบเสร็จรับเงิน',['การเงิน']);
   actionBtn('ออกใบเสร็จ','plus',()=>openForm('ออกใบเสร็จรับเงิน',rcFields(),
     {no:'RC-'+(new Date().getFullYear()+543)+'-'+String(DB.receipts.length+67).padStart(4,'0')},d=>{
-      const r=Object.assign({id:uid()},d);DB.receipts.unshift(r);save();render();toast('ออกใบเสร็จแล้ว');openRc(r);}));
+      const r=Object.assign({id:uid(),type:'receipt',sigs:{}},d);
+      if(r.items&&r.items.length)r.amount=Math.round(rcTotal(r)*100)/100;
+      DB.receipts.unshift(r);save();go('receipts',{rcOpen:r.id});toast('ออกใบเสร็จแล้ว');},
+    {wide:true,okLabel:'ออกใบเสร็จ'}));
 
   const st=k=>DB.receipts.filter(r=>r.status===k);
   const cards=el('<div class="grid g4"></div>');
@@ -2295,9 +2783,70 @@ function pgReceipts(v){
     meta:r=>esc(r.customer)+' · '+fmtDate(r.date)+(r.invNo?' · '+esc(r.invNo):''),
     amount:r=>num0(r.amount)+' ฿',
     status:r=>pill(r.status,RC_ST),
-    onOpen:openRc,
+    onOpen:r=>go('receipts',{rcOpen:r.id}),
     empty:emptyState('ไม่พบใบเสร็จ','ลองล้างตัวกรอง หรือออกใบเสร็จใหม่','ออกใบเสร็จ',()=>$('#topActions .btn').click())
   }));
+}
+function receiptDetail(v,r){
+  r.type='receipt';r.sigs=r.sigs||{};r.items=r.items||[];
+  header(r.no,['ใบเสร็จรับเงิน',r.customer]);
+  backBtn('กลับ',()=>go('receipts',{rcOpen:null}));
+  actionBtn('แก้ไขข้อมูล','edit',()=>openForm('แก้ไข '+r.no,rcFields(),r,o=>{
+    Object.assign(r,o);if(r.items&&r.items.length)r.amount=Math.round(rcTotal(r)*100)/100;
+    save();render();toast('บันทึกแล้ว');},{wide:true,okLabel:'บันทึกการแก้ไข'}),'btn gh');
+  actionBtn('ดูตัวอย่าง / พิมพ์','print',()=>printDocSheet(r));
+
+  const sub=rcTotal(r)/1.07,vat=rcTotal(r)-sub;
+  const wrap=el('<div class="split"></div>');
+  const left=el('<div style="display:flex;flex-direction:column;gap:16px;min-width:0"></div>');
+  left.append(el(`<div class="card pad">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px">
+      <div class="h3" style="margin:0">ข้อมูลใบเสร็จ</div>${pill(r.status,RC_ST)}</div>
+    <div class="grid g3">
+      <div class="fl"><span>ลูกค้า</span><b>${esc(r.customer)}</b></div>
+      <div class="fl"><span>เลขที่ใบกำกับภาษี</span><b>${esc(r.invNo||'-')}</b></div>
+      <div class="fl"><span>วันที่</span><b>${fmtDate(r.date)}</b></div>
+      <div class="fl"><span>เครดิต</span><b>${esc(r.creditDays||'-')} วัน</b></div>
+      <div class="fl"><span>ครบกำหนด</span><b>${fmtDate(r.dueDate)}</b></div>
+      <div class="fl"><span>เลขที่ใบสั่งขาย</span><b>${esc(r.soNo||'-')}</b></div>
+      <div class="fl"><span>พนักงานขาย</span><b>${esc(r.salesman||'-')}</b></div>
+      <div class="fl"><span>อ้างอิง PO</span><b>${esc(r.poRef||'-')}</b></div>
+      <div class="fl"><span>ชำระโดย</span><b>${esc(r.method||'-')}</b></div>
+      <div class="fl" style="grid-column:1/-1"><span>สถานที่ส่ง</span><b style="font-weight:500">${esc(r.shipTo||'-')}</b></div>
+    </div></div>`));
+  const it=el('<div class="card"></div>');
+  it.append(el('<div class="pad" style="padding-bottom:8px"><div class="h3" style="margin:0">รายการสินค้า</div></div>'));
+  if(!r.items.length)it.append(emptyState('ยังไม่มีรายการสินค้า','กด "แก้ไขข้อมูล" เพื่อเพิ่มรายการสินค้าในใบเสร็จ'));
+  else{
+    const list=el('<div class="list"></div>');
+    r.items.forEach((x,i)=>list.append(el(`<div class="lrow" style="cursor:default">
+      <div class="lav">${i+1}</div>
+      <div class="lmain"><div class="lt">${esc(String(x.name||'').split('\n')[0]||x.code||'-')}</div>
+      <div class="lm">${x.code?esc(x.code)+' · ':''}${num0(x.qty)} ${esc(x.unit||'')} × ${num(x.price)} ฿</div></div>
+      <div class="lright"><div class="lamt">${num((+x.qty||0)*(+x.price||0))} ฿</div></div></div>`)));
+    it.append(list);
+  }
+  it.append(el(`<div class="pad" style="border-top:1px solid var(--bd2);display:flex;flex-direction:column;gap:9px;align-items:flex-end">
+    <div style="display:flex;gap:40px;font-size:14px"><span class="mut">ราคาสินค้า</span><b style="width:150px;text-align:right">${num(sub)}</b></div>
+    <div style="display:flex;gap:40px;font-size:14px"><span class="mut">ภาษีมูลค่าเพิ่ม 7%</span><b style="width:150px;text-align:right">${num(vat)}</b></div>
+    <div style="display:flex;gap:40px;font-size:17px;padding-top:8px;border-top:1px solid var(--bd2)"><span style="font-weight:600">รวมทั้งสิ้น</span><b style="width:150px;text-align:right;color:var(--blue-d)">${num(rcTotal(r))} ฿</b></div>
+    <div class="tiny">ตัวอักษร: ${esc(bahtText(rcTotal(r)))}</div></div>`));
+  left.append(it);
+  wrap.append(left);
+
+  const right=el('<div style="display:flex;flex-direction:column;gap:16px;align-self:start"></div>');
+  right.append(signCard(r));
+  const pv=el('<div class="card pad"><div class="h3">พิมพ์เอกสาร</div></div>');
+  pv.append(el('<div class="tiny" style="margin-bottom:12px">พิมพ์ตามแบบฟอร์มใบกำกับภาษี/ใบส่งของ/ใบแจ้งหนี้ A4</div>'));
+  const b1=el(`<button class="btn blk">${svg('print','ic s')}ดูตัวอย่างก่อนพิมพ์</button>`);
+  b1.onclick=()=>printDocSheet(r);pv.append(b1);
+  right.append(pv);
+  const del=el(`<button class="btn dg blk">${svg('trash','ic s')}ลบใบเสร็จนี้</button>`);
+  del.onclick=()=>askConfirm('ลบใบเสร็จ','ลบ '+r.no+'?','ลบ',()=>{
+    const i=DB.receipts.indexOf(r);DB.receipts.splice(i,1);save();go('receipts',{rcOpen:null});
+    toast('ลบใบเสร็จแล้ว',()=>{DB.receipts.splice(i,0,r);save();render();});});
+  right.append(del);
+  wrap.append(right);v.append(wrap);
 }
 function openRc(r){
   const sub=r.amount/1.07;
