@@ -406,6 +406,8 @@ a{color:var(--blue);text-decoration:none}
   .prevbar,.sheet .ph{display:none!important}
   .prevov{position:static!important;inset:auto!important;padding:0!important;margin:0!important;
     background:#fff!important;overflow:visible!important;display:block!important}
+  /* ถ้ามีหน้าพรีวิวค้างอยู่หลายชั้น ให้พิมพ์เฉพาะชั้นบนสุด */
+  .prevov:not(:last-of-type){display:none!important}
   /* บังคับ 1 แผ่น = 1 หน้ากระดาษพอดี กันหน้าว่างเกินตอนบันทึกเป็น PDF
      ใช้ 296.6mm แทน 297mm เพราะบางเบราว์เซอร์ปัดเศษขึ้นแล้วดันไปหน้าใหม่ */
   .sheet{box-shadow:none!important;margin:0!important;height:296.6mm!important;min-height:0!important;
@@ -1080,6 +1082,37 @@ function sheetsFor(d){
 }
 /* โหลดฟอนต์เอกสารเมื่อเปิดหน้าพิมพ์ครั้งแรก (ไม่ถ่วงตอนเปิดแอป) */
 let printFontsLoaded=false;
+/* ---------- ย่อแผ่นเอกสารให้พอดี 1 หน้ากระดาษตอนสั่งพิมพ์ ----------
+   ถ้าเนื้อหายาวเกิน A4 เล็กน้อย จะย่อลงพอดีแทนที่จะตัดทิ้งหรือขึ้นหน้าใหม่ */
+const PAGE_MM=296.6, PX_PER_MM=96/25.4;
+function fitSheetsToPage(){
+  const max=PAGE_MM*PX_PER_MM;
+  document.querySelectorAll('.prevov .sheet').forEach(s=>{
+    s.style.zoom='';
+    /* วัดความสูงจริงของเนื้อหา โดยปลดล็อกความสูงชั่วคราว
+       (ตอนพิมพ์แผ่นถูกตรึงไว้ที่ 1 หน้า ถ้าไม่ปลดจะวัดได้เท่าเดิมเสมอ) */
+    const keep=s.getAttribute('style')||'';
+    s.style.setProperty('height','auto','important');
+    s.style.setProperty('min-height','0','important');
+    s.style.setProperty('max-height','none','important');
+    s.style.setProperty('overflow','visible','important');
+    const need=s.scrollHeight;
+    s.setAttribute('style',keep);
+    if(need>max+2){
+      const k=Math.max(.55,(max-2)/need);
+      s.style.zoom=k;
+      /* ขยายกรอบกลับตามอัตราย่อ กระดาษจะยังเต็มหน้าเหมือนเดิม */
+      s.style.setProperty('height',(PAGE_MM/k)+'mm','important');
+      s.style.setProperty('max-height',(PAGE_MM/k)+'mm','important');
+    }
+  });
+}
+function unfitSheets(){document.querySelectorAll('.prevov .sheet').forEach(s=>{
+  s.style.zoom='';s.style.removeProperty('height');s.style.removeProperty('max-height');});}
+window.addEventListener('beforeprint',fitSheetsToPage);
+window.addEventListener('afterprint',unfitSheets);
+/* เผื่อเบราว์เซอร์ที่ไม่รองรับ beforeprint (Safari รุ่นเก่า) ให้ย่อก่อนเรียกพิมพ์เลย */
+function doPrint(){fitSheetsToPage();setTimeout(()=>{window.print();setTimeout(unfitSheets,400);},60);}
 function loadPrintFonts(){
   if(printFontsLoaded)return;printFontsLoaded=true;
   const l=document.createElement('link');l.rel='stylesheet';
@@ -1091,7 +1124,7 @@ function printDocSheet(d){
   const ov=el('<div class="prevov"></div>');
   const bar=el('<div class="prevbar"></div>');
   const mk=(t,c,fn)=>{const b=el(`<button class="btn ${c}">${esc(t)}</button>`);b.onclick=fn;bar.append(b);};
-  mk('🖨  พิมพ์ / บันทึกเป็น PDF','',()=>window.print());
+  mk('🖨  พิมพ์ / บันทึกเป็น PDF','',()=>doPrint());
   mk('แก้ไขหัวกระดาษ','gh',companyForm);
   mk('ปิด','gh',()=>ov.remove());
   ov.append(bar);
@@ -3940,7 +3973,7 @@ function openDoc(d){
     blocks,
     actions:[
       [svg('edit','ic s')+'แก้ไข','gh',()=>openForm('แก้ไข '+d.no,docFields(d.type),d,o=>{Object.assign(d,o);save();render();toast('บันทึกแล้ว');openDoc(d);})],
-      [svg('print','ic s')+'พิมพ์','gh',()=>window.print()],
+      [svg('print','ic s')+'พิมพ์','gh',()=>doPrint()],
       [svg('trash','ic s'),'dg',()=>askConfirm('ลบเอกสาร','ลบ '+d.no+'?','ลบ',()=>{
         const i=DB.docs.indexOf(d);DB.docs.splice(i,1);save();closeDrawer();render();
         toast('ลบเอกสารแล้ว',()=>{DB.docs.splice(i,0,d);save();render();});})]]});
@@ -4006,7 +4039,7 @@ function poDetail(v,p){
   actionBtn('แก้ไขข้อมูล','edit',()=>openForm('แก้ไข '+p.no,poFields(),p,d=>{Object.assign(p,d);save();render();toast('บันทึกแล้ว');}),'btn gh');
   actionBtn('แนบรูป PO','up',()=>pickFiles('image/*,.pdf,.doc,.docx,.xls,.xlsx',true,
     fs=>addUploads(fs,p.images,p.files)),'btn gh');
-  actionBtn('พิมพ์','print',()=>window.print(),'btn gh');
+  actionBtn('พิมพ์','print',()=>doPrint(),'btn gh');
   if(!poHasReceipt(p))actionBtn('ออกใบเสร็จ','receipt',()=>issueReceipt({customer:p.customer,amount:Math.round(poGross(p)*100)/100,poRef:p.no}));
 
   const wrap=el('<div class="split"></div>');
@@ -4219,7 +4252,7 @@ function openRc(r){
       ['ชำระโดย',esc(r.method||'-')],r.note?['หมายเหตุ',esc(r.note)]:null])],
     actions:[
       [svg('edit','ic s')+'แก้ไข','gh',()=>openForm('แก้ไข '+r.no,rcFields(),r,o=>{Object.assign(r,o);save();render();toast('บันทึกแล้ว');openRc(r);})],
-      [svg('print','ic s')+'พิมพ์','gh',()=>window.print()],
+      [svg('print','ic s')+'พิมพ์','gh',()=>doPrint()],
       [svg('trash','ic s'),'dg',()=>askConfirm('ลบใบเสร็จ','ลบ '+r.no+'?','ลบ',()=>{
         const i=DB.receipts.indexOf(r);DB.receipts.splice(i,1);save();closeDrawer();render();
         toast('ลบใบเสร็จแล้ว',()=>{DB.receipts.splice(i,0,r);save();render();});})]]});
