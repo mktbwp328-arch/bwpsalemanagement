@@ -718,7 +718,7 @@ function quoteSheet(d){
   const noteLines=String(d.notes||'').split('\n').filter(x=>x.trim());
   const lg=logoSrc();
   const logo=lg?`<img src="${imgSrc(lg)}">`:'<div class="ph">คลิกโลโก้ในเมนูซ้ายเพื่ออัปโหลด</div>';
-  const cert=DB.cert?`<img src="${imgSrc(DB.cert)}">`:'<div class="ph certph">+ ตรารับรอง</div>';
+  const cert=certSrc()?`<img src="${imgSrc(certSrc())}">`:'';
   return el(`<div class="sheet">
     <div class="sh-top">
       <div class="sh-logo">${logo}</div>
@@ -1082,13 +1082,9 @@ function printDocSheet(d){
   const mk=(t,c,fn)=>{const b=el(`<button class="btn ${c}">${esc(t)}</button>`);b.onclick=fn;bar.append(b);};
   mk('🖨  พิมพ์ / บันทึกเป็น PDF','',()=>window.print());
   mk('แก้ไขหัวกระดาษ','gh',companyForm);
-  mk(DB.cert?'ตรารับรอง (เปลี่ยน/ลบ)':'อัปโหลดตรารับรอง','gh',()=>{ov.remove();certMenu();});
   mk('ปิด','gh',()=>ov.remove());
   ov.append(bar);
-  sheetsFor(d).forEach(s=>{
-    const ph=s.querySelector('.certph');
-    if(ph)ph.onclick=()=>{ov.remove();certMenu();};
-    ov.append(s);});
+  sheetsFor(d).forEach(s=>ov.append(s));
   $('#layer').append(ov);
 }
 const printCredit=printDocSheet,printQuote=printDocSheet;
@@ -1112,7 +1108,6 @@ function imageMenu(key,label){
     toast('ลบ'+label+'แล้ว',()=>{DB[key]=old;save();render();});};
   ov.append(m);$('#layer').append(ov);
 }
-const certMenu=()=>imageMenu('cert','ตรารับรอง');
 
 /* โลโก้: ใช้ไฟล์ logo.png ที่วางไว้ข้างแอปเสมอ ไม่ต้องอัปโหลด
    (ที่เคยอัปโหลดไว้เดิมยังใช้เป็นตัวสำรอง เผื่อเปิดจากที่ที่ไม่มีไฟล์นี้) */
@@ -1121,6 +1116,13 @@ const logoSrc=()=>assetLogo||(DB&&DB.logo)||null;
 (function probeLogo(){const i=new Image();
   i.onload=()=>{assetLogo='logo.png';if(typeof DB!=='undefined'&&DB)render();};
   i.src='logo.png';})();
+
+/* ตรารับรอง ISO: ใช้ไฟล์ cert.png ที่วางไว้ข้างแอปเสมอ ไม่ต้องอัปโหลด */
+let assetCert=null;
+const certSrc=()=>assetCert||(DB&&DB.cert)||null;
+(function probeCert(){const i=new Image();
+  i.onload=()=>{assetCert='cert.png';if(typeof DB!=='undefined'&&DB)render();};
+  i.src='cert.png';})();
 
 /* ================= เชื่อมต่อ Supabase (ส่งลิงก์เซ็นข้ามเครื่อง) ================= */
 const SB_DEFAULT={url:'https://vltsxzlbflayxnvtnhlv.supabase.co',key:'sb_publishable_3E_qdus9zBSonnfIDk3Nmw_szNB_Kb4'};
