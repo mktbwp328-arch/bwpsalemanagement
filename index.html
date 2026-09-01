@@ -1909,7 +1909,11 @@ async function productsPull(){
     }
     /* ถ้าคลังกลางยังว่างแต่ในเครื่องมีรหัสอยู่ (นำเข้าไว้ก่อนเปลี่ยนมาใช้คลังกลาง)
        เก็บของเดิมไว้ก่อน แล้วให้กดปุ่มส่งขึ้นคลังกลางเอง */
-    const local=allProducts();
+    let local=allProducts();
+    /* ถ้าคลังกลางว่างและในหน่วยความจำก็ไม่มี ลองกู้จากสำเนาในเครื่องที่นำเข้าไว้ก่อนหน้านี้ */
+    if(!out.length&&!local.length){
+      try{const l=load();if(l&&l.products&&l.products.length){local=l.products;DB.products=local;}}catch(e){}
+    }
     PRODSYNC.pending=(!out.length&&local.length)?local.length:0;
     if(!PRODSYNC.pending)DB.products=out.map(rowToProd);
     PRODSYNC.at=new Date().toISOString();
