@@ -288,11 +288,12 @@ a{color:var(--blue);text-decoration:none}
 .sheet table.items th:nth-child(3){width:22mm}
 .sheet table.items th:nth-child(4){width:20mm}
 .sheet table.items th:nth-child(5){width:24mm}
-.sheet table.items tr.fill td{border-top:0;border-bottom:0;height:auto}
-.sheet table.items tr.sum td{height:auto;padding:4px 8px;font-size:12px;vertical-align:middle;
+/* แถวเปล่าดูดพื้นที่ว่างทั้งหมด แถวสรุปด้านล่างจึงเตี้ยเท่าที่จำเป็น */
+.sheet table.items tr.fill td{border-top:0;border-bottom:0;height:100%}
+.sheet table.items tr.sum td{height:7mm;padding:2px 8px;font-size:12px;vertical-align:middle;
   border-top:1px solid #000;border-bottom:1px solid #000}
 .sheet table.items tr.sum .nt{text-align:left}
-.sheet table.items tr.sum .lb{text-align:right;font-weight:600}
+.sheet table.items tr.sum .lb{text-align:right;font-weight:600;white-space:nowrap}
 .sheet table.items tr.sum .am{text-align:right}
 .sheet table.items tr.tot .lb,.sheet table.items tr.tot .am{font-weight:700}
 .sheet table.items tr.last td{height:auto}
@@ -747,12 +748,12 @@ function quoteSheet(d){
     <div class="itemswrap"><table class="items">
       <thead><tr><th>No.</th><th>รหัสสินค้า/รายละเอียด</th><th>จำนวน</th><th>ราคา/หน่วย</th><th>จำนวนเงิน</th></tr></thead>
       <tbody>${rowsHtml}<tr class="fill"><td class="no"></td><td></td><td></td><td></td><td></td></tr>
-        <tr class="sum"><td colspan="3" class="nt"><b>หมายเหตุฯ</b> ราคาอาจมีการเปลี่ยนแปลงตามสภาวการณ์</td>
-          <td class="lb">มูลค่า</td><td class="am">${num(sub)}</td></tr>
-        <tr class="sum"><td colspan="3" class="nt"><b>กำหนดยืนราคา</b> ${esc(d.validDays)} วัน นับจากวันที่เสนอราคา</td>
-          <td class="lb">ภาษีมูลค่าเพิ่ม 7%</td><td class="am">${num(vat)}</td></tr>
-        <tr class="sum tot"><td colspan="3" class="nt"></td>
-          <td class="lb">รวมมูลค่าทั้งสิ้น</td><td class="am">${num(sub+vat)}</td></tr>
+        <tr class="sum"><td colspan="2" class="nt"><b>หมายเหตุฯ</b> ราคาอาจมีการเปลี่ยนแปลงตามสภาวการณ์</td>
+          <td colspan="2" class="lb">มูลค่า</td><td class="am">${num(sub)}</td></tr>
+        <tr class="sum"><td colspan="2" class="nt"><b>กำหนดยืนราคา</b> ${esc(d.validDays)} วัน นับจากวันที่เสนอราคา</td>
+          <td colspan="2" class="lb">ภาษีมูลค่าเพิ่ม 7%</td><td class="am">${num(vat)}</td></tr>
+        <tr class="sum tot"><td colspan="2" class="nt"></td>
+          <td colspan="2" class="lb">รวมมูลค่าทั้งสิ้น</td><td class="am">${num(sub+vat)}</td></tr>
       </tbody>
     </table></div>
     <div class="notes"><div class="lbl">หมายเหตุ</div>
