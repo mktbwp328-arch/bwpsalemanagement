@@ -1891,7 +1891,21 @@ const rowToProd=r=>({id:r.id,code:r.code||'',code2:r.code2||'',name:r.name||'',w
 const prodToRow=p=>({code:String(p.code||'').trim(),code2:p.code2||'',name:p.name||'',width:String(p.width||''),
   dim_unit:p.dimUnit||'',thick:String(p.thick||''),mat:p.mat||'',core_kg:String(p.coreKg||''),
   customer:p.customer||'',note:p.note||''});
-const PRODSYNC={at:null,err:null,busy:false,pending:0};
+const PRODSYNC={at:null,err:null,busy:false,pending:0,src:''};
+/* รายชื่อสินค้าที่มากับตัวเว็บ — แปลงมาจากไฟล์ Excel ของบริษัทไว้แล้ว
+   ใช้เป็นค่าตั้งต้นเมื่อคลังกลางยังว่าง จะได้เลือกรหัสได้ทันทีโดยไม่ต้องกรอกอะไร */
+let prodFileCache=null;
+async function productsFile(){
+  if(prodFileCache)return prodFileCache;
+  try{
+    const r=await fetch('products.json',{cache:'no-cache'});
+    if(!r.ok)throw 0;
+    const j=await r.json();
+    prodFileCache=Array.isArray(j)?j.map(p=>Object.assign({code:'',code2:'',name:'',width:'',
+      dimUnit:'',thick:'',mat:'',coreKg:'',customer:'',note:''},p)):[];
+  }catch(e){prodFileCache=[];}
+  return prodFileCache;
+}
 const prodTableMissing=e=>/relation .*products|does not exist|schema cache/i.test(String(e&&e.message||e));
 
 async function productsPull(){
@@ -1909,13 +1923,15 @@ async function productsPull(){
     }
     /* ถ้าคลังกลางยังว่างแต่ในเครื่องมีรหัสอยู่ (นำเข้าไว้ก่อนเปลี่ยนมาใช้คลังกลาง)
        เก็บของเดิมไว้ก่อน แล้วให้กดปุ่มส่งขึ้นคลังกลางเอง */
-    let local=allProducts();
-    /* ถ้าคลังกลางว่างและในหน่วยความจำก็ไม่มี ลองกู้จากสำเนาในเครื่องที่นำเข้าไว้ก่อนหน้านี้ */
-    if(!out.length&&!local.length){
-      try{const l=load();if(l&&l.products&&l.products.length){local=l.products;DB.products=local;}}catch(e){}
+    if(out.length){
+      DB.products=out.map(rowToProd);PRODSYNC.src='cloud';PRODSYNC.pending=0;
+    }else{
+      /* คลังกลางยังว่าง — ใช้รายชื่อสินค้าที่มากับตัวเว็บ (แปลงจากไฟล์ Excel ของบริษัท) */
+      const base=await productsFile();
+      DB.products=base.length?base:allProducts();
+      PRODSYNC.src=base.length?'file':'';
+      PRODSYNC.pending=DB.products.length;
     }
-    PRODSYNC.pending=(!out.length&&local.length)?local.length:0;
-    if(!PRODSYNC.pending)DB.products=out.map(rowToProd);
     PRODSYNC.at=new Date().toISOString();
     try{localStorage.setItem(localKey(),JSON.stringify(DB));}catch(e){}
     return true;
@@ -2839,13 +2855,7 @@ function productFields(){return [
 ];}
 function pgProducts(v){
   header('ข้อมูลสินค้า',['คลังรหัสสินค้าของบริษัท']);
-  if(!readOnly()){
-    actionBtn('เพิ่มรหัสสินค้า','plus',()=>openForm('เพิ่มรหัสสินค้า',productFields(),{dimUnit:'cm'},async d=>{
-      if(findProduct(d.code)){toast('รหัส '+d.code+' มีอยู่แล้วในคลัง');return;}
-      try{await productsPush([d]);await productsPull();render();toast('เพิ่มรหัส '+d.code+' แล้ว — ทุกคนเห็นเหมือนกัน');}
-      catch(e){toast(e.message);}}));
-    actionBtn('นำเข้าจาก Excel','up',importProducts,'btn gh');
-  }
+  if(!readOnly())actionBtn('อัปเดตจากไฟล์ Excel','up',importProducts);
   actionBtn('โหลดใหม่','up',async()=>{render();
     if(await productsPull())toast('อัปเดตคลังสินค้าแล้ว · '+allProducts().length+' รหัส');
     render();},'btn gh');
@@ -2861,30 +2871,31 @@ function pgProducts(v){
   const list=q?all.filter(p=>prodKey(p.code).includes(q)||prodKey(p.code2).includes(q)
     ||String(prodName(p)).toLowerCase().includes(q)||String(p.customer||'').toLowerCase().includes(q)):all;
 
-  v.append(hint('คลังนี้ใช้ร่วมกันทั้งบริษัท — ใครเพิ่มรหัสใหม่ ทุกคนเห็นเหมือนกัน · รหัสจะขึ้นให้เลือกตอนกรอกรายการสินค้าในใบเสนอราคาและ PO'));
-  if(PRODSYNC.pending&&!readOnly()){
-    const w=el(`<div class="hint" style="background:#fffbeb;border-color:#fde68a;color:#92400e;display:block">
-      <b>รหัสสินค้า ${PRODSYNC.pending} รายการนี้ยังอยู่แค่ในเครื่องคุณ</b>
-      <div style="margin-top:4px">คลังกลางของบริษัทยังว่าง กดปุ่มด้านล่างเพื่อส่งขึ้นไปให้ทุกคนใช้ร่วมกัน (ทำครั้งเดียว)</div></div>`);
-    const b=el(`<button class="btn" style="margin:0 0 14px">ส่ง ${PRODSYNC.pending} รหัสขึ้นคลังกลาง</button>`);
-    b.onclick=async()=>{b.disabled=true;b.textContent='กำลังส่ง…';
-      try{await productsPush(allProducts());PRODSYNC.pending=0;await productsPull();render();
-        toast('ส่งขึ้นคลังกลางแล้ว — ทุกคนเห็นเหมือนกัน');}
-      catch(e){b.disabled=false;b.textContent='ลองส่งใหม่';
+  v.append(hint('รายชื่อสินค้าทั้งหมดมาจากไฟล์ Excel ของบริษัท ไม่ต้องกรอกในเว็บ — เวลาสินค้าเปลี่ยน ให้กด "อัปเดตจากไฟล์ Excel" แล้วเลือกไฟล์ล่าสุด ทุกคนจะได้ชุดเดียวกัน'));
+  if(PRODSYNC.src==='file'&&!readOnly()){
+    const w=el(`<div class="hint" style="background:#f0f9ff;border-color:#bae6fd;color:#075985;display:block">
+      <b>กำลังใช้รายชื่อสินค้าที่มากับตัวเว็บ (${PRODSYNC.pending} รหัส)</b>
+      <div style="margin-top:4px">ใช้งานได้ปกติทุกคนอยู่แล้ว · ถ้าอยากให้แก้ไข/เพิ่มรหัสแล้วเก็บถาวรบนคลาวด์ ให้กดปุ่มด้านล่างครั้งเดียว</div></div>`);
+    const b=el(`<button class="btn gh" style="margin:0 0 14px">บันทึก ${PRODSYNC.pending} รหัสเข้าคลังกลางบนคลาวด์</button>`);
+    b.onclick=async()=>{b.disabled=true;b.textContent='กำลังบันทึก…';
+      try{await productsPush(allProducts());await productsPull();render();
+        toast('บันทึกเข้าคลังกลางแล้ว');}
+      catch(e){b.disabled=false;b.textContent='ลองใหม่';
         toast(prodTableMissing(e)?'ยังไม่ได้ติดตั้งคลังสินค้ากลาง — ให้ผู้ดูแลรันไฟล์ supabase-setup-6.sql ก่อน':e.message);}};
     v.append(w,b);
   }
   if(PRODSYNC.err)v.append(el(`<div class="hint" style="background:#fef2f2;border-color:#fbcaca;color:#b91c1c">${esc(PRODSYNC.err)}</div>`));
-  else v.append(el(`<div class="tiny" style="margin:-4px 0 10px">${PRODSYNC.busy?'กำลังซิงก์กับคลังกลาง…':
-    PRODSYNC.at?'ซิงก์กับคลังกลางล่าสุด '+ago(PRODSYNC.at):'ยังไม่ได้ซิงก์ — กด "โหลดใหม่" เพื่อดึงรหัสล่าสุดของทุกคน'}${
-    isManager()?'':' · พนักงานขายเพิ่มรหัสใหม่ได้ แต่แก้/ลบต้องให้ผู้จัดการทำ'}</div>`));
+  else v.append(el(`<div class="tiny" style="margin:-4px 0 10px">${PRODSYNC.busy?'กำลังตรวจคลังกลาง…':
+    PRODSYNC.src==='cloud'?'ที่มา: คลังกลางบนคลาวด์ · ตรวจล่าสุด '+ago(PRODSYNC.at):
+    PRODSYNC.src==='file'?'ที่มา: ไฟล์รายชื่อสินค้าที่มากับเว็บ':
+    'ยังไม่ได้ตรวจ — กด "โหลดใหม่"'}</div>`));
   v.append(searchRow(S.prodQ||'','ค้นหารหัส ชื่อสินค้า หรือชื่อลูกค้า',x=>{S.prodQ=x;render();}));
   v.append(el(`<div class="tiny" style="margin:10px 0 4px">ทั้งหมด ${all.length} รหัส${q?' · ตรงกับคำค้น '+list.length+' รหัส':''}</div>`));
 
   if(!all.length){
-    v.append(emptyState('ยังไม่มีรหัสสินค้าในคลัง',
-      'กด "นำเข้าจาก Excel" เพื่อดึงรหัสสินค้าทั้งหมดเข้ามาครั้งเดียว',
-      readOnly()?null:'นำเข้าจาก Excel',importProducts));
+    v.append(emptyState('ยังไม่มีรายชื่อสินค้า',
+      'กดปุ่มด้านล่างแล้วเลือกไฟล์ Excel รายชื่อสินค้าของบริษัท',
+      readOnly()?null:'อัปเดตจากไฟล์ Excel',importProducts));
     return;
   }
   v.append(listCard(list.slice(0,300),{
@@ -2894,7 +2905,7 @@ function pgProducts(v){
     onOpen:p=>{
       if(readOnly()){toast('โหมดดูอย่างเดียว แก้ไขไม่ได้');return;}
       if(!isManager()){toast('รหัสสินค้าเป็นข้อมูลกลางของบริษัท — แก้ไขได้เฉพาะผู้จัดการและผู้ดูแลระบบ');return;}
-      if(!p.id){toast('รหัสนี้ยังไม่ได้ซิงก์ขึ้นคลังกลาง กด "โหลดใหม่" ก่อน');return;}
+      if(!p.id){toast('รหัสชุดนี้มาจากไฟล์ Excel โดยตรง — ถ้าจะแก้ทีละรหัส ให้กดปุ่มบันทึกเข้าคลังกลางด้านบนก่อน หรือแก้ในไฟล์ Excel แล้วอัปเดตใหม่');return;}
       openForm('แก้ไข '+p.code,productFields(),p,async d=>{
         try{await sbFetch('products?id=eq.'+encodeURIComponent(p.id),{method:'PATCH',
             headers:Object.assign(sbHeaders(),{Prefer:'return=minimal'}),body:JSON.stringify(prodToRow(d))});
