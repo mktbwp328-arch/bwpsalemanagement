@@ -406,7 +406,7 @@ a{color:var(--blue);text-decoration:none}
   <div class="backdrop" id="backdrop"></div>
   <aside class="side" id="side">
     <div class="brand">
-      <div class="mark" id="brandMark" title="คลิกเพื่อเปลี่ยนโลโก้">BWP</div>
+      <div class="mark" id="brandMark" title="BWP">BWP</div>
       <div>
         <div style="color:#fff;font-size:16px;font-weight:700;line-height:1.15">BWP Sales</div>
         <div style="font-size:12px;color:#7ea3e0">ระบบจัดการงานขาย</div>
@@ -1070,7 +1070,6 @@ function printDocSheet(d){
   const mk=(t,c,fn)=>{const b=el(`<button class="btn ${c}">${esc(t)}</button>`);b.onclick=fn;bar.append(b);};
   mk('🖨  พิมพ์ / บันทึกเป็น PDF','',()=>window.print());
   mk('แก้ไขหัวกระดาษ','gh',companyForm);
-  mk(DB.logo?'โลโก้ (เปลี่ยน/ลบ)':'อัปโหลดโลโก้','gh',()=>{ov.remove();logoMenu();});
   mk(DB.cert?'ตรารับรอง (เปลี่ยน/ลบ)':'อัปโหลดตรารับรอง','gh',()=>{ov.remove();certMenu();});
   mk('ปิด','gh',()=>ov.remove());
   ov.append(bar);
@@ -1101,12 +1100,12 @@ function imageMenu(key,label){
     toast('ลบ'+label+'แล้ว',()=>{DB[key]=old;save();render();});};
   ov.append(m);$('#layer').append(ov);
 }
-const logoMenu=()=>imageMenu('logo','โลโก้บริษัท');
 const certMenu=()=>imageMenu('cert','ตรารับรอง');
 
-/* โลโก้: ใช้ที่อัปโหลดไว้ก่อน ถ้าไม่มีให้ใช้ไฟล์ logo.png ที่วางไว้ข้างแอป */
+/* โลโก้: ใช้ไฟล์ logo.png ที่วางไว้ข้างแอปเสมอ ไม่ต้องอัปโหลด
+   (ที่เคยอัปโหลดไว้เดิมยังใช้เป็นตัวสำรอง เผื่อเปิดจากที่ที่ไม่มีไฟล์นี้) */
 let assetLogo=null;
-const logoSrc=()=>(DB&&DB.logo)||assetLogo||null;
+const logoSrc=()=>assetLogo||(DB&&DB.logo)||null;
 (function probeLogo(){const i=new Image();
   i.onload=()=>{assetLogo='logo.png';if(typeof DB!=='undefined'&&DB)render();};
   i.src='logo.png';})();
@@ -2238,7 +2237,7 @@ function render(){
   const mk=$('#brandMark');
   mk.innerHTML=logoSrc()?`<img src="${imgSrc(logoSrc())}">`:'BWP';
   mk.classList.toggle('hasimg',!!logoSrc());
-  mk.onclick=logoMenu;
+  mk.style.cursor='default';
   /* ปุ่มที่อันตราย ให้เห็นเฉพาะผู้ดูแล กันพนักงานกดผิด */
   document.querySelectorAll('.admin-only').forEach(b=>{b.style.display=isManager()?'':'none';});
 
