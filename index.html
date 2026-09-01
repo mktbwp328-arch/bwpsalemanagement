@@ -2014,6 +2014,7 @@ document.addEventListener('keydown',e=>{
 /* ================= routing ================= */
 const PAGES=[
   {id:'dashboard',label:'หน้าแรก',icon:'home',count:()=>null},
+  {id:'team',label:'ภาพรวมทีมขาย',icon:'up',count:()=>null,mgr:true},
   {id:'customers',label:'ลูกค้าติดต่อเข้ามา',icon:'users',count:()=>DB.customers.length},
   {id:'documents',label:'เอกสารการขาย',icon:'doc',count:()=>DB.docs.length},
   {id:'po',label:'PO ลูกค้า',icon:'cart',count:()=>DB.pos.length},
@@ -2026,7 +2027,7 @@ let S={page:'dashboard',
   docType:'quotation',docQ:'',docFilter:'ทั้งหมด',docOpen:null,
   poQ:'',poFilter:'ทั้งหมด',poOpen:null,
   rcQ:'',rcFilter:'ทั้งหมด',rcMonth:null,rcOpen:null,empQ:'',
-  profSel:null,profTab:'info',profQ:'',
+  profSel:null,profTab:'info',profQ:'',teamSel:null,
   dash:{period:'year',year:new Date().getFullYear(),chart:'line'}};
 /* จำหน้าที่เปิดอยู่ ไม่ให้รีเฟรชแล้วเด้งกลับหน้าแรก */
 const VKEY='bwp_view_v1';
@@ -2135,7 +2136,8 @@ function render(){
   document.querySelectorAll('.admin-only').forEach(b=>{b.style.display=isManager()?'':'none';});
 
   const v=$('#view');v.innerHTML='';$('#topActions').innerHTML='';
-  ({dashboard:pgDashboard,customers:pgCustomers,documents:pgDocuments,po:pgPO,
+  if(S.page==='team'&&!isManager())S.page='dashboard';
+  ({dashboard:pgDashboard,team:pgTeam,customers:pgCustomers,documents:pgDocuments,po:pgPO,
     receipts:pgReceipts,profiles:pgProfiles,employees:pgEmployees}[S.page]||pgDashboard)(v);
   if(readOnly()){
     v.prepend(el(`<div class="hint" style="background:#eef0ff;border-color:#c7cdfb;color:#4338ca">
@@ -2189,6 +2191,105 @@ function issueReceipt(pre){
     go('receipts',{rcFilter:'ทั้งหมด',rcQ:'',rcMonth:null});toast('ออกใบเสร็จแล้ว — ยอดเข้าแดชบอร์ดทันที');openRc(r);});
 }
 
+/* ================= สรุปตัวเลข ใช้ร่วมกันทั้งหน้าแรกและภาพรวมทีม =================
+   withDB: สลับชุดข้อมูลชั่วคราวเพื่อคำนวณของเซลคนอื่น แล้วคืนค่าเดิมเสมอ */
+function withDB(db,fn){const o=DB;DB=db;try{return fn();}finally{DB=o;}}
+
+/* สินค้าที่ขายได้ — รวมจากรายการใน PO และใบเสนอราคาที่อนุมัติแล้วแต่ยังไม่มี PO */
+function productStats(inP){
+  const map={};
+  const add=it=>{
+    const name=String(it.name||'').trim()||'(ไม่ระบุชื่อสินค้า)';
+    const k=name.toLowerCase();
+    const e=map[k]||(map[k]={name,qty:0,unit:it.unit||'',amount:0,deals:0});
+    e.qty+=(+it.qty||0);e.amount+=(+it.qty||0)*(+it.price||0);e.deals++;
+    if(!e.unit&&it.unit)e.unit=it.unit;
+  };
+  DB.pos.filter(p=>p.status!=='ยกเลิก'&&inP(p.date)).forEach(p=>(p.items||[]).forEach(add));
+  DB.docs.filter(d=>d.type==='quotation'&&d.status==='อนุมัติแล้ว'&&inP(d.date)
+    &&!DB.pos.some(p=>p.status!=='ยกเลิก'&&p.quoteRef===d.no)).forEach(d=>(d.items||[]).forEach(add));
+  return Object.values(map).sort((a,b)=>b.amount-a.amount);
+}
+/* ตัวเลขสรุปทั้งชุดของข้อมูลหนึ่งชุด (ของตัวเองหรือของเซลคนอื่น) */
+function statsOf(db){
+  return withDB(db,()=>{
+    const rcs=liveRc().filter(r=>inPeriod(r.date));
+    const pend=pending().filter(x=>inPeriod(x.date));
+    const quotes=DB.docs.filter(d=>d.type==='quotation'&&inPeriod(d.date));
+    const pos=DB.pos.filter(p=>p.status!=='ยกเลิก'&&inPeriod(p.date));
+    const css=DB.customers.filter(c=>inPeriod(c.date));
+    const yr=S.dash.period==='year'?S.dash.year:new Date().getFullYear();
+    const months=Array(12).fill(0),cnts=Array(12).fill(0);
+    liveRc().forEach(r=>{const d=new Date(r.date);
+      if(!isNaN(d)&&d.getFullYear()===yr){months[d.getMonth()]+=r.amount;cnts[d.getMonth()]++;}});
+    return {
+      total:rcs.reduce((a,b)=>a+b.amount,0),
+      paid:rcs.filter(r=>r.status==='ชำระแล้ว').reduce((a,b)=>a+b.amount,0),
+      unpaid:rcs.filter(r=>r.status!=='ชำระแล้ว').reduce((a,b)=>a+b.amount,0),
+      rcN:rcs.length,
+      pendSum:pend.reduce((a,b)=>a+b.amount,0),pendN:pend.length,
+      quoteN:quotes.length,quoteOk:quotes.filter(d=>d.status==='อนุมัติแล้ว').length,
+      poN:pos.length,poSum:pos.reduce((a,b)=>a+poGross(b),0),
+      custN:css.length,custWon:css.filter(c=>c.status==='ปิดการขาย').length,
+      products:productStats(inPeriod),months,cnts,year:yr};
+  });
+}
+/* รายการดีลที่มีสินค้าชิ้นนี้ — ใช้ตอนกดดูรายละเอียดสินค้า */
+function productDeals(db,name){
+  const key=String(name).toLowerCase(),hit=it=>String(it.name||'').trim().toLowerCase()===key;
+  return withDB(db,()=>{
+    const out=[];
+    DB.pos.filter(p=>p.status!=='ยกเลิก'&&inPeriod(p.date)).forEach(p=>
+      (p.items||[]).filter(hit).forEach(i=>out.push({label:'PO '+p.no,customer:p.customer,date:p.date,
+        qty:+i.qty||0,unit:i.unit||'',amount:(+i.qty||0)*(+i.price||0)})));
+    DB.docs.filter(d=>d.type==='quotation'&&d.status==='อนุมัติแล้ว'&&inPeriod(d.date)
+      &&!DB.pos.some(p=>p.status!=='ยกเลิก'&&p.quoteRef===d.no)).forEach(d=>
+      (d.items||[]).filter(hit).forEach(i=>out.push({label:'ใบเสนอราคา '+d.no,customer:d.customer,date:d.date,
+        qty:+i.qty||0,unit:i.unit||'',amount:(+i.qty||0)*(+i.price||0)})));
+    return out.sort((a,b)=>b.date.localeCompare(a.date));
+  });
+}
+/* การ์ดสินค้าขายดี — ใช้ทั้งหน้าแรกและภาพรวมทีม */
+function productsCard(db,items,title,sub){
+  const card=el(`<div class="card"><div class="pad" style="padding-bottom:6px">
+    <div class="h3" style="margin:0">${esc(title)}</div>
+    <div class="tiny" style="margin-top:3px">${esc(sub)}</div></div></div>`);
+  if(!items.length){card.append(el('<div class="empty">ยังไม่มีรายการสินค้าในช่วงนี้<div style="font-size:14px">สินค้าจะขึ้นเมื่อมี PO หรือใบเสนอราคาที่อนุมัติแล้ว</div></div>'));return card;}
+  const mx=Math.max(...items.map(p=>p.amount),1);
+  const box=el('<div class="pad" style="padding-top:4px"></div>');
+  items.slice(0,8).forEach((p,i)=>{
+    const r=el(`<div style="cursor:pointer;padding:9px 10px;margin:0 -10px;border-radius:10px">
+      <div style="display:flex;justify-content:space-between;gap:10px;font-size:14px;margin-bottom:6px">
+        <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i+1}. ${esc(p.name)}</span>
+        <b style="white-space:nowrap">${num0(Math.round(p.amount))} ฿</b></div>
+      <div style="height:9px;background:#eef2f8;border-radius:99px;overflow:hidden">
+        <div style="width:${(p.amount/mx*100).toFixed(0)}%;height:100%;background:#2563eb;transition:width .3s"></div></div>
+      <div class="tiny" style="margin-top:5px">${num0(p.qty)} ${esc(p.unit||'หน่วย')} · ${p.deals} รายการ</div></div>`);
+    r.onmouseenter=()=>r.style.background='#f6f9ff';r.onmouseleave=()=>r.style.background='';
+    r.onclick=()=>{if(!db){toast('เลือกเซลรายคนด้านบนก่อน จึงจะดูรายละเอียดสินค้าได้');return;}productModal(db,p);};
+    box.append(r);});
+  card.append(box);
+  if(items.length>8)card.append(el(`<div class="pad tiny" style="padding-top:0">และอีก ${items.length-8} รายการ</div>`));
+  return card;
+}
+function productModal(db,p){
+  const rows=productDeals(db,p.name);
+  const ov=el('<div class="ov"></div>');
+  const m=el(`<div class="modal" style="max-width:640px"><header><div><b>${esc(p.name)}</b>
+      <div class="tiny" style="margin-top:2px">รวม ${num0(p.qty)} ${esc(p.unit||'หน่วย')} · ${num0(Math.round(p.amount))} บาท · ${rows.length} รายการ</div></div>
+      <button class="close">✕</button></header><div class="mb"><div class="list"></div></div>
+    <footer><div style="flex:1"></div><button class="btn gh" id="c">ปิด</button></footer></div>`);
+  const list=m.querySelector('.list');
+  rows.forEach(r=>list.append(el(`<div class="lrow" style="cursor:default">
+    <div class="lmain"><div class="lt">${esc(r.customer||'-')}</div>
+      <div class="lm">${esc(r.label)} · ${fmtDate(r.date)}</div></div>
+    <div class="lright"><div class="lamt">${num0(Math.round(r.amount))} ฿</div>
+      <div class="tiny">${num0(r.qty)} ${esc(r.unit||'')}</div></div></div>`)));
+  if(!rows.length)list.append(el('<div class="empty">ไม่พบรายการ</div>'));
+  m.querySelector('.close').onclick=()=>ov.remove();m.querySelector('#c').onclick=()=>ov.remove();
+  ov.append(m);$('#layer').append(ov);
+}
+
 function pgDashboard(v){
   header('หน้าแรก',['ภาพรวมยอดขาย']);
   $('#topActions').append(seg(PERIODS,S.dash.period,k=>{S.dash.period=k;render();}));
@@ -2220,6 +2321,23 @@ function pgDashboard(v){
     c.onclick=()=>page?go(page,extra):document.getElementById('pendingCard')?.scrollIntoView({behavior:'smooth',block:'center'});
     kp.append(c);});
   v.append(kp);
+
+  /* แถวที่สอง: นับจำนวนงาน — ใบเสนอราคา / PO / ใบเสร็จ / ลูกค้าที่ติดต่อเข้ามา */
+  const st=statsOf(DB);
+  const kp2=el('<div class="grid g4"></div>');
+  [['ใบเสนอราคา',st.quoteN+' ใบ','อนุมัติแล้ว '+st.quoteOk+' ใบ','documents',{docType:'quotation',docFilter:'ทั้งหมด',docQ:'',docOpen:null}],
+   ['PO ลูกค้า',st.poN+' ใบ','มูลค่ารวม '+num0(Math.round(st.poSum))+' ฿','po',{poFilter:'ทั้งหมด',poQ:'',poOpen:null}],
+   ['ใบเสร็จรับเงิน',st.rcN+' ใบ','ออกแล้วในช่วงนี้','receipts',{rcFilter:'ทั้งหมด',rcMonth:null,rcQ:''}],
+   ['ลูกค้าที่ติดต่อเข้ามา',st.custN+' ราย','ปิดการขายแล้ว '+st.custWon+' ราย','customers',{custFilter:'ทั้งหมด',custQ:''}]
+  ].forEach(([t,val,sub,page,extra])=>{
+    const c=el(`<div class="card pad" style="cursor:pointer;transition:.15s">
+      <div class="mut">${esc(t)}</div><div style="font-size:26px;font-weight:700;margin-top:4px">${esc(val)}</div>
+      <div class="tiny" style="margin-top:8px">${esc(sub)} →</div></div>`);
+    c.onmouseenter=()=>{c.style.boxShadow='0 8px 22px rgba(15,42,90,.11)';c.style.transform='translateY(-2px)';};
+    c.onmouseleave=()=>{c.style.boxShadow='';c.style.transform='';};
+    c.onclick=()=>go(page,extra);
+    kp2.append(c);});
+  v.append(kp2);
 
   /* งานที่ปิดการขายแล้วแต่ยังไม่ได้ออกใบเสร็จ — รวมเคส "มีแค่ใบเสนอราคา ไม่มี PO" */
   const pc=el('<div class="card" id="pendingCard"></div>');
@@ -2319,6 +2437,164 @@ function pgDashboard(v){
     r.onmouseenter=()=>r.style.background='#f6f9ff';r.onmouseleave=()=>r.style.background='';
     r.onclick=()=>go('receipts',{rcFilter:k,rcMonth:null,rcQ:''});rcCard.append(r);});
   row3.append(rcCard);v.append(row3);
+
+  v.append(productsCard(DB,st.products,'สินค้าที่ขายได้',
+    'รวมจากรายการใน PO และใบเสนอราคาที่อนุมัติแล้ว · กดที่สินค้าเพื่อดูว่าขายให้ใครบ้าง'));
+}
+
+/* ---------- 1b. ภาพรวมทีมขาย (เฉพาะผู้จัดการ/ผู้ดูแล) ----------
+   ดึงข้อมูลของเซลทุกคนจากคลาวด์มารวมกัน แล้วกดดูแยกรายคนได้ในหน้าเดียว */
+const TEAM={loaded:false,loading:false,err:null,people:[],at:null};
+async function loadTeam(force){
+  if(TEAM.loading)return;
+  if(TEAM.loaded&&!force)return;
+  TEAM.loading=true;TEAM.err=null;
+  if(S.page==='team')render();
+  try{
+    const list=await sbRpc('team_list',{})||[];
+    const me=AUTH.user.id;
+    const all=[{id:me,name:(AUTH.profile&&AUTH.profile.name)||'ฉัน',
+      email:(AUTH.profile&&AUTH.profile.email)||'',role:(AUTH.profile&&AUTH.profile.role)||'sales',mine:true}]
+      .concat(list.filter(t=>t.id!==me).map(t=>Object.assign({},t,{mine:false})));
+    const people=[];
+    for(const t of all){
+      let db=null;
+      try{db=t.mine?DB:await cloudLoad(t.id);}catch(e){}
+      if(db&&db.customers){try{withDB(db,migrate);}catch(e){}}
+      people.push(Object.assign({},t,{db:db&&db.customers?db:null}));
+    }
+    TEAM.people=people;TEAM.loaded=true;TEAM.at=new Date().toISOString();
+  }catch(e){TEAM.err=e.message||'โหลดข้อมูลทีมไม่สำเร็จ';}
+  TEAM.loading=false;
+  if(S.page==='team')render();
+}
+function pgTeam(v){
+  header('ภาพรวมทีมขาย',['สรุปยอดของเซลทุกคน']);
+  $('#topActions').append(seg(PERIODS,S.dash.period,k=>{S.dash.period=k;render();}));
+  if(S.dash.period==='year'){
+    const sel=el(`<select style="border:1px solid #d3ddec;border-radius:10px;height:44px;padding:0 12px;background:#fff;cursor:pointer">${dataYears().map(y=>`<option value="${y}" ${y===S.dash.year?'selected':''}>ปี ${y+543}</option>`).join('')}</select>`);
+    sel.onchange=()=>{S.dash.year=+sel.value;render();};$('#topActions').append(sel);
+  }
+  actionBtn('โหลดข้อมูลใหม่','up',()=>loadTeam(true),'btn gh');
+
+  if(!TEAM.loaded){
+    v.append(el(`<div class="empty"><div class="big">${TEAM.loading?'กำลังรวบรวมข้อมูลของทีม…':'ภาพรวมทีมขาย'}</div>
+      <div style="font-size:14px">${TEAM.loading?'ดึงข้อมูลของเซลแต่ละคนจากคลาวด์':'กดปุ่มด้านล่างเพื่อดึงข้อมูลล่าสุดของทุกคน'}</div></div>`));
+    if(TEAM.err)v.append(el(`<div class="hint" style="background:#fef2f2;border-color:#fbcaca;color:#b91c1c">${esc(TEAM.err)}</div>`));
+    if(!TEAM.loading){const b=el('<button class="btn" style="margin:0 auto;display:flex">รวบรวมข้อมูลทีม</button>');
+      b.onclick=()=>loadTeam(true);v.append(b);}
+    if(!TEAM.loading&&!TEAM.err)loadTeam();
+    return;
+  }
+
+  const rows=TEAM.people.map(p=>({p,st:p.db?statsOf(p.db):null}))
+    .sort((a,b)=>(b.st?b.st.total:-1)-(a.st?a.st.total:-1));
+  const ok=rows.filter(r=>r.st);
+  const sum=k=>ok.reduce((a,r)=>a+r.st[k],0);
+  const sel=S.teamSel&&rows.some(r=>r.p.id===S.teamSel)?S.teamSel:null;
+  const cur=sel?rows.find(r=>r.p.id===sel):null;
+  const view=cur?cur.st:null;
+  const nameOf=p=>p.name||toUsername(p.email)||'ไม่ระบุชื่อ';
+
+  v.append(hint(TEAM.at
+    ? 'ข้อมูลอัปเดตเมื่อ '+ago(TEAM.at)+' · กดชื่อเซลในตารางอันดับเพื่อดูตัวเลขเฉพาะคนนั้น กดซ้ำเพื่อกลับมาดูรวมทั้งทีม'
+    : 'กดชื่อเซลเพื่อดูตัวเลขเฉพาะคนนั้น'));
+
+  /* KPI — สลับระหว่างรวมทั้งทีมกับรายคนตามที่เลือก */
+  const T=k=>view?view[k]:sum(k);
+  const who=cur?nameOf(cur.p):'ทั้งทีม ('+ok.length+' คน)';
+  v.append(el(`<div class="h3" style="margin:18px 0 2px">กำลังดู: ${esc(who)}</div>`));
+  const kp=el('<div class="grid g4"></div>');
+  [['ยอดขายรวม (จากใบเสร็จ)',num0(Math.round(T('total')))+' ฿',T('rcN')+' ใบเสร็จ'],
+   ['รับชำระแล้ว',num0(Math.round(T('paid')))+' ฿','เก็บเงินเรียบร้อย'],
+   ['รอเก็บเงิน',num0(Math.round(T('unpaid')))+' ฿','ยังไม่ครบ'],
+   ['ยอดในมือ',num0(Math.round(T('pendSum')))+' ฿',T('pendN')+' รายการรอออกใบเสร็จ']
+  ].forEach(([t,val,sub])=>kp.append(el(`<div class="card pad">
+    <div class="mut">${esc(t)}</div><div style="font-size:26px;font-weight:700;margin-top:4px">${esc(val)}</div>
+    <div class="tiny" style="margin-top:8px">${esc(sub)}</div></div>`)));
+  v.append(kp);
+  const kp2=el('<div class="grid g4"></div>');
+  [['ใบเสนอราคา',T('quoteN')+' ใบ','อนุมัติแล้ว '+T('quoteOk')+' ใบ'],
+   ['PO ลูกค้า',T('poN')+' ใบ','มูลค่ารวม '+num0(Math.round(T('poSum')))+' ฿'],
+   ['ใบเสร็จรับเงิน',T('rcN')+' ใบ','ออกแล้วในช่วงนี้'],
+   ['ลูกค้าที่ติดต่อเข้ามา',T('custN')+' ราย','ปิดการขายแล้ว '+T('custWon')+' ราย']
+  ].forEach(([t,val,sub])=>kp2.append(el(`<div class="card pad">
+    <div class="mut">${esc(t)}</div><div style="font-size:26px;font-weight:700;margin-top:4px">${esc(val)}</div>
+    <div class="tiny" style="margin-top:8px">${esc(sub)}</div></div>`)));
+  v.append(kp2);
+
+  /* อันดับยอดขายรายคน — กดเพื่อเจาะดูรายคน */
+  const rank=el(`<div class="card"><div class="pad" style="padding-bottom:6px">
+    <div class="h3" style="margin:0">อันดับยอดขายรายคน</div>
+    <div class="tiny" style="margin-top:3px">กดที่ชื่อเพื่อดูตัวเลขเฉพาะคนนั้น</div></div></div>`);
+  const box=el('<div class="pad" style="padding-top:4px"></div>');
+  const mxT=Math.max(...ok.map(r=>r.st.total),1);
+  rows.forEach((r,i)=>{
+    const on=sel===r.p.id;
+    const nm=nameOf(r.p);
+    if(!r.st){
+      box.append(el(`<div style="padding:9px 10px;margin:0 -10px;font-size:14px;opacity:.55">
+        ${esc(nm)} — ยังไม่มีข้อมูลบนคลาวด์</div>`));return;}
+    const w=el(`<div style="cursor:pointer;padding:10px;margin:0 -10px;border-radius:10px;${on?'background:var(--blue-l);box-shadow:inset 3px 0 0 var(--blue)':''}">
+      <div style="display:flex;justify-content:space-between;gap:10px;font-size:14px;margin-bottom:6px">
+        <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i+1}. ${esc(nm)}${r.p.mine?' (ฉัน)':''}</span>
+        <b style="white-space:nowrap">${num0(Math.round(r.st.total))} ฿</b></div>
+      <div style="height:9px;background:#eef2f8;border-radius:99px;overflow:hidden">
+        <div style="width:${(r.st.total/mxT*100).toFixed(0)}%;height:100%;background:${on?'#1d4ed8':'#2563eb'};transition:width .3s"></div></div>
+      <div class="tiny" style="margin-top:5px">ใบเสนอราคา ${r.st.quoteN} · PO ${r.st.poN} · ใบเสร็จ ${r.st.rcN} · ลูกค้า ${r.st.custN} ราย · ยอดในมือ ${num0(Math.round(r.st.pendSum))} ฿</div></div>`);
+    if(!on){w.onmouseenter=()=>w.style.background='#f6f9ff';w.onmouseleave=()=>w.style.background='';}
+    w.onclick=()=>{S.teamSel=on?null:r.p.id;render();};
+    box.append(w);});
+  rank.append(box);
+  if(!ok.length)rank.append(el('<div class="empty">ยังไม่มีข้อมูลของเซลคนไหนบนคลาวด์</div>'));
+  v.append(rank);
+
+  /* กราฟรายเดือน — รวมทั้งทีม หรือเฉพาะคนที่เลือก */
+  const yr=(ok[0]&&ok[0].st.year)||new Date().getFullYear();
+  const months=Array(12).fill(0),cnts=Array(12).fill(0);
+  (cur?[cur]:ok).forEach(r=>r.st.months.forEach((m,i)=>{months[i]+=m;cnts[i]+=r.st.cnts[i];}));
+  const mx=Math.max(...months,100000),X=i=>56+i*53,Y=n=>208-(n/mx)*168;
+  const cc=el(`<div class="card pad" style="position:relative">
+    <div class="h3" style="margin:0">ยอดขายรายเดือน ปี ${yr+543} — ${esc(who)}</div>
+    <div class="tiny" style="margin-bottom:6px">นับจากใบเสร็จรับเงิน</div></div>`);
+  const tip=el('<div style="position:absolute;pointer-events:none;opacity:0;transition:.12s;background:#101b2e;color:#fff;font-size:12.5px;padding:8px 11px;border-radius:9px;white-space:nowrap;z-index:5"></div>');
+  cc.append(tip);
+  const chart=el(`<div style="position:relative">
+    <svg viewBox="0 0 700 240" style="width:100%;height:230px;display:block">
+      <g stroke="#eef2f8"><path d="M46 40H690M46 82H690M46 124H690M46 166H690M46 208H690"/></g>
+      <g fill="#94a3b8" font-size="10"><text x="2" y="44">${num0(Math.round(mx/1000))}k</text><text x="2" y="128">${num0(Math.round(mx/2000))}k</text><text x="24" y="212">0</text></g>
+      ${months.map((m,i)=>`<rect class="pt" data-i="${i}" x="${X(i)-17}" y="${Y(m).toFixed(0)}" width="34" height="${(208-Y(m)).toFixed(0)}" rx="5" fill="#2563eb" opacity=".88"/>`).join('')}
+      <g fill="#94a3b8" font-size="10.5" text-anchor="middle">${MN.map((m,i)=>`<text x="${X(i)}" y="230">${m}</text>`).join('')}</g>
+      ${months.map((m,i)=>`<rect class="hit" data-i="${i}" x="${X(i)-26}" y="30" width="52" height="182" fill="transparent" style="cursor:pointer"/>`).join('')}
+    </svg></div>`);
+  const sv=chart.querySelector('svg');
+  chart.querySelectorAll('.hit').forEach(h=>{
+    const i=+h.dataset.i;
+    h.onmouseenter=()=>{const bx=sv.getBoundingClientRect(),sc=bx.width/700;
+      tip.innerHTML=`<b>${MN[i]} ${yr+543}</b><br>${num(months[i])} บาท · ${cnts[i]} รายการ`;
+      tip.style.opacity=1;tip.style.left=Math.min(Math.max(X(i)*sc-60,4),bx.width-160)+'px';
+      tip.style.top=(chart.offsetTop+Math.max(Y(months[i])*sc-54,0))+'px';
+      sv.querySelectorAll('.pt').forEach(p=>p.setAttribute('opacity',+p.dataset.i===i?'1':'.4'));};
+    h.onmouseleave=()=>{tip.style.opacity=0;sv.querySelectorAll('.pt').forEach(p=>p.setAttribute('opacity','.88'));};
+  });
+  cc.append(chart);v.append(cc);
+
+  /* สินค้าขายดี — รวมทั้งทีมหรือเฉพาะคนที่เลือก */
+  let prods;
+  if(cur)prods=cur.st.products;
+  else{const mp={};ok.forEach(r=>r.st.products.forEach(p=>{
+      const k=p.name.toLowerCase(),e=mp[k]||(mp[k]={name:p.name,qty:0,unit:p.unit,amount:0,deals:0});
+      e.qty+=p.qty;e.amount+=p.amount;e.deals+=p.deals;if(!e.unit&&p.unit)e.unit=p.unit;}));
+    prods=Object.values(mp).sort((a,b)=>b.amount-a.amount);}
+  v.append(productsCard(cur?cur.p.db:null,prods,
+    'สินค้าขายดี — '+who,
+    cur?'กดที่สินค้าเพื่อดูว่าขายให้ลูกค้ารายไหนบ้าง':'รวมทุกคนในทีม · เลือกเซลรายคนด้านบนเพื่อดูรายละเอียดสินค้าของคนนั้น'));
+
+  if(cur&&!cur.p.mine){
+    const b=el(`<button class="btn gh" style="margin:16px auto 0;display:flex">เปิดดูข้อมูลทั้งหมดของ ${esc(nameOf(cur.p))}</button>`);
+    b.onclick=()=>viewUser(cur.p.id,nameOf(cur.p),false);
+    v.append(b);
+  }
 }
 
 /* ---------- 2. CUSTOMERS ---------- */
