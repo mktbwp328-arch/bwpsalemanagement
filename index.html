@@ -1548,7 +1548,20 @@ function signResultScreen(o){
     <button id="fin" style="margin-top:30px;background:#fff;color:${bad?'#991b1b':'#123f9e'};border:0;
       border-radius:14px;font-size:16px;font-weight:700;padding:15px 0;width:min(320px,86vw);cursor:pointer;font-family:inherit">เสร็จสิ้น</button>
   </div>`);
-  sc.querySelector('#fin').onclick=()=>{try{location.hash='';}catch(e){}location.reload();};
+  /* กด "เสร็จสิ้น" แล้วออกจากเว็บเลย ไม่ต้องเข้าหน้าโปรแกรม
+     บางเบราว์เซอร์ปิดแท็บให้ไม่ได้ (เปิดจากลิงก์ ไม่ได้เปิดด้วยสคริปต์)
+     กรณีนั้นให้เหลือหน้าจอเรียบ ๆ บอกว่าปิดหน้านี้ได้เลย */
+  sc.querySelector('#fin').onclick=()=>{
+    const bye=el(`<div style="position:fixed;inset:0;z-index:950;background:${bad?'#3f0d0d':'#0a2350'};
+        color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;
+        gap:12px;text-align:center;padding:30px;font-family:inherit">
+      <div style="font-size:40px">${bad?'✕':'✓'}</div>
+      <div style="font-size:20px;font-weight:700">${esc(o.title)}</div>
+      <div style="font-size:14.5px;opacity:.7">ปิดหน้านี้ได้เลย ไม่ต้องทำอะไรต่อ</div></div>`);
+    document.body.append(bye);
+    try{window.open('','_self');window.close();}catch(e){}
+    setTimeout(()=>{try{window.close();}catch(e){}},150);
+  };
   document.querySelectorAll('.prevov,.ov').forEach(x=>x.remove());
   $('#layer').append(sc);
 }
