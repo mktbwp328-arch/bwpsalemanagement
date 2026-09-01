@@ -1751,6 +1751,69 @@ function downloadFile(name,text,type){
 const csvCell=v=>{const s=String(v??'');return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
 const toCSV=rows=>rows.map(r=>r.map(csvCell).join(',')).join('\n');
 
+/* ---------- สร้างไฟล์ .xlsx เอง (zip แบบไม่บีบอัด) ---------- */
+const CRC_T=(()=>{const t=new Int32Array(256);
+  for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c;}
+  return t;})();
+function crc32(u8){let c=-1;for(let i=0;i<u8.length;i++)c=CRC_T[(c^u8[i])&0xff]^(c>>>8);return (c^-1)>>>0;}
+function makeZip(files){
+  const enc=new TextEncoder(),parts=[],cen=[];let off=0;
+  files.forEach(f=>{
+    const nm=enc.encode(f.name),body=enc.encode(f.data),crc=crc32(body);
+    const lh=new DataView(new ArrayBuffer(30));
+    lh.setUint32(0,0x04034b50,true);lh.setUint16(4,20,true);lh.setUint16(6,0x0800,true);
+    lh.setUint16(8,0,true);lh.setUint32(14,crc,true);
+    lh.setUint32(18,body.length,true);lh.setUint32(22,body.length,true);
+    lh.setUint16(26,nm.length,true);
+    parts.push(new Uint8Array(lh.buffer),nm,body);
+    const cd=new DataView(new ArrayBuffer(46));
+    cd.setUint32(0,0x02014b50,true);cd.setUint16(4,20,true);cd.setUint16(6,20,true);
+    cd.setUint16(8,0x0800,true);cd.setUint16(10,0,true);cd.setUint32(16,crc,true);
+    cd.setUint32(20,body.length,true);cd.setUint32(24,body.length,true);
+    cd.setUint16(28,nm.length,true);cd.setUint32(42,off,true);
+    cen.push(new Uint8Array(cd.buffer),nm);
+    off+=30+nm.length+body.length;
+  });
+  const cenLen=cen.reduce((a,b)=>a+b.length,0);
+  const ed=new DataView(new ArrayBuffer(22));
+  ed.setUint32(0,0x06054b50,true);ed.setUint16(8,files.length,true);ed.setUint16(10,files.length,true);
+  ed.setUint32(12,cenLen,true);ed.setUint32(16,off,true);
+  return new Blob(parts.concat(cen,[new Uint8Array(ed.buffer)]),
+    {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+const xEsc=s=>String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const xCol=i=>{let s='',n=i+1;while(n>0){const m=(n-1)%26;s=String.fromCharCode(65+m)+s;n=((n-m)/26)|0;}return s;};
+function downloadXLSX(fname,rows,widths,sheetName){
+  const body=rows.map((r,ri)=>`<row r="${ri+1}">`+r.map((v,ci)=>
+    `<c r="${xCol(ci)}${ri+1}" t="inlineStr"><is><t xml:space="preserve">${xEsc(v)}</t></is></c>`).join('')+`</row>`).join('');
+  const cols=widths?`<cols>${widths.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join('')}</cols>`:'';
+  const files=[
+    {name:'[Content_Types].xml',data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>`},
+    {name:'_rels/.rels',data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`},
+    {name:'xl/workbook.xml',data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheets><sheet name="${xEsc(sheetName||'ข้อมูล')}" sheetId="1" r:id="rId1"/></sheets></workbook>`},
+    {name:'xl/_rels/workbook.xml.rels',data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>`},
+    {name:'xl/worksheets/sheet1.xml',data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${cols}<sheetData>${body}</sheetData></worksheet>`}
+  ];
+  const a=document.createElement('a');a.href=URL.createObjectURL(makeZip(files));a.download=fname;
+  document.body.append(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);
+}
+
 /* ================= form ================= */
 const UNITS=['ม้วน','ใบ','กก.','แผ่น','ชิ้น','กล่อง','ลัง','ถุง','ถัง','เมตร','ชุด','อัน','รายการ'];
 /* ตารางกรอกรายการสินค้า — ใช้ในฟอร์มสร้าง/แก้ไขใบเสนอราคาและ PO */
@@ -2266,11 +2329,14 @@ function importCustomers(){
   const close=()=>ov.remove();
   m.querySelector('.close').onclick=close;m.querySelector('#c').onclick=close;
   m.querySelector('#tpl').onclick=()=>{
-    downloadFile('ตัวอย่างนำเข้าลูกค้า.csv',
-      toCSV([IMPORT_FIELDS.map(f=>f.label),
-        ['บริษัท ตัวอย่าง จำกัด','คุณสมชาย','081-234-5678','somchai@example.com',
-         '123 ถ.สุขุมวิท กรุงเทพฯ','0123456789012','ค้าส่ง','30 วัน','']]));
-    toast('ดาวน์โหลดไฟล์ตัวอย่างแล้ว');};
+    downloadXLSX('เทมเพลตนำเข้าลูกค้า.xlsx',[
+      IMPORT_FIELDS.map(f=>f.label),
+      ['ตัวอย่าง บริษัท เอบีซี จำกัด','คุณสมชาย ใจดี','081-234-5678','somchai@abc.co.th',
+       '123/45 ถ.สุขุมวิท แขวงคลองเตย เขตคลองเตย กรุงเทพฯ 10110','0123456789012','ค้าส่ง','30 วัน','คุณวราลักษณ์'],
+      ['ตัวอย่าง หจก. ดีอีเอฟ','คุณสมหญิง รักดี','02-317-5470','contact@def.co.th',
+       '99 หมู่ 6 ต.บางบ่อ อ.บางบ่อ จ.สมุทรปราการ 10560','0987654321098','โรงงานผลิต','เงินสด','คุณวราลักษณ์']
+    ],[34,20,16,24,46,22,18,14,16],'ลูกค้า');
+    toast('ดาวน์โหลดเทมเพลต Excel แล้ว — ลบ 2 แถวตัวอย่างออกก่อนใช้งานจริง');};
 
   const step1=()=>{
     body.innerHTML='';
@@ -2318,7 +2384,8 @@ function importCustomers(){
       let added=0,skipped=0;
       data.forEach(r=>{
         const name=String(r[sel.name]||'').trim();
-        if(!name){skipped++;return;}
+        /* ข้ามแถวว่าง แถวตัวอย่างจากเทมเพลต และแถวที่ชื่อเป็นตัวเลขล้วน (มักเป็นคอลัมน์ลำดับ) */
+        if(!name||/^ตัวอย่าง/.test(name)||/^\d+$/.test(name)){skipped++;return;}
         const phone=sel.phone!==undefined?String(r[sel.phone]||'').trim():'';
         if(DB.customers.some(c=>c.name===name||(phone&&c.phone===phone))){skipped++;return;}
         const c={id:uid(),name,status:'ใหม่',channel:'นำเข้า',date:today(),
@@ -2384,7 +2451,20 @@ function pgCustomers(v){
   const q=S.custQ.toLowerCase();
   const items=DB.customers.filter(c=>(S.custFilter==='ทั้งหมด'||c.status===S.custFilter)&&
     (!q||[c.name,c.contact,c.phone,c.email].join(' ').toLowerCase().includes(q)));
-  v.append(el(`<div class="tiny">พบ ${items.length} รายการ</div>`));
+  const cnt=el(`<div style="display:flex;align-items:center;gap:12px"><div class="tiny">พบ ${items.length} รายการ</div></div>`);
+  if(items.length){
+    const del=el(`<button class="btn dg sm">ลบ ${items.length} รายการที่แสดงอยู่</button>`);
+    del.onclick=()=>askConfirm('ลบลูกค้าหลายรายการ',
+      'ลบลูกค้า '+items.length+' รายการที่แสดงอยู่ตอนนี้ออกจากระบบ?','ลบทั้งหมด',()=>{
+        const ids=new Set(items.map(x=>x.id));
+        const backup=DB.customers.slice();
+        DB.customers=DB.customers.filter(c=>!ids.has(c.id));
+        save();render();
+        toast('ลบ '+ids.size+' รายการแล้ว',()=>{DB.customers=backup;save();render();});
+      });
+    cnt.append(del);
+  }
+  v.append(cnt);
   v.append(listCard(items,{
     avatar:c=>c.logo?`<img src="${imgSrc(c.logo)}">`:esc(initials(c.name)),
     title:c=>esc(c.name),
