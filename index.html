@@ -404,7 +404,7 @@ a{color:var(--blue);text-decoration:none}
     <div style="margin-top:auto;padding:18px 12px 0;display:flex;flex-direction:column;gap:8px">
       <button class="btn sm blk" onclick="pasteCodeModal()" style="background:#1b3f86;border-color:#2a55a8">✍ เซ็นอนุมัติเอกสาร</button>
       <button class="btn gh sm blk" onclick="sbSettings()">ตั้งค่าฐานข้อมูล</button>
-      <button class="btn gh sm blk" onclick="resetDemo()">รีเซ็ตข้อมูลตัวอย่าง</button>
+      <button class="btn dg sm blk" onclick="clearAllData()">ล้างข้อมูลทั้งหมด</button>
     </div>
   </aside>
 
@@ -536,60 +536,20 @@ function load(){try{const r=localStorage.getItem(localKey())||localStorage.getIt
   if(r)return JSON.parse(r);}catch(e){}return null;}
 
 function seed(){
-  const C=(name,contact,phone,email,channel,status,d,owner,extra={})=>Object.assign({
-    id:uid(),name,contact,phone,email,channel,status,date:d,owner,
-    taxId:'',address:'',website:'',biz:'',creditTerm:'30 วัน',creditLimit:500000,
-    logo:null,photos:[],files:[],
-    timeline:[{date:d,title:'รับการติดต่อผ่าน '+channel,note:'',by:owner}]},extra);
-  const customers=[
-    C('บริษัท เอ็มพี จำกัด','คุณกัญญา วงศ์ไทย','02-123-4567','info@mpcompany.com','LINE','ส่งใบเสนอราคา','2026-08-24','คุณกัญญ์',
-      {taxId:'0123456789012',address:'123/45 ถ.สุขุมวิท แขวงคลองเตย เขตคลองเตย กรุงเทพฯ 10110',website:'www.mpcompany.com',biz:'รับผลิต / จัดจำหน่าย',
-       timeline:[{date:'2026-08-24',title:'รับการติดต่อผ่าน LINE',note:'สอบถามสินค้ากลุ่มเครื่องดื่ม',by:'คุณกัญญ์'},
-        {date:'2026-08-24',title:'ส่งใบเสนอราคา QUO-2569-0128',note:'ยอด 125,000 บาท',by:'คุณกัญญ์'},
-        {date:'2026-08-25',title:'นัดหมายเข้าพบหน้างาน',note:'โรงงานบางนา กม.19',by:'คุณกัญญ์'}]}),
-    C('ห้างหุ้นส่วนจำกัด แสงเจริญค้า','คุณวิชัย แสงเจริญ','081-234-5678','wichai@sangcharoen.co.th','Facebook','กำลังติดต่อ','2026-08-24','คุณกัญญ์',{biz:'ค้าส่ง'}),
-    C('บริษัท ลานนี่ จำกัด','คุณสุดา ลานนี่','053-221-990','suda@lannie.co.th','Email','ส่งใบเสนอราคา','2026-08-23','คุณวิรัตน์',{biz:'โรงแรม'}),
-    C('บริษัท วันเดอร์ จำกัด','คุณปรีชา ทองดี','02-555-1200','preecha@wonder.co.th','LINE','รอ PO','2026-08-22','คุณวิรัตน์',{biz:'ค้าปลีก'}),
-    C('บริษัท โอเชี่ยน จำกัด','คุณมนัส เกิดผล','038-441-778','manus@ocean.co.th','Website','กำลังติดต่อ','2026-08-22','คุณกัญญ์',{biz:'ส่งออก'}),
-    C('คุณสมชาย ไชยวัฒน์','คุณสมชาย ไชยวัฒน์','089-777-1234','somchai@gmail.com','Referral','ใหม่','2026-08-22','คุณกัญญ์',{biz:'ลูกค้ารายย่อย'}),
-    C('บริษัท กรีนวัลด์ จำกัด','คุณอรุณี ศรีสุข','02-909-8877','arunee@greenworld.co.th','LINE','ปิดการขาย','2026-08-21','คุณวิรัตน์',{biz:'อุตสาหกรรม'}),
-    C('บริษัท ทีเอ็นเค เทรดดิ้ง จำกัด','คุณธนกร นาคเกษม','02-330-4411','thanakorn@tnk.co.th','Email','ยกเลิก','2026-08-20','คุณกัญญ์',{biz:'เทรดดิ้ง'})];
-  const n=i=>customers[i].name;
-  const docs=[
-    {id:uid(),no:'QUO-2569-0130',type:'quotation',customer:n(5),date:'2026-08-26',amount:48000,status:'อนุมัติแล้ว',note:'ลูกค้าซื้อสด ไม่ออก PO — รอออกใบเสร็จ'},
-    {id:uid(),no:'QUO-2569-0128',type:'quotation',customer:n(0),date:'2026-08-24',amount:125000,status:'ส่งแล้ว',note:''},
-    {id:uid(),no:'QUO-2569-0127',type:'quotation',customer:n(1),date:'2026-08-23',amount:98500,status:'รออนุมัติ',note:''},
-    {id:uid(),no:'QUO-2569-0126',type:'quotation',customer:n(2),date:'2026-08-23',amount:235000,status:'อนุมัติแล้ว',note:''},
-    {id:uid(),no:'QUO-2569-0125',type:'quotation',customer:n(3),date:'2026-08-22',amount:56000,status:'ยกเลิก',note:''},
-    {id:uid(),no:'QUO-2569-0124',type:'quotation',customer:n(4),date:'2026-08-22',amount:75000,status:'ร่าง',note:''},
-    {id:uid(),no:'QUO-2569-0123',type:'quotation',customer:n(6),date:'2026-08-21',amount:312400,status:'อนุมัติแล้ว',note:''},
-    {id:uid(),no:'SMP-2569-0042',type:'sample',customer:n(0),date:'2026-08-20',amount:0,status:'อนุมัติแล้ว',note:'ขอตัวอย่างขวด 15oz จำนวน 5 ชิ้น'},
-    {id:uid(),no:'SMP-2569-0041',type:'sample',customer:n(2),date:'2026-08-19',amount:0,status:'ส่งแล้ว',note:'ตัวอย่างน้ำยาทำความสะอาด 1 แกลลอน'},
-    {id:uid(),no:'REQ-2569-0018',type:'requirement',customer:n(0),date:'2026-08-18',amount:0,status:'อนุมัติแล้ว',note:'ต้องมี อย. และฉลากภาษาไทย/อังกฤษ'},
-    {id:uid(),no:'REQ-2569-0017',type:'requirement',customer:n(3),date:'2026-08-17',amount:0,status:'รออนุมัติ',note:'บรรจุ 12 ชิ้น/ลัง พร้อมสติกเกอร์แบรนด์ลูกค้า'},
-    {id:uid(),no:'CRD-2569-0009',type:'credit',customer:n(0),date:'2026-08-16',amount:500000,status:'อนุมัติแล้ว',note:'ขอเครดิต 30 วัน วงเงิน 500,000'},
-    {id:uid(),no:'CRD-2569-0008',type:'credit',customer:n(4),date:'2026-08-15',amount:300000,status:'รออนุมัติ',note:'ขอเครดิต 45 วัน วงเงิน 300,000'}];
-  const pos=[
-    {id:uid(),no:'PO-2569-0089',custPoNo:'PO-MP-250824-001',customer:n(0),date:'2026-08-24',dueDate:'2026-09-10',payment:'เครดิต 30 วัน',quoteRef:'QUO-2569-0128',owner:'คุณกัญญ์',ship:'คลังบางนา กม.19',status:'อนุมัติแล้ว',
-      items:[{code:'MP-DR-24P',name:'ชุดน้ำดื่ม 24 ชิ้น',qty:2,unit:'ลัง',price:15000},{code:'INV-15BW',name:'ขวดบรรจุภัณฑ์ 15oz',qty:5,unit:'ลัง',price:5000},{code:'CL-IP-5GAL',name:'น้ำยาทำความสะอาด 5 แกลลอน',qty:10,unit:'ถัง',price:1200}],images:[],files:[]},
-    {id:uid(),no:'PO-2569-0088',custPoNo:'PO-LN-250823-014',customer:n(2),date:'2026-08-23',dueDate:'2026-09-05',payment:'เครดิต 45 วัน',quoteRef:'QUO-2569-0126',owner:'คุณวิรัตน์',ship:'สาขาเชียงใหม่',status:'กำลังผลิต',
-      items:[{code:'MP-DR-24P',name:'ชุดน้ำดื่ม 24 ชิ้น',qty:10,unit:'ลัง',price:15000},{code:'CL-IP-5GAL',name:'น้ำยาทำความสะอาด 5 แกลลอน',qty:20,unit:'ถัง',price:1200}],images:[],files:[]},
-    {id:uid(),no:'PO-2569-0087',custPoNo:'PO-GW-250821-007',customer:n(6),date:'2026-08-21',dueDate:'2026-08-30',payment:'เงินสด',quoteRef:'QUO-2569-0123',owner:'คุณวิรัตน์',ship:'โรงงานระยอง',status:'ส่งมอบแล้ว',
-      items:[{code:'INV-15BW',name:'ขวดบรรจุภัณฑ์ 15oz',qty:40,unit:'ลัง',price:5000}],images:[],files:[]}];
-  const receipts=[
-    {id:uid(),no:'RC-2569-0066',invNo:'INV-2569-0076',customer:n(0),date:'2026-08-24',amount:65000,status:'ชำระแล้ว',method:'เงินโอน',poRef:'PO-2569-0089',note:'ขอบคุณที่ใช้บริการค่ะ'},
-    {id:uid(),no:'RC-2569-0065',invNo:'INV-2569-0075',customer:n(1),date:'2026-08-23',amount:98500,status:'ชำระแล้ว',method:'เงินโอน',poRef:'',note:''},
-    {id:uid(),no:'RC-2569-0064',invNo:'INV-2569-0074',customer:n(2),date:'2026-08-23',amount:56000,status:'รอชำระ',method:'เช็ค',poRef:'PO-2569-0088',note:''},
-    {id:uid(),no:'RC-2569-0063',invNo:'INV-2569-0073',customer:n(3),date:'2026-08-22',amount:125000,status:'รอชำระ',method:'เงินโอน',poRef:'',note:''},
-    {id:uid(),no:'RC-2569-0062',invNo:'INV-2569-0072',customer:n(4),date:'2026-08-22',amount:235000,status:'บางส่วน',method:'เงินโอน',poRef:'',note:'ชำระงวดแรก 100,000'},
-    {id:uid(),no:'RC-2569-0061',invNo:'INV-2569-0071',customer:n(6),date:'2026-08-21',amount:312400,status:'ชำระแล้ว',method:'เงินสด',poRef:'PO-2569-0087',note:''},
-    {id:uid(),no:'RC-2569-0060',invNo:'INV-2569-0070',customer:n(7),date:'2026-08-20',amount:44800,status:'ชำระแล้ว',method:'เงินโอน',poRef:'',note:''}];
-  docs.filter(d=>d.type==='quotation').forEach(d=>{
-    d.items=[{name:'stretch film 250 mm. x 300 m. x 12 mc.\n\n1 กล่องบรรจุ 6 ม้วน\nยอดการสั่งซื้อขั้นต่ำ 60 ม้วน/ขนาด',qty:1,unit:'รายการ',price:d.amount}];
-    d.payment='เงินสด';d.validDays=7;d.contact='ฝ่ายจัดซื้อ';d.notes=DEFAULT_NOTES;});
-  return {customers,docs,pos,receipts,logo:null,cert:null,company:Object.assign({},COMPANY)};
+  /* เริ่มต้นเป็นระบบเปล่า ไม่มีข้อมูลตัวอย่าง — ผู้ใช้ใหม่กรอกของจริงได้เลย */
+  return {customers:[],docs:[],pos:[],receipts:[],logo:null,cert:null,
+          company:Object.assign({},COMPANY)};
 }
-function resetDemo(){askConfirm('รีเซ็ตข้อมูล','ล้างข้อมูลทั้งหมดแล้วโหลดข้อมูลตัวอย่างใหม่ การกระทำนี้ย้อนกลับไม่ได้','รีเซ็ต',()=>{DB=seed();save();go('dashboard');toast('รีเซ็ตข้อมูลแล้ว');});}
+/* ล้างข้อมูลงานขายทั้งหมด แต่เก็บหัวกระดาษ โลโก้ และการตั้งค่าไว้ */
+function clearAllData(){
+  askConfirm("ล้างข้อมูลทั้งหมด",
+    "ลบลูกค้า เอกสาร PO และใบเสร็จของบัญชีนี้ทั้งหมด กู้คืนไม่ได้ (หัวกระดาษ โลโก้ และการตั้งค่ายังอยู่)",
+    "ล้างข้อมูล",()=>{
+      const keep={logo:DB.logo,cert:DB.cert,company:DB.company,sb:DB.sb};
+      DB=Object.assign(seed(),keep);
+      save();go("dashboard");toast("ล้างข้อมูลแล้ว");
+    });
+}
 
 /* ================= feedback ================= */
 let undoFn=null;
