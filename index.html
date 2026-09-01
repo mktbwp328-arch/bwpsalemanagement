@@ -403,8 +403,8 @@ a{color:var(--blue);text-decoration:none}
     <nav class="nav" id="nav"></nav>
     <div style="margin-top:auto;padding:18px 12px 0;display:flex;flex-direction:column;gap:8px">
       <button class="btn sm blk" onclick="pasteCodeModal()" style="background:#1b3f86;border-color:#2a55a8">✍ เซ็นอนุมัติเอกสาร</button>
-      <button class="btn gh sm blk" onclick="sbSettings()">ตั้งค่าฐานข้อมูล</button>
-      <button class="btn dg sm blk" onclick="clearAllData()">ล้างข้อมูลทั้งหมด</button>
+      <button class="btn gh sm blk admin-only" id="dbBtn" onclick="sbSettings()">ตั้งค่าฐานข้อมูล</button>
+      <button class="btn dg sm blk admin-only" id="clearBtn" onclick="clearAllData()">ล้างข้อมูลทั้งหมด</button>
     </div>
   </aside>
 
@@ -542,6 +542,7 @@ function seed(){
 }
 /* ล้างข้อมูลงานขายทั้งหมด แต่เก็บหัวกระดาษ โลโก้ และการตั้งค่าไว้ */
 function clearAllData(){
+  if(!isManager()){toast('เฉพาะผู้ดูแลระบบเท่านั้น');return;}
   askConfirm("ล้างข้อมูลทั้งหมด",
     "ลบลูกค้า เอกสาร PO และใบเสร็จของบัญชีนี้ทั้งหมด กู้คืนไม่ได้ (หัวกระดาษ โลโก้ และการตั้งค่ายังอยู่)",
     "ล้างข้อมูล",()=>{
@@ -1960,6 +1961,8 @@ function render(){
   mk.innerHTML=logoSrc()?`<img src="${imgSrc(logoSrc())}">`:'BWP';
   mk.classList.toggle('hasimg',!!logoSrc());
   mk.onclick=logoMenu;
+  /* ปุ่มที่อันตราย ให้เห็นเฉพาะผู้ดูแล กันพนักงานกดผิด */
+  document.querySelectorAll('.admin-only').forEach(b=>{b.style.display=isManager()?'':'none';});
 
   const v=$('#view');v.innerHTML='';$('#topActions').innerHTML='';
   ({dashboard:pgDashboard,customers:pgCustomers,documents:pgDocuments,po:pgPO,
