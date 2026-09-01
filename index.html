@@ -2938,7 +2938,9 @@ function pgProducts(v){
     PRODSYNC.src==='cloud'?'ที่มา: คลังกลางบนคลาวด์ · ตรวจล่าสุด '+ago(PRODSYNC.at):
     PRODSYNC.src==='file'?'ที่มา: ไฟล์รายชื่อสินค้าที่มากับเว็บ':
     'ยังไม่ได้ตรวจ — กด "โหลดใหม่"'}</div>`));
-  v.append(searchRow(S.prodQ||'','ค้นหารหัส ชื่อสินค้า หรือชื่อลูกค้า',x=>{S.prodQ=x;render();}));
+  const sbar=el('<div class="toolbar"></div>');
+  sbar.append(searchRow(S.prodQ||'','ค้นหารหัส ชื่อสินค้า หรือชื่อลูกค้า',x=>{S.prodQ=x;render();}));
+  v.append(sbar);
   v.append(el(`<div class="tiny" style="margin:10px 0 4px">ทั้งหมด ${all.length} รหัส${q?' · ตรงกับคำค้น '+list.length+' รหัส':''}</div>`));
 
   if(!all.length){
