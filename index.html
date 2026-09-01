@@ -1505,16 +1505,32 @@ async function shareCredit(d){
       d.sigDocId=typeof id==='string'?id:(id&&id.id)||id;save();}
   }catch(e){toast(e.message);return;}
   const ov=el('<div class="ov"></div>');
-  const links=roles.map(([k,label])=>
-    `<div class="field" style="margin-bottom:12px"><label>${esc(label)}${d.sigs[k]?' ✅ เซ็นแล้ว':''}</label>
-      <textarea rows="2" readonly data-k="${k}" style="font-size:11.5px">${esc(baseUrl()+'#s='+d.sigDocId+'&r='+k)}</textarea>
-      <button class="btn gh sm cp" data-k="${k}" style="margin-top:6px;width:150px">คัดลอกลิงก์</button></div>`).join('');
+  /* เซ็นแล้วให้เห็นรูปลายเซ็นเลย จะได้รู้ว่าใครเซ็นแล้วบ้างโดยไม่ต้องเปิดเอกสาร */
+  const links=roles.map(([k,label],i)=>{
+    const s=d.sigs[k],done=!!(s&&s.img);
+    return `<div style="display:flex;gap:12px;align-items:flex-start;padding:13px 0;border-bottom:1px solid var(--bd2)">
+      <div style="width:26px;height:26px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+        font-size:12px;font-weight:700;background:${done?'#dcfce7':'#eef2f8'};color:${done?'#15803d':'#94a3b8'}">${done?'✓':i+1}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:600">${esc(label)}</div>
+        ${done
+          ? `<div class="tiny" style="color:#15803d">เซ็นแล้ว · ${esc(s.name||'')} · ${fmtDate(s.date)}</div>
+             <img src="${imgSrc(s.img)}" style="max-height:42px;margin-top:7px;display:block">`
+          : `<div class="tiny">ยังไม่ได้เซ็น — ส่งลิงก์นี้ให้ท่านนี้</div>
+             <textarea rows="2" readonly data-k="${k}" style="font-size:11.5px;margin-top:6px">${esc(baseUrl()+'#s='+d.sigDocId+'&r='+k)}</textarea>
+             <button class="btn gh sm cp" data-k="${k}" style="margin-top:6px;width:150px">คัดลอกลิงก์</button>`}
+      </div></div>`;}).join('');
+  const nSigned=roles.filter(r=>d.sigs[r[0]]).length;
   const m=el(`<div class="modal" style="max-width:760px"><header><div><b>ส่งลิงก์ให้เซ็น ${roles.length} ท่าน</b>
-      <div class="tiny" style="margin-top:2px">${esc(d.no)} · ${esc(d.customer)}</div></div>
+      <div class="tiny" style="margin-top:2px">${esc(d.no)} · ${esc(d.customer)} · เซ็นแล้ว ${nSigned}/${roles.length}</div></div>
       <button class="close">✕</button></header>
-    <div class="mb"><div class="hint" style="margin-bottom:16px">ส่งลิงก์ของแต่ละท่านทางไลน์ เปิดบนมือถือหรือ iPad แล้วเซ็นได้เลย เซ็นครบทั้ง ${roles.length} ลายเซ็นเอกสารจะขึ้นสถานะอนุมัติสมบูรณ์</div>
+    <div class="mb"><div class="hint" style="margin-bottom:6px">ส่งลิงก์ของแต่ละท่านทางไลน์ เปิดบนมือถือหรือ iPad แล้วเซ็นได้เลย · ท่านที่เซ็นแล้วจะขึ้นรูปลายเซ็นให้เห็นตรงนี้</div>
       ${links}</div>
-    <footer><button class="btn" id="dn">เสร็จสิ้น</button></footer></div>`);
+    <footer><button class="btn gh" id="rf">ตรวจสอบลายเซ็นล่าสุด</button><div style="flex:1"></div>
+      <button class="btn" id="dn">เสร็จสิ้น</button></footer></div>`);
+  m.querySelector('#rf').onclick=async()=>{
+    const b=m.querySelector('#rf');b.disabled=true;b.textContent='กำลังตรวจสอบ…';
+    await checkCredit(d,true);ov.remove();shareCredit(d);};
   m.querySelectorAll('.cp').forEach(b=>b.onclick=()=>{
     const t=m.querySelector(`textarea[data-k="${b.dataset.k}"]`);t.select();
     (navigator.clipboard?navigator.clipboard.writeText(t.value).catch(()=>document.execCommand('copy'))
