@@ -396,10 +396,16 @@ a{color:var(--blue);text-decoration:none}
 .sheet.inv .isign .hdd{font-size:10.5px;margin-bottom:10px}
 .sheet.inv .isign .sl{margin-top:9px;font-size:11px}
 @media print{
+  /* เอาโครงหน้าเว็บออกจากการพิมพ์จริง ๆ (ซ่อนแบบ visibility ยังกินพื้นที่ จึงเกิดหน้าว่างต่อท้าย) */
+  .app,#toast,.backdrop,.ov{display:none!important}
+  html,body{height:auto!important;min-height:0!important;margin:0!important;padding:0!important;
+    background:#fff!important;overflow:visible!important}
+  #layer{position:static!important}
   body *{visibility:hidden!important}
   .prevov,.prevov *{visibility:visible!important}
   .prevbar,.sheet .ph{display:none!important}
-  .prevov{position:absolute!important;inset:auto!important;left:0;top:0;padding:0!important;background:#fff!important;overflow:visible!important}
+  .prevov{position:static!important;inset:auto!important;padding:0!important;margin:0!important;
+    background:#fff!important;overflow:visible!important;display:block!important}
   /* บังคับ 1 แผ่น = 1 หน้ากระดาษพอดี กันหน้าว่างเกินตอนบันทึกเป็น PDF
      ใช้ 296.6mm แทน 297mm เพราะบางเบราว์เซอร์ปัดเศษขึ้นแล้วดันไปหน้าใหม่ */
   .sheet{box-shadow:none!important;margin:0!important;height:296.6mm!important;min-height:0!important;
