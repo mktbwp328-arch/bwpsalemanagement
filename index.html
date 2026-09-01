@@ -2040,6 +2040,41 @@ function openForm(title,fields,values,onSubmit,opts){
         pos:r.querySelector('.ppos')?r.querySelector('.ppos').value.trim():''}));
       ff.append(w);return;
     }
+    /* แนบรูป/ไฟล์ตั้งแต่ตอนสร้างเอกสาร — เก็บไว้ในฟอร์มก่อน ค่อยบันทึกพร้อมกันตอนกดบันทึก */
+    if(f.type==='uploads'){
+      const cur=values[f.key]||{};
+      const imgs=(cur.images||[]).slice(),fls=(cur.files||[]).slice();
+      const w=el(`<div style="grid-column:1/-1">
+        <label style="display:block;font-size:12.5px;color:#41546f;font-weight:500;margin-bottom:6px">${esc(f.label)}</label></div>`);
+      const prev=el('<div style="margin-top:12px"></div>');
+      const paint=()=>{
+        prev.innerHTML='';
+        prev.append(el(`<div style="font-size:13px;font-weight:600;margin-bottom:8px">แนบไว้แล้ว ${imgs.length} รูป · ${fls.length} ไฟล์</div>`));
+        if(imgs.length){
+          const g=el('<div class="thumbs"></div>');
+          imgs.forEach((im,i)=>{
+            const t=el(`<div class="thumb"><img src="${imgSrc(im.data)}" alt="${esc(im.name)}"><div class="nm">${esc(im.name)}</div><button type="button" class="x" title="เอาออก">✕</button></div>`);
+            t.querySelector('img').onclick=()=>lightbox(im.data);
+            t.querySelector('.x').onclick=e=>{e.stopPropagation();imgs.splice(i,1);paint();};
+            g.append(t);});
+          prev.append(g);}
+        fls.forEach((fl,i)=>{
+          const r=el(`<div style="display:flex;align-items:center;gap:10px;font-size:13px;padding:8px 0;border-top:1px solid var(--bd2)">
+            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📄 ${esc(fl.name)}</span>
+            <button type="button" class="btn gh sm">เอาออก</button></div>`);
+          r.querySelector('button').onclick=()=>{fls.splice(i,1);paint();};
+          prev.append(r);});
+      };
+      w.append(dropZone(f.hint||'JPG, PNG, PDF · รูปจะถูกย่อขนาดอัตโนมัติ',async fs=>{
+        let n=0;
+        for(const file of fs){const r=await readAny(file);if(!r)continue;
+          (r.type==='image'?imgs:fls).push(Object.assign({id:uid()},r));n++;}
+        if(n)toast('แนบ '+n+' ไฟล์แล้ว — กดบันทึกเพื่อเก็บเข้าระบบ');
+        paint();}));
+      w.append(prev);paint();
+      custom[f.key]=()=>({images:imgs,files:fls});
+      ff.append(w);return;
+    }
     if(f.type==='product'){
       const w=el(`<div class="field" style="${f.full?'grid-column:1/-1':''}">
         <label>${esc(f.label)}${f.req?' <span class="rq">*</span>':''}</label>
@@ -3687,11 +3722,17 @@ function poFields(){return [
 function pgPO(v){
   if(S.poOpen){const p=DB.pos.find(x=>x.id===S.poOpen);if(p)return poDetail(v,p);S.poOpen=null;}
   header('PO ลูกค้า',['งานขาย']);
-  actionBtn('เพิ่ม PO','plus',()=>openForm('เพิ่ม PO ลูกค้า',poFields(),
+  actionBtn('เพิ่ม PO','plus',()=>openForm('เพิ่ม PO ลูกค้า',
+    poFields().concat([{group:'รูป PO ที่ลูกค้าส่งมา',sub:'ถ่ายรูปหรือแนบไฟล์ PO ของลูกค้าได้เลย จะเพิ่มทีหลังก็ได้'},
+      {key:'attach',type:'uploads',label:'แนบรูป / ไฟล์ PO จากลูกค้า',
+       hint:'JPG, PNG, PDF · แนบได้หลายไฟล์ · รูปจะถูกย่อขนาดอัตโนมัติ'}]),
     {no:'PO-'+(new Date().getFullYear()+543)+'-'+String(DB.pos.length+90).padStart(4,'0')},d=>{
-      const p=Object.assign({id:uid(),items:[],images:[],files:[]},d);DB.pos.unshift(p);save();go('po',{poOpen:p.id});toast('สร้าง PO แล้ว — เพิ่มรายการสินค้าและแนบรูปได้เลย');}));
+      const at=d.attach||{};delete d.attach;
+      const p=Object.assign({id:uid(),items:[],images:at.images||[],files:at.files||[]},d);
+      DB.pos.unshift(p);save();go('po',{poOpen:p.id});
+      toast('สร้าง PO แล้ว'+((at.images||[]).length+(at.files||[]).length?' พร้อมไฟล์แนบ':' — เพิ่มรายการสินค้าและแนบรูปได้เลย'));}));
 
-  v.append(hint('คลิกที่ PO เพื่อเปิดหน้ารายละเอียด — เพิ่มรายการสินค้าและอัปโหลดรูป PO ได้ในหน้านั้น'));
+  v.append(hint('แนบรูป PO ของลูกค้าได้ตั้งแต่ตอนกด "เพิ่ม PO" หรือคลิกที่ PO ในรายการเพื่อเข้าไปแนบเพิ่มทีหลัง'));
 
   const bar=el('<div class="toolbar"></div>');
   bar.append(searchRow(S.poQ,'ค้นหาเลขที่ PO หรือชื่อลูกค้า',q=>{S.poQ=q;render();}));
@@ -3722,6 +3763,8 @@ function poDetail(v,p){
   header(p.no,['PO ลูกค้า',p.customer]);
   backBtn('กลับ',()=>go('po',{poOpen:null}));
   actionBtn('แก้ไขข้อมูล','edit',()=>openForm('แก้ไข '+p.no,poFields(),p,d=>{Object.assign(p,d);save();render();toast('บันทึกแล้ว');}),'btn gh');
+  actionBtn('แนบรูป PO','up',()=>pickFiles('image/*,.pdf,.doc,.docx,.xls,.xlsx',true,
+    fs=>addUploads(fs,p.images,p.files)),'btn gh');
   actionBtn('พิมพ์','print',()=>window.print(),'btn gh');
   if(!poHasReceipt(p))actionBtn('ออกใบเสร็จ','receipt',()=>issueReceipt({customer:p.customer,amount:Math.round(poGross(p)*100)/100,poRef:p.no}));
 
@@ -4434,6 +4477,7 @@ async function viewUser(id,name,mine){
 function migrate(){
   if(!DB.company)DB.company=Object.assign({},COMPANY);
   if(!DB.products)DB.products=[];
+  (DB.pos||[]).forEach(p=>{if(!p.items)p.items=[];if(!p.images)p.images=[];if(!p.files)p.files=[];});
   if(DB.cert===undefined)DB.cert=null;
   (DB.docs||[]).filter(d=>d.type==='quotation').forEach(d=>{
     ensureQuote(d);
