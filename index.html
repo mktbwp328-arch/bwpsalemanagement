@@ -1364,6 +1364,32 @@ function signaturePad(){
     }};
 }
 /* กล่องเซ็นชื่อ: มีปุ่ม ล้าง และ บันทึก */
+/* ---------- ลายเซ็นประจำตัวของพนักงานขาย ----------
+   เซ็นครั้งเดียว ระบบจำไว้ แล้วเติมให้อัตโนมัติทุกครั้งที่สร้างเอกสารใหม่ */
+function mySig(){const s=DB&&DB.mySig;return s&&s.img?s:null;}
+function saveMySig(sig){
+  if(!sig||!sig.img||readOnly())return;
+  DB.mySig={img:sig.img,name:sig.name||'',savedAt:today()};
+  save();
+}
+/* เติมลายเซ็นฝ่ายขายให้เอกสารที่เพิ่งสร้าง */
+function autoSignSales(doc){
+  const s=mySig();
+  if(!s)return false;
+  const stamp={img:s.img,name:s.name||(AUTH.profile&&AUTH.profile.name)||'',date:today()};
+  if(doc.type==='quotation'){
+    if(doc.sigSales)return false;
+    doc.sigSales=stamp;
+    if(!doc.salesperson)doc.salesperson=stamp.name;
+  }else{
+    if(!rolesOf(doc.type).some(r=>r[0]==='sales'))return false;
+    doc.sigs=doc.sigs||{};
+    if(doc.sigs.sales)return false;
+    doc.sigs.sales=stamp;
+    if(doc.type==='sample'&&!doc.salesName)doc.salesName=stamp.name;
+  }
+  return true;
+}
 function signModal(title,role,defName,onSave){
   const ov=el('<div class="ov"></div>');
   const m=el(`<div class="modal" style="max-width:640px"><header><div><b>${esc(title)}</b>
@@ -1734,10 +1760,21 @@ function creditSignView(row,id,role){
   bOk.onclick=()=>finish(true);
   bNo.onclick=()=>askConfirm('ไม่อนุมัติ','บันทึกว่าไม่อนุมัติใบขอเครดิตนี้?','ยืนยัน',()=>finish(false));
 }
+/* เซ็นที่เครื่องนี้หลังส่งลิงก์ไปแล้ว ต้องส่งขึ้นฐานข้อมูลด้วย
+   ไม่งั้นรอบถัดไปที่ดึงข้อมูลจากคลาวด์ ลายเซ็นที่เพิ่งเซ็นจะหายไป */
+async function pushLocalSig(d,role,sig){
+  if(!d.sigDocId||!sbOn()||!sig||!sig.img)return;
+  try{
+    await sbRpc('add_doc_signature',{p_id:d.sigDocId,p_role:role,p_name:sig.name||'',
+      p_sig:sig.img,p_ok:true,p_note:null,p_roles_required:rolesOf(d.type).map(r=>r[0])});
+  }catch(e){/* ส่งไม่ขึ้นก็ยังมีในเครื่อง ไม่ต้องรบกวนผู้ใช้ */}
+}
 function applyCreditSigs(no,sigs,status,silent,type){
   const d=(type==='receipt'?DB.receipts:DB.docs).find(x=>x.no===no&&(type==='receipt'||x.type===(type||'credit')));
   if(!d)return false;
-  ensureByType(Object.assign(d,{type:d.type||type}));d.sigs=sigs||{};
+  ensureByType(Object.assign(d,{type:d.type||type}));
+  /* รวมกับลายเซ็นที่เซ็นไว้ในเครื่อง ไม่ให้ของที่ยังไม่ทันขึ้นคลาวด์หายไป */
+  d.sigs=Object.assign({},d.sigs||{},sigs||{});
   /* ใบขอตัวอย่าง: ดึงผลการพิจารณา/ข้อเสนอแนะที่ฝ่ายวิจัยกรอกมากับลายเซ็น */
   if(d.type==='sample'&&d.sigs.rd&&d.sigs.rd.note){
     try{const o=JSON.parse(d.sigs.rd.note);
@@ -3607,7 +3644,10 @@ function pgDocuments(v){
     if(doc.type==='quotation'){ensureQuote(doc);doc.amount=qtTotal(doc);}
     if(doc.type==='credit'){ensureCredit(doc);doc.amount=doc.approvedAmount||0;}
     if(doc.type==='sample'||doc.type==='requirement'){ensureByType(doc);doc.amount=doc.amount||0;}
-    DB.docs.unshift(doc);save();render();toast('สร้างเอกสารแล้ว');openDocSmart(doc);},
+    const signed=autoSignSales(doc);      /* เติมลายเซ็นฝ่ายขายที่จำไว้ให้เลย */
+    DB.docs.unshift(doc);save();render();
+    toast(signed?'สร้างเอกสารแล้ว — เซ็นชื่อฝ่ายขายให้อัตโนมัติ':'สร้างเอกสารแล้ว');
+    openDocSmart(doc);},
     isQ?{wide:true,sub:'กรอกข้อมูลตามลำดับ 1 → 4 แล้วกดสร้าง',okLabel:'สร้างใบเสนอราคา'}
     :{wide:true,sub:'กรอกตามแบบฟอร์มบริษัท แล้วกดสร้าง',okLabel:'สร้าง'+t[1]}));
 
@@ -3657,10 +3697,13 @@ function signCard(d,onSigned){
       ${done?`<img src="${imgSrc(s.img)}" style="max-height:40px;margin-top:7px;display:block">`:''}</div></div>`);
     if(!done){
       const b=el('<button class="btn gh sm">เซ็นที่เครื่องนี้</button>');
-      b.onclick=()=>signModal('เซ็น — '+label,d.no,'',s2=>{
+      b.onclick=()=>signModal('เซ็น — '+label,d.no,
+        k==='sales'?((mySig()&&mySig().name)||(AUTH.profile&&AUTH.profile.name)||''):'',s2=>{
         d.sigs=d.sigs||{};d.sigs[k]=s2;
+        if(k==='sales')saveMySig(s2);        /* จำลายเซ็นฝ่ายขายไว้ใช้ครั้งต่อไป */
         if(onSigned)onSigned();
-        save();render();toast('บันทึกลายเซ็น '+label+' แล้ว');});
+        save();render();toast('บันทึกลายเซ็น '+label+' แล้ว');
+        pushLocalSig(d,k,s2);});
       row.append(b);}
     sg.append(row);});
   const send=el(`<button class="btn blk" style="margin-top:14px">${svg('doc','ic s')}ส่งลิงก์ให้เซ็น ${roles.length} ท่าน</button>`);
@@ -3896,8 +3939,9 @@ function quoteDetail(v,d){
     }
     return w;};
   sg.append(step(1,'ฝ่ายขายเซ็น',d.sigSales,'เซ็นชื่อ',
-    ()=>signModal('เซ็นชื่อ — พนักงานขาย','ใบเสนอราคา '+d.no,d.salesperson,s=>{
-      d.sigSales=s;if(!d.salesperson)d.salesperson=s.name;
+    ()=>signModal('เซ็นชื่อ — พนักงานขาย','ใบเสนอราคา '+d.no,
+      d.salesperson||(mySig()&&mySig().name)||(AUTH.profile&&AUTH.profile.name)||'',s=>{
+      d.sigSales=s;if(!d.salesperson)d.salesperson=s.name;saveMySig(s);
       if(d.status==='ร่าง')d.status='ส่งแล้ว';save();render();toast('บันทึกลายเซ็นแล้ว');}),false));
   sg.append(step(2,'ผู้บริหารอนุมัติ',d.sigApprover,'เซ็นที่เครื่องนี้',
     ()=>signModal('เซ็นอนุมัติ — ผู้บริหาร','ใบเสนอราคา '+d.no,d.sigApprover&&d.sigApprover.name,s=>{
@@ -4521,6 +4565,7 @@ function userMenu(){
       ${isManager()?'<button class="btn gh blk" id="team">ดูข้อมูลของทีมขาย</button>':''}
       ${isManager()?'<button class="btn gh blk" id="emp">ข้อมูลพนักงาน</button>':''}
       ${ro?'<button class="btn blk" id="mine">กลับไปข้อมูลของฉัน</button>':''}
+      ${ro?'':`<button class="btn gh blk" id="msig">ลายเซ็นของฉัน ${mySig()?'(ตั้งไว้แล้ว)':'— ยังไม่ได้ตั้ง'}</button>`}
       <button class="btn gh blk" id="sync">บันทึกขึ้นคลาวด์เดี๋ยวนี้</button>
       <button class="btn dg blk" id="out">ออกจากระบบ</button>
     </div></div>`);
@@ -4533,7 +4578,34 @@ function userMenu(){
     if(readOnly()){toast('โหมดดูอย่างเดียว ไม่มีอะไรต้องบันทึก');return;}
     setSync('saving');await cloudSave();
     toast(syncState==='offline'?'บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง':'บันทึกขึ้นคลาวด์แล้ว');};
+  if(m.querySelector('#msig'))m.querySelector('#msig').onclick=()=>{close();mySigManager();};
   m.querySelector('#out').onclick=()=>{close();logout();};
+  ov.append(m);$('#layer').append(ov);
+}
+/* ตั้ง / เปลี่ยน / ลบ ลายเซ็นประจำตัว */
+function mySigManager(){
+  const s=mySig();
+  const ov=el('<div class="ov"></div>');
+  const m=el(`<div class="modal" style="max-width:520px"><header><div><b>ลายเซ็นของฉัน</b>
+      <div class="tiny" style="margin-top:2px">เซ็นครั้งเดียว ระบบจะเซ็นให้อัตโนมัติทุกครั้งที่สร้างเอกสารใหม่</div></div>
+      <button class="close">✕</button></header>
+    <div class="mb">${s
+      ? `<div class="tiny">ตั้งไว้เมื่อ ${fmtDate(s.savedAt)}${s.name?' · '+esc(s.name):''}</div>
+         <div style="border:1px solid var(--bd);border-radius:12px;padding:14px;margin-top:8px;text-align:center">
+           <img src="${imgSrc(s.img)}" style="max-height:70px"></div>`
+      : '<div class="empty">ยังไม่ได้ตั้งลายเซ็น<div style="font-size:14px">กด "เซ็นชื่อ" ด้านล่างเพื่อบันทึกไว้ใช้ตลอด</div></div>'}
+      <div class="hint" style="margin-top:14px">ใช้กับช่องฝ่ายขายของ ใบเสนอราคา · ใบขอเครดิต · ใบขอตัวอย่าง · ใบข้อกำหนดของลูกค้า</div></div>
+    <footer>${s?'<button class="btn dg" id="del">ลบลายเซ็น</button>':''}<div style="flex:1"></div>
+      <button class="btn gh" id="c">ปิด</button><button class="btn" id="ok">${s?'เซ็นใหม่':'เซ็นชื่อ'}</button></footer></div>`);
+  const close=()=>ov.remove();
+  m.querySelector('.close').onclick=close;m.querySelector('#c').onclick=close;
+  m.querySelector('#ok').onclick=()=>{close();
+    signModal('ลายเซ็นของฉัน','ใช้เป็นลายเซ็นฝ่ายขายในทุกเอกสาร',
+      (s&&s.name)||(AUTH.profile&&AUTH.profile.name)||'',
+      sg=>{saveMySig(sg);render();toast('บันทึกลายเซ็นประจำตัวแล้ว — เอกสารใหม่จะเซ็นให้อัตโนมัติ');});};
+  if(m.querySelector('#del'))m.querySelector('#del').onclick=()=>{
+    const old=DB.mySig;DB.mySig=null;save();close();render();
+    toast('ลบลายเซ็นประจำตัวแล้ว',()=>{DB.mySig=old;save();render();});};
   ov.append(m);$('#layer').append(ov);
 }
 function logout(){
