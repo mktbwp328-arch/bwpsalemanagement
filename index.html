@@ -605,7 +605,6 @@ function askConfirm(title,msg,okLabel,fn){
   const close=()=>ov.remove();
   m.querySelector('#c').onclick=close;
   m.querySelector('#o').onclick=()=>{close();fn();};
-  ov.onclick=e=>{if(e.target===ov)close();};
   ov.append(m);$('#layer').append(ov);m.querySelector('#o').focus();
 }
 
@@ -1124,7 +1123,6 @@ function imageMenu(key,label){
   m.querySelector('#ch').onclick=()=>{close();pickCompanyImage(key,label);};
   m.querySelector('#del').onclick=()=>{const old=DB[key];DB[key]=null;save();close();render();
     toast('ลบ'+label+'แล้ว',()=>{DB[key]=old;save();render();});};
-  ov.onclick=e=>{if(e.target===ov)close();};
   ov.append(m);$('#layer').append(ov);
 }
 const logoMenu=()=>imageMenu('logo','โลโก้บริษัท');
@@ -1350,7 +1348,6 @@ function signModal(title,role,defName,onSave){
     const img=pad.data();
     if(!img){toast('ยังไม่ได้เซ็น — กรุณาเซ็นชื่อในกรอบก่อน');return;}
     onSave({img,name:m.querySelector('#sgname').value.trim()||defName||'',date:today()});close();};
-  ov.onclick=e=>{if(e.target===ov)close();};
   ov.append(m);$('#layer').append(ov);
 }
 
@@ -1397,7 +1394,6 @@ async function shareApproval(d){
   m.querySelector('#c2').onclick=()=>cp('#cd','คัดลอกรหัสแล้ว');
   const close=()=>ov.remove();
   m.querySelector('.close').onclick=close;m.querySelector('#dn').onclick=close;
-  ov.onclick=e=>{if(e.target===ov)close();};
   ov.append(m);$('#layer').append(ov);
   if(d.status==='ร่าง'){d.status='รออนุมัติ';save();}
 }
@@ -1534,7 +1530,6 @@ async function shareCredit(d){
       :Promise.resolve(document.execCommand('copy'))).then(()=>toast('คัดลอกลิงก์ '+roleName(b.dataset.k,d.type)+' แล้ว'));});
   const close=()=>ov.remove();
   m.querySelector('.close').onclick=close;m.querySelector('#dn').onclick=close;
-  ov.onclick=e=>{if(e.target===ov)close();};
   ov.append(m);$('#layer').append(ov);
 }
 /* หน้าจอผู้เซ็น (เปิดจากลิงก์) */
@@ -1837,12 +1832,12 @@ function openForm(title,fields,values,onSubmit,opts){
     if(bad){toast('กรุณากรอก: '+bad[0]);bad[1].focus();bad[1].style.borderColor='#dc2626';return;}
     onSubmit(out);close();
   };
-  const key=e=>{if(e.key==='Escape')close();
+  /* ไม่ปิดด้วย Esc — ฟอร์มกรอกข้อมูลต้องกดยกเลิกหรือกากบาทเท่านั้น กันข้อมูลที่พิมพ์ไว้หาย */
+  const key=e=>{
     if(e.key==='Enter'&&e.target.tagName!=='TEXTAREA'&&!e.target.closest('.itbl'))submit();};
   document.addEventListener('keydown',key);
   m.querySelector('.close').onclick=close;m.querySelector('#c').onclick=close;m.querySelector('#s').onclick=submit;
   if(m.querySelector('#x'))m.querySelector('#x').onclick=()=>{close();opts.extra.fn();};
-  ov.onclick=e=>{if(e.target===ov)close();};
   ov.append(m);$('#layer').append(ov);
   setTimeout(()=>ff.querySelector('input,select,textarea')?.focus(),40);
 }
@@ -1852,8 +1847,8 @@ let drawerOpen=null;
 function closeDrawer(){$('#layer').querySelectorAll('.dr,.drbd').forEach(x=>x.remove());drawerOpen=null;}
 function drawer(cfg){
   closeDrawer();drawerOpen=cfg.id||true;
+  /* ฉากหลังมืดไว้เน้นแผง แต่กดแล้วไม่ปิด ต้องกดปุ่มปิดเท่านั้น */
   const bd=el('<div class="backdrop on drbd" style="z-index:85"></div>');
-  bd.onclick=closeDrawer;
   const d=el(`<div class="dr"><header>
       <div style="min-width:0"><div class="tiny">${esc(cfg.kicker||'')}</div>
       <div style="font-size:19px;font-weight:700;line-height:1.3">${esc(cfg.title)}</div>
@@ -3360,7 +3355,6 @@ function userMenu(){
     setSync('saving');await cloudSave();
     toast(syncState==='offline'?'บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง':'บันทึกขึ้นคลาวด์แล้ว');};
   m.querySelector('#out').onclick=()=>{close();logout();};
-  ov.onclick=e=>{if(e.target===ov)close();};
   ov.append(m);$('#layer').append(ov);
 }
 function logout(){
@@ -3474,7 +3468,6 @@ async function userAdmin(){
     list.append(r);});
   m.querySelector('#add').onclick=()=>{ov.remove();userCreate();};
   m.querySelector('.close').onclick=()=>ov.remove();
-  ov.onclick=e=>{if(e.target===ov)ov.remove();};
   ov.append(m);$('#layer').append(ov);
 }
 function userCreate(){
@@ -3533,7 +3526,6 @@ function userEdit(u,isMe){
   if(m.querySelector('#del'))m.querySelector('#del').onclick=()=>{close();
     askConfirm('ลบบัญชีพนักงาน','ลบบัญชี "'+toUsername(u.email)+'" ออกจากระบบ? ข้อมูลงานขายของคนนี้จะถูกลบตามไปด้วย และกู้คืนไม่ได้','ลบบัญชี',
       async()=>{try{await sbFn({action:'delete',id:u.id});toast('ลบบัญชีแล้ว');userAdmin();}catch(e){toast(e.message);}});};
-  ov.onclick=e=>{if(e.target===ov)close();};
   ov.append(m);$('#layer').append(ov);
 }
 
@@ -3561,7 +3553,6 @@ async function teamPicker(){
       list.append(r);});
   if(!team.length)list.append(el('<div class="empty">ยังไม่มีผู้ใช้คนอื่นในระบบ</div>'));
   m.querySelector('.close').onclick=()=>ov.remove();
-  ov.onclick=e=>{if(e.target===ov)ov.remove();};
   ov.append(m);$('#layer').append(ov);
 }
 async function viewUser(id,name,mine){
