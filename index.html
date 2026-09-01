@@ -400,8 +400,13 @@ a{color:var(--blue);text-decoration:none}
   .prevov,.prevov *{visibility:visible!important}
   .prevbar,.sheet .ph{display:none!important}
   .prevov{position:absolute!important;inset:auto!important;left:0;top:0;padding:0!important;background:#fff!important;overflow:visible!important}
-  .sheet{box-shadow:none!important;margin:0!important;break-after:page;page-break-after:always}
+  /* บังคับ 1 แผ่น = 1 หน้ากระดาษพอดี กันหน้าว่างเกินตอนบันทึกเป็น PDF
+     ใช้ 296.6mm แทน 297mm เพราะบางเบราว์เซอร์ปัดเศษขึ้นแล้วดันไปหน้าใหม่ */
+  .sheet{box-shadow:none!important;margin:0!important;height:296.6mm!important;min-height:0!important;
+    max-height:296.6mm!important;overflow:hidden!important;
+    break-inside:avoid;page-break-inside:avoid;break-after:page;page-break-after:always}
   .sheet:last-child{break-after:auto;page-break-after:auto}
+  .prevov>*:last-child{margin-bottom:0!important}
   @page{size:A4;margin:0}
 }
 .seg{display:flex;background:#eef2f8;border-radius:10px;padding:4px;gap:3px}
