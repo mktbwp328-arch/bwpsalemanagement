@@ -276,11 +276,18 @@ a{color:var(--blue);text-decoration:none}
 .sheet table.items td{border-left:1px solid #000;border-right:1px solid #000;
   border-top:0;border-bottom:0;padding:4px 6px;vertical-align:top;font-size:12px}
 .sheet table.items th{text-align:center;font-weight:400;height:9mm;vertical-align:middle}
-.sheet table.items td.no{text-align:center;width:11mm}
-.sheet table.items td.dt{font-family:'Courier New',monospace;font-size:11.5px;white-space:pre-line}
-.sheet table.items td.qt{text-align:right;width:26mm}
-.sheet table.items td.pr{text-align:right;width:24mm}
-.sheet table.items td.am{text-align:right;width:26mm}
+/* ช่องตัวเลขแคบเท่าที่พอดี เหลือที่ให้ช่องรหัสสินค้า/รายละเอียดกว้างที่สุด */
+.sheet table.items td.no{text-align:center;width:9mm}
+.sheet table.items td.dt{font-family:'Courier New',monospace;font-size:11.5px;white-space:pre-line;
+  word-break:break-word;padding-right:8px}
+.sheet table.items td.qt{text-align:right;width:22mm}
+.sheet table.items td.pr{text-align:right;width:20mm}
+.sheet table.items td.am{text-align:right;width:24mm}
+/* ตารางเป็น table-layout:fixed ความกว้างยึดจากแถวหัวตาราง จึงต้องกำหนดที่ th ด้วย */
+.sheet table.items th:nth-child(1){width:9mm}
+.sheet table.items th:nth-child(3){width:22mm}
+.sheet table.items th:nth-child(4){width:20mm}
+.sheet table.items th:nth-child(5){width:24mm}
 .sheet table.items tr.fill td{border-top:0;border-bottom:0;height:auto}
 .sheet table.items tr.sum td{height:auto;padding:4px 8px;font-size:12px;vertical-align:middle;
   border-top:1px solid #000;border-bottom:1px solid #000}
