@@ -1694,6 +1694,7 @@ async function unzip(buf){
 }
 const colIdx=r=>{const m=String(r).match(/^[A-Z]+/);if(!m)return 0;
   let n=0;for(const c of m[0])n=n*26+(c.charCodeAt(0)-64);return n-1;};
+/* คืนค่าเป็นรายการชีตทั้งหมด [{name, rows}] */
 async function parseXLSX(buf){
   const zip=await unzip(buf);
   const dom=s=>new DOMParser().parseFromString(s,'application/xml');
@@ -1701,22 +1702,38 @@ async function parseXLSX(buf){
   const ssKey=Object.keys(zip).find(k=>/sharedStrings\.xml$/i.test(k));
   if(ssKey)shared=[...dom(zip[ssKey]).getElementsByTagName('si')]
     .map(si=>[...si.getElementsByTagName('t')].map(t=>t.textContent).join(''));
-  const shKey=Object.keys(zip).filter(k=>/^xl\/worksheets\/sheet\d+\.xml$/i.test(k)).sort()[0];
-  if(!shKey)throw new Error('ไม่พบชีตข้อมูลในไฟล์');
-  const rows=[];
-  [...dom(zip[shKey]).getElementsByTagName('row')].forEach(row=>{
-    const arr=[];
-    [...row.getElementsByTagName('c')].forEach(c=>{
-      const i=colIdx(c.getAttribute('r')||''),t=c.getAttribute('t');
-      let v='';
-      if(t==='s'){const x=c.getElementsByTagName('v')[0];v=x?(shared[+x.textContent]||''):'';}
-      else if(t==='inlineStr'){v=[...c.getElementsByTagName('t')].map(e=>e.textContent).join('');}
-      else{const x=c.getElementsByTagName('v')[0];v=x?x.textContent:'';}
-      arr[i]=String(v).trim();
+  /* หาชื่อชีตและลำดับที่ถูกต้องจาก workbook.xml + rels */
+  let order=[];
+  try{
+    const wb=dom(zip['xl/workbook.xml']),rels=dom(zip['xl/_rels/workbook.xml.rels']);
+    const map={};
+    [...rels.getElementsByTagName('Relationship')].forEach(r=>{
+      map[r.getAttribute('Id')]='xl/'+r.getAttribute('Target').replace(/^\/?xl\//,'');});
+    order=[...wb.getElementsByTagName('sheet')].map(s=>({
+      name:s.getAttribute('name'),
+      key:map[s.getAttribute('r:id')||s.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id')]
+    })).filter(s=>s.key&&zip[s.key]);
+  }catch(e){}
+  if(!order.length)order=Object.keys(zip).filter(k=>/^xl\/worksheets\/sheet\d+\.xml$/i.test(k))
+    .sort().map((k,i)=>({name:'ชีต '+(i+1),key:k}));
+  if(!order.length)throw new Error('ไม่พบชีตข้อมูลในไฟล์');
+  const readRows=key=>{
+    const rows=[];
+    [...dom(zip[key]).getElementsByTagName('row')].forEach(row=>{
+      const arr=[];
+      [...row.getElementsByTagName('c')].forEach(c=>{
+        const i=colIdx(c.getAttribute('r')||''),t=c.getAttribute('t');
+        let v='';
+        if(t==='s'){const x=c.getElementsByTagName('v')[0];v=x?(shared[+x.textContent]||''):'';}
+        else if(t==='inlineStr'){v=[...c.getElementsByTagName('t')].map(e=>e.textContent).join('');}
+        else{const x=c.getElementsByTagName('v')[0];v=x?x.textContent:'';}
+        arr[i]=String(v).trim();
+      });
+      rows.push(arr);
     });
-    rows.push(arr);
-  });
-  return rows.filter(r=>r.some(c=>c&&c.length));
+    return rows.filter(r=>r.some(c=>c&&c.length));
+  };
+  return order.map(s=>({name:s.name,rows:readRows(s.key)}));
 }
 function parseCSV(text){
   text=text.replace(/^﻿/,'');
@@ -1737,7 +1754,7 @@ function parseCSV(text){
   return rows.filter(r=>r.some(c=>c&&c.length));
 }
 async function readSheet(file){
-  if(/\.csv$/i.test(file.name))return parseCSV(await file.text());
+  if(/\.csv$/i.test(file.name))return [{name:'CSV',rows:parseCSV(await file.text())}];
   if(/\.xlsx$/i.test(file.name))return parseXLSX(await file.arrayBuffer());
   throw new Error('รองรับเฉพาะไฟล์ .xlsx และ .csv — ถ้าเป็น .xls ให้เปิดใน Excel แล้ว Save As เป็น .xlsx ก่อน');
 }
@@ -2307,16 +2324,36 @@ function pgDashboard(v){
 /* ---------- 2. CUSTOMERS ---------- */
 /* ---------- นำเข้าลูกค้าจาก Excel / CSV ---------- */
 const IMPORT_FIELDS=[
-  {k:'name',label:'ชื่อบริษัท / ลูกค้า',req:true,hint:['ชื่อ','บริษัท','ลูกค้า','name','company','customer']},
-  {k:'contact',label:'ชื่อผู้ติดต่อ',hint:['ผู้ติดต่อ','ติดต่อ','contact','attn']},
-  {k:'phone',label:'เบอร์โทร',hint:['เบอร์','โทร','phone','tel','mobile']},
+  {k:'name',label:'ชื่อบริษัท / ลูกค้า',req:true,hint:['ชื่อลูกค้า','ชื่อบริษัท','บริษัท','customername','companyname','company','customer']},
+  {k:'contact',label:'ชื่อผู้ติดต่อ',hint:['ผู้ติดต่อ','contactperson','contact','attn']},
+  {k:'contactPos',label:'ตำแหน่งผู้ติดต่อ',hint:['ตำแหน่ง','position']},
+  {k:'phone',label:'เบอร์โทร',hint:['เบอร์โทร','เบอร์','โทรศัพท์','โทร','phone','tel','mobile']},
   {k:'email',label:'อีเมล',hint:['อีเมล','เมล','email','e-mail']},
   {k:'address',label:'ที่อยู่',hint:['ที่อยู่','address','addr']},
+  {k:'shipTo',label:'สถานที่ส่งสินค้า',hint:['สถานที่ส่ง','จัดส่ง','ส่งสินค้า','shipto','delivery']},
   {k:'taxId',label:'เลขประจำตัวผู้เสียภาษี',hint:['ภาษี','tax','vat']},
-  {k:'biz',label:'ประเภทธุรกิจ',hint:['ประเภท','ธุรกิจ','biz','type']},
+  {k:'biz',label:'ประเภทธุรกิจ',hint:['ประเภทธุรกิจ','ธุรกิจ','business','industry']},
   {k:'creditTerm',label:'เครดิตเทอม',hint:['เครดิต','credit','term']},
-  {k:'owner',label:'ผู้ดูแล',hint:['ผู้ดูแล','เซล','sale','owner']}
+  {k:'channel',label:'ช่องทางติดต่อ',hint:['ช่องทาง','channel','source']},
+  {k:'status',label:'สถานะ',hint:['สถานะ','status']},
+  {k:'note',label:'หมายเหตุ / รายละเอียด',hint:['หมายเหตุ','รายละเอียด','note','remark','detail']},
+  {k:'owner',label:'ผู้ดูแล',hint:['ผู้ดูแล','เซล','sale','owner','responsible']}
 ];
+/* เดาว่าแถวไหนคือหัวตาราง — แถวที่ตรงกับชื่อช่องที่รู้จักมากที่สุด */
+function guessHeaderRow(rows){
+  let best=0,bestScore=-1;
+  rows.slice(0,12).forEach((r,i)=>{
+    const filled=r.filter(c=>c&&c.length).length;
+    if(filled<2)return;
+    let score=filled;
+    IMPORT_FIELDS.forEach(f=>{
+      if(r.some(c=>{const t=String(c||'').toLowerCase().replace(/\s/g,'');
+        return t&&f.hint.some(h=>t.includes(h.toLowerCase()));}))score+=4;
+    });
+    if(score>bestScore){bestScore=score;best=i;}
+  });
+  return best;
+}
 function importCustomers(){
   const ov=el('<div class="ov"></div>');
   const m=el(`<div class="modal" style="max-width:860px"><header><div><b>นำเข้าลูกค้าจาก Excel</b>
@@ -2331,38 +2368,53 @@ function importCustomers(){
   m.querySelector('#tpl').onclick=()=>{
     downloadXLSX('เทมเพลตนำเข้าลูกค้า.xlsx',[
       IMPORT_FIELDS.map(f=>f.label),
-      ['ตัวอย่าง บริษัท เอบีซี จำกัด','คุณสมชาย ใจดี','081-234-5678','somchai@abc.co.th',
-       '123/45 ถ.สุขุมวิท แขวงคลองเตย เขตคลองเตย กรุงเทพฯ 10110','0123456789012','ค้าส่ง','30 วัน','คุณวราลักษณ์'],
-      ['ตัวอย่าง หจก. ดีอีเอฟ','คุณสมหญิง รักดี','02-317-5470','contact@def.co.th',
-       '99 หมู่ 6 ต.บางบ่อ อ.บางบ่อ จ.สมุทรปราการ 10560','0987654321098','โรงงานผลิต','เงินสด','คุณวราลักษณ์']
-    ],[34,20,16,24,46,22,18,14,16],'ลูกค้า');
+      ['ตัวอย่าง บริษัท เอบีซี จำกัด','คุณสมชาย ใจดี','จัดซื้อ','081-234-5678','somchai@abc.co.th',
+       '123/45 ถ.สุขุมวิท แขวงคลองเตย เขตคลองเตย กรุงเทพฯ 10110','คลังบางนา กม.19','0123456789012',
+       'ค้าส่ง','30 วัน','LINE','ใหม่','ขอใบเสนอราคา Shrink Film','คุณวราลักษณ์'],
+      ['ตัวอย่าง หจก. ดีอีเอฟ','คุณสมหญิง รักดี','ผู้จัดการฝ่ายผลิต','02-317-5470','contact@def.co.th',
+       '99 หมู่ 6 ต.บางบ่อ อ.บางบ่อ จ.สมุทรปราการ 10560','ระยอง','0987654321098',
+       'โรงงานผลิต','เงินสด','Email','กำลังติดต่อ','นัดเข้าพบหน้างานสัปดาห์หน้า','คุณวราลักษณ์']
+    ],[34,20,18,16,24,46,22,22,18,14,16,14,34,16],'ลูกค้า');
     toast('ดาวน์โหลดเทมเพลต Excel แล้ว — ลบ 2 แถวตัวอย่างออกก่อนใช้งานจริง');};
 
   const step1=()=>{
     body.innerHTML='';
-    const dz=dropZone('ไฟล์ .xlsx หรือ .csv ที่แถวแรกเป็นหัวตาราง',async fs=>{
+    const dz=dropZone('ไฟล์ .xlsx หรือ .csv (มีหลายชีตก็ได้ เลือกได้ทีหลัง)',async fs=>{
       if(!fs.length)return;
       body.innerHTML='<div class="empty">กำลังอ่านไฟล์…</div>';
-      try{const rows=await readSheet(fs[0]);
-        if(rows.length<2)throw new Error('ไฟล์ต้องมีหัวตารางและข้อมูลอย่างน้อย 1 แถว');
-        step2(rows,fs[0].name);}
+      try{const sheets=await readSheet(fs[0]);
+        const usable=sheets.filter(s=>s.rows.length>=2);
+        if(!usable.length)throw new Error('ไม่พบชีตที่มีข้อมูลอย่างน้อย 2 แถว');
+        step2(usable,fs[0].name,0);}
       catch(e){body.innerHTML='';
         body.append(el(`<div class="hint" style="background:#fef2f2;border-color:#fbcaca;color:#b91c1c;margin-bottom:14px">${esc(e.message)}</div>`));
         step1();}
     });
     body.append(dz);
-    body.append(el('<div class="tiny" style="margin-top:14px">แนะนำ: กด "ดาวน์โหลดไฟล์ตัวอย่าง" ด้านล่าง เปิดใน Excel แล้วกรอกข้อมูลตามคอลัมน์ จะนำเข้าได้ทันทีไม่ต้องจับคู่เอง</div>'));
+    body.append(el('<div class="tiny" style="margin-top:14px">แนะนำ: กด "ดาวน์โหลดเทมเพลต" ด้านล่าง เปิดใน Excel แล้วกรอกข้อมูลตามคอลัมน์ จะนำเข้าได้ทันทีไม่ต้องจับคู่เอง</div>'));
   };
-  const step2=(rows,fname)=>{
-    const head=rows[0],data=rows.slice(1);
+  const step2=(sheets,fname,sheetIdx,headerRow)=>{
+    const sheet=sheets[sheetIdx],rows=sheet.rows;
+    const hr=headerRow===undefined?guessHeaderRow(rows):headerRow;
+    const head=rows[hr]||[],data=rows.slice(hr+1);
     const map={};
     IMPORT_FIELDS.forEach(f=>{
       const i=head.findIndex(h=>{const t=String(h||'').toLowerCase().replace(/\s/g,'');
-        return f.hint.some(k=>t.includes(k.toLowerCase()));});
+        return t&&f.hint.some(k=>t.includes(k.toLowerCase()));});
       if(i>=0&&!Object.values(map).includes(i))map[f.k]=i;
     });
     body.innerHTML='';
-    body.append(el(`<div class="hint" style="margin-bottom:14px">อ่านไฟล์ <b>${esc(fname)}</b> ได้ ${data.length} แถว · ตรวจการจับคู่คอลัมน์ด้านล่างแล้วกดนำเข้า</div>`));
+    body.append(el(`<div class="hint" style="margin-bottom:14px">อ่านไฟล์ <b>${esc(fname)}</b> · ชีต <b>${esc(sheet.name)}</b> · ข้อมูล ${data.length} แถว</div>`));
+    /* เลือกชีต + แถวหัวตาราง */
+    const pick=el('<div class="grid g2" style="gap:12px;margin-bottom:16px"></div>');
+    const sSel=el(`<div class="field"><label>เลือกชีต</label><select>${sheets.map((s,i)=>
+      `<option value="${i}" ${i===sheetIdx?'selected':''}>${esc(s.name)} (${s.rows.length} แถว)</option>`).join('')}</select></div>`);
+    sSel.querySelector('select').onchange=e=>step2(sheets,fname,+e.target.value);
+    const hSel=el(`<div class="field"><label>แถวที่เป็นหัวตาราง</label><select>${rows.slice(0,12).map((r,i)=>
+      `<option value="${i}" ${i===hr?'selected':''}>แถว ${i+1} — ${esc(r.filter(Boolean).slice(0,4).join(' / ').slice(0,55)||'(ว่าง)')}</option>`).join('')}</select>
+      <div class="fh">ถ้าจับคู่คอลัมน์ผิด ลองเปลี่ยนแถวนี้</div></div>`);
+    hSel.querySelector('select').onchange=e=>step2(sheets,fname,sheetIdx,+e.target.value);
+    pick.append(sSel,hSel);body.append(pick);
     const grid=el('<div class="grid g2" style="gap:12px"></div>');
     IMPORT_FIELDS.forEach(f=>{
       grid.append(el(`<div class="field"><label>${esc(f.label)}${f.req?' <span class="rq">*</span>':''}</label>
@@ -2389,11 +2441,15 @@ function importCustomers(){
         const phone=sel.phone!==undefined?String(r[sel.phone]||'').trim():'';
         if(DB.customers.some(c=>c.name===name||(phone&&c.phone===phone))){skipped++;return;}
         const c={id:uid(),name,status:'ใหม่',channel:'นำเข้า',date:today(),
-          contact:'',phone:'',email:'',address:'',taxId:'',biz:'',website:'',
-          creditTerm:'30 วัน',creditLimit:0,owner:(AUTH.profile&&AUTH.profile.name)||'',
+          contact:'',contactPos:'',phone:'',email:'',address:'',shipTo:'',taxId:'',biz:'',website:'',
+          creditTerm:'30 วัน',creditLimit:0,owner:(AUTH.profile&&AUTH.profile.name)||'',note:'',
           logo:null,photos:[],files:[],
-          timeline:[{date:today(),title:'นำเข้าจากไฟล์ Excel',note:fname,by:(AUTH.profile&&AUTH.profile.name)||''}]};
+          timeline:[{date:today(),title:'นำเข้าจากไฟล์ Excel',note:fname+' · ชีต '+sheet.name,by:(AUTH.profile&&AUTH.profile.name)||''}]};
         IMPORT_FIELDS.forEach(f=>{if(sel[f.k]!==undefined)c[f.k]=String(r[sel[f.k]]||'').trim();});
+        /* สถานะต้องเป็นค่าที่ระบบรู้จัก ไม่งั้นใช้ "ใหม่" */
+        if(!CUST_ST[c.status])c.status='ใหม่';
+        if(!c.channel)c.channel='นำเข้า';
+        if(c.note)c.timeline.push({date:today(),title:'หมายเหตุจากไฟล์นำเข้า',note:c.note,by:''});
         DB.customers.unshift(c);added++;
       });
       save();close();render();
