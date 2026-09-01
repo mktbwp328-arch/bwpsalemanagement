@@ -173,6 +173,19 @@ a{color:var(--blue);text-decoration:none}
 .itrow .itno{font-size:12.5px;font-weight:700;color:var(--blue-d);background:#e7f0ff;border-radius:999px;padding:3px 12px}
 .itl1{display:grid;grid-template-columns:190px minmax(0,1fr);gap:12px}
 .itl2{display:grid;grid-template-columns:110px 130px 150px minmax(0,1fr);gap:12px;align-items:end}
+/* ช่องเลือกรหัสสินค้าแบบพิมพ์ค้นหา */
+.pcw{position:relative;min-width:0}
+.pcw>input{width:100%}
+.pcm{display:none;position:absolute;z-index:60;left:0;right:0;top:calc(100% + 4px);max-height:280px;overflow:auto;
+  background:#fff;border:1px solid #cfdcef;border-radius:12px;box-shadow:0 14px 34px rgba(15,42,90,.16)}
+.pcm.on{display:block}
+.pci{padding:9px 12px;cursor:pointer;border-bottom:1px solid #f1f5fb}
+.pci:last-child{border-bottom:0}
+.pci:hover,.pci.on{background:#eff5ff}
+.pci .cd{font-size:13.5px;font-weight:700;color:#0f2a5a;word-break:break-all}
+.pci .nm{font-size:12.5px;color:#41546f;margin-top:2px}
+.pci .mt{font-size:11.5px;color:#8798ae;margin-top:2px}
+.pce{padding:10px 12px;font-size:12.5px;color:#6b7b93;background:#f8fafc}
 .itf{display:flex;flex-direction:column;gap:6px;min-width:0}
 .itf>span{font-size:12.5px;color:#41546f;font-weight:500}
 .itrow input,.itrow select,.itrow textarea{height:44px;padding:0 12px;border:1px solid #d3ddec;border-radius:10px;
@@ -537,7 +550,7 @@ function load(){try{const r=localStorage.getItem(localKey())||localStorage.getIt
 
 function seed(){
   /* เริ่มต้นเป็นระบบเปล่า ไม่มีข้อมูลตัวอย่าง — ผู้ใช้ใหม่กรอกของจริงได้เลย */
-  return {customers:[],docs:[],pos:[],receipts:[],logo:null,cert:null,
+  return {customers:[],docs:[],pos:[],receipts:[],products:[],logo:null,cert:null,
           company:Object.assign({},COMPANY)};
 }
 /* ล้างข้อมูลงานขายทั้งหมด แต่เก็บหัวกระดาษ โลโก้ และการตั้งค่าไว้ */
@@ -1831,6 +1844,82 @@ function downloadXLSX(fname,rows,widths,sheetName){
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);
 }
 
+/* ================= คลังรหัสสินค้า =================
+   เก็บรหัสสินค้าที่เคยใช้ ให้เลือกจากดรอปดาวน์ได้ ถ้าพิมพ์รหัสใหม่ก็เก็บเพิ่มอัตโนมัติ */
+const prodKey=c=>String(c||'').trim().toLowerCase();
+function allProducts(){return DB&&DB.products?DB.products:[];}
+function findProduct(code){const k=prodKey(code);if(!k)return null;
+  return allProducts().find(p=>prodKey(p.code)===k||prodKey(p.code2)===k)||null;}
+/* ถ้าไม่มีชื่อสินค้า ประกอบชื่อจากหน้ากว้าง/ความหนาให้อ่านออก */
+function prodName(p){
+  if(!p)return '';
+  if(p.name)return p.name;
+  const w=p.width?String(p.width)+' '+(p.dimUnit||'cm'):'';
+  const t=p.thick?(w?' x ':'')+String(p.thick)+' mc':'';
+  return (w||t)?('PE SHRINK '+w+t).trim():'';
+}
+function prodMeta(p){
+  return [p.code2&&prodKey(p.code2)!==prodKey(p.code)?'รหัสสินค้า '+p.code2:'',
+    p.mat?'Mat '+p.mat:'',p.coreKg?'แกน '+p.coreKg+' kg':'',p.customer?'ลูกค้า '+p.customer:'']
+    .filter(Boolean).join(' · ');
+}
+/* จำรหัสใหม่ที่พนักงานพิมพ์เอง เพื่อให้ครั้งต่อไปเลือกจากดรอปดาวน์ได้ */
+function learnProduct(it){
+  if(!it||!DB||!DB.products)return false;
+  const code=String(it.code||'').trim();
+  if(!code||findProduct(code))return false;
+  DB.products.push({code,code2:'',name:String(it.name||'').split('\n')[0].trim(),
+    width:'',dimUnit:'',thick:'',mat:'',coreKg:'',customer:'',added:today(),auto:1});
+  return true;
+}
+function learnItems(items){
+  let n=0;(items||[]).forEach(it=>{if(learnProduct(it))n++;});
+  if(n)toast('เก็บรหัสสินค้าใหม่ '+n+' รายการเข้าคลังแล้ว');
+  return n;
+}
+/* ช่องพิมพ์แล้วเลือกรหัสสินค้าได้ (combobox) — พิมพ์รหัสใหม่ก็ได้ */
+function productCombo(input,onPick){
+  const wrap=el('<div class="pcw"></div>');
+  input.parentNode.insertBefore(wrap,input);wrap.append(input);
+  const menu=el('<div class="pcm"></div>');wrap.append(menu);
+  let list=[],idx=-1;
+  const close=()=>{menu.classList.remove('on');idx=-1;};
+  const pick=p=>{input.value=p.code;close();if(onPick)onPick(p);};
+  const open=()=>{
+    const all=allProducts(),q=prodKey(input.value);
+    list=(q?all.filter(p=>prodKey(p.code).includes(q)||prodKey(p.code2).includes(q)
+        ||String(prodName(p)).toLowerCase().includes(q)):all).slice(0,40);
+    idx=-1;
+    if(!all.length)menu.innerHTML='<div class="pce">ยังไม่มีรหัสสินค้าในคลัง — พิมพ์รหัสได้เลย ระบบจะเก็บให้ หรือไปเมนู "ข้อมูลสินค้า" เพื่อนำเข้าจาก Excel</div>';
+    else if(!list.length)menu.innerHTML='<div class="pce">ไม่พบรหัสนี้ในคลัง — พิมพ์ต่อได้เลย ระบบจะเก็บเป็นรหัสใหม่ให้อัตโนมัติ</div>';
+    else menu.innerHTML=list.map((p,i)=>`<div class="pci" data-i="${i}">
+        <div class="cd">${esc(p.code)}</div>
+        <div class="nm">${esc(prodName(p)||'—')}</div>
+        ${prodMeta(p)?`<div class="mt">${esc(prodMeta(p))}</div>`:''}</div>`).join('')
+      +(all.length>list.length?`<div class="pce">แสดง ${list.length} จาก ${all.length} รหัส — พิมพ์เพิ่มเพื่อค้นหาให้แคบลง</div>`:'');
+    menu.querySelectorAll('.pci').forEach(n=>{
+      n.onmousedown=e=>{e.preventDefault();pick(list[+n.dataset.i]);};});
+    menu.classList.add('on');
+  };
+  input.setAttribute('autocomplete','off');
+  input.addEventListener('input',open);
+  input.addEventListener('focus',open);
+  input.addEventListener('blur',()=>setTimeout(close,150));
+  input.addEventListener('keydown',e=>{
+    if(!menu.classList.contains('on'))return;
+    if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+      if(!list.length)return;
+      e.preventDefault();e.stopPropagation();
+      idx=Math.max(0,Math.min(list.length-1,idx+(e.key==='ArrowDown'?1:-1)));
+      menu.querySelectorAll('.pci').forEach((n,i)=>n.classList.toggle('on',i===idx));
+      const a=menu.querySelector('.pci.on');if(a)a.scrollIntoView({block:'nearest'});
+    }else if(e.key==='Enter'&&idx>=0&&list[idx]){
+      e.preventDefault();e.stopPropagation();pick(list[idx]);
+    }else if(e.key==='Escape'){e.stopPropagation();close();}
+  });
+  return wrap;
+}
+
 /* ================= form ================= */
 const UNITS=['ม้วน','ใบ','กก.','แผ่น','ชิ้น','กล่อง','ลัง','ถุง','ถัง','เมตร','ชุด','อัน','รายการ'];
 /* ตารางกรอกรายการสินค้า — ใช้ในฟอร์มสร้าง/แก้ไขใบเสนอราคาและ PO */
@@ -1872,6 +1961,11 @@ function itemsEditor(initial){
           <input class="itprice" type="number" step="0.001" inputmode="decimal" placeholder="0.00" value="${it.price??''}"></label>
         <div class="itf itamtwrap"><span>จำนวนเงิน</span><div class="itamtbox"><span class="itamt">0.00</span></div></div>
       </div></div>`);
+    /* พิมพ์รหัสแล้วเลือกจากคลังได้ เลือกแล้วเติมรายละเอียดให้ถ้ายังว่าง */
+    productCombo(r.querySelector('.itcode'),p=>{
+      const n=r.querySelector('.itname');
+      if(!n.value.trim())n.value=prodName(p);
+      calc();});
     r.querySelector('.itqty').oninput=calc;r.querySelector('.itprice').oninput=calc;
     r.querySelector('.itdel').onclick=()=>{r.remove();if(!rowsEl.children.length)addRow();renum();calc();};
     rowsEl.append(r);renum();calc();return r;
@@ -1886,7 +1980,9 @@ function itemsEditor(initial){
       qty:parseFloat(r.querySelector('.itqty').value)||0,
       unit:r.querySelector('.itunit').value,
       price:parseFloat(r.querySelector('.itprice').value)||0
-    })).filter(i=>i.name||i.code||i.qty||i.price)};
+    })).filter(i=>i.name||i.code||i.qty||i.price)
+      /* รหัสที่พิมพ์เองแล้วยังไม่มีในคลัง เก็บไว้ให้เลือกครั้งหน้า */
+      .map(i=>{learnProduct(i);return i;})};
 }
 function openForm(title,fields,values,onSubmit,opts){
   opts=opts||{};
@@ -1943,6 +2039,16 @@ function openForm(title,fields,values,onSubmit,opts){
         role:r.querySelector('.pname').dataset.role,
         name:r.querySelector('.pname').value.trim(),
         pos:r.querySelector('.ppos')?r.querySelector('.ppos').value.trim():''}));
+      ff.append(w);return;
+    }
+    if(f.type==='product'){
+      const w=el(`<div class="field" style="${f.full?'grid-column:1/-1':''}">
+        <label>${esc(f.label)}${f.req?' <span class="rq">*</span>':''}</label>
+        <input name="${f.key}" autocomplete="off" placeholder="พิมพ์รหัสหรือชื่อสินค้าเพื่อค้นหา" value="${esc(values[f.key]??f.def??'')}">
+        <div class="fh">เลือกจากคลัง หรือพิมพ์รหัสใหม่ได้เลย ระบบจะเก็บเข้าคลังให้อัตโนมัติ</div></div>`);
+      productCombo(w.querySelector('input'),p=>{
+        const n=ff.querySelector('[name="name"]');
+        if(n&&!n.value.trim())n.value=prodName(p);});
       ff.append(w);return;
     }
     const v=values[f.key]??f.def??'';
@@ -2020,6 +2126,7 @@ const PAGES=[
   {id:'po',label:'PO ลูกค้า',icon:'cart',count:()=>DB.pos.length},
   {id:'receipts',label:'ใบเสร็จรับเงิน',icon:'receipt',count:()=>DB.receipts.length},
   {id:'profiles',label:'ข้อมูลลูกค้า',icon:'profile',count:()=>DB.customers.length},
+  {id:'products',label:'ข้อมูลสินค้า',icon:'cart',count:()=>(DB.products||[]).length},
   {id:'employees',label:'ข้อมูลพนักงาน',icon:'badge',count:()=>null,mgr:true}
 ];
 let S={page:'dashboard',
@@ -2027,7 +2134,7 @@ let S={page:'dashboard',
   docType:'quotation',docQ:'',docFilter:'ทั้งหมด',docOpen:null,
   poQ:'',poFilter:'ทั้งหมด',poOpen:null,
   rcQ:'',rcFilter:'ทั้งหมด',rcMonth:null,rcOpen:null,empQ:'',
-  profSel:null,profTab:'info',profQ:'',teamSel:null,
+  profSel:null,profTab:'info',profQ:'',teamSel:null,prodQ:'',
   dash:{period:'year',year:new Date().getFullYear(),chart:'line'}};
 /* จำหน้าที่เปิดอยู่ ไม่ให้รีเฟรชแล้วเด้งกลับหน้าแรก */
 const VKEY='bwp_view_v1';
@@ -2138,7 +2245,7 @@ function render(){
   const v=$('#view');v.innerHTML='';$('#topActions').innerHTML='';
   if(S.page==='team'&&!isManager())S.page='dashboard';
   ({dashboard:pgDashboard,team:pgTeam,customers:pgCustomers,documents:pgDocuments,po:pgPO,
-    receipts:pgReceipts,profiles:pgProfiles,employees:pgEmployees}[S.page]||pgDashboard)(v);
+    receipts:pgReceipts,profiles:pgProfiles,products:pgProducts,employees:pgEmployees}[S.page]||pgDashboard)(v);
   if(readOnly()){
     v.prepend(el(`<div class="hint" style="background:#eef0ff;border-color:#c7cdfb;color:#4338ca">
       👁 กำลังดูข้อมูลของ <b>${esc(AUTH.viewingName||'เพื่อนร่วมทีม')}</b> — แก้ไขหรือสร้างเอกสารไม่ได้</div>`));
@@ -2595,6 +2702,170 @@ function pgTeam(v){
     b.onclick=()=>viewUser(cur.p.id,nameOf(cur.p),false);
     v.append(b);
   }
+}
+
+/* ---------- 1c. คลังรหัสสินค้า ---------- */
+const PRODUCT_FIELDS=[
+  {k:'code',label:'Item Code (รหัสหลัก)',req:true,hint:['itemcode','item code','รหัสหลัก']},
+  {k:'code2',label:'รหัสสินค้า (รหัสรอง)',hint:['รหัสสินค้า','productcode','sku']},
+  {k:'name',label:'ชื่อสินค้า',hint:['ชื่อสินค้า','รายละเอียดสินค้า','productname','description']},
+  {k:'width',label:'หน้ากว้าง',hint:['หน้ากว้าง','กว้าง','width']},
+  {k:'dimUnit',label:'หน่วยหน้ากว้าง (cm/mm)',hint:['หน่วย','unit']},
+  {k:'thick',label:'ความหนา (mc)',hint:['หนา','ความหนา','thick','mic']},
+  {k:'mat',label:'Mat Code',hint:['matcode','mat code','วัตถุดิบ']},
+  {k:'coreKg',label:'น้ำหนักแกน (kg)',hint:['แกน','core','นน.']},
+  {k:'customer',label:'ลูกค้าที่ใช้สินค้านี้',hint:['ชื่อลูกค้า','ลูกค้า','customer']},
+  {k:'note',label:'หมายเหตุ',hint:['หมายเหตุ','remark','note']}
+];
+function guessProductHeader(rows){
+  let best=0,bestScore=-1;
+  rows.slice(0,12).forEach((r,i)=>{
+    const filled=r.filter(c=>c&&c.length).length;
+    if(filled<2)return;
+    let score=filled;
+    PRODUCT_FIELDS.forEach(f=>{
+      if(r.some(c=>{const t=String(c||'').toLowerCase().replace(/\s/g,'');
+        return t&&f.hint.some(h=>t.includes(h.toLowerCase().replace(/\s/g,'')));}))score+=4;});
+    if(score>bestScore){bestScore=score;best=i;}});
+  return best;
+}
+function productFields(){return [
+  {key:'code',label:'Item Code (รหัสหลัก)',req:true},
+  {key:'code2',label:'รหัสสินค้า (รหัสรอง)'},
+  {key:'name',label:'ชื่อสินค้า',full:true,hint:'ถ้าเว้นว่าง ระบบจะประกอบชื่อจากหน้ากว้างและความหนาให้'},
+  {key:'width',label:'หน้ากว้าง'},
+  {key:'dimUnit',label:'หน่วยหน้ากว้าง',type:'select',options:['cm','mm','นิ้ว','']},
+  {key:'thick',label:'ความหนา (mc)'},
+  {key:'mat',label:'Mat Code'},
+  {key:'coreKg',label:'น้ำหนักแกน (kg)'},
+  {key:'customer',label:'ลูกค้าที่ใช้สินค้านี้',full:true},
+  {key:'note',label:'หมายเหตุ',full:true}
+];}
+function pgProducts(v){
+  header('ข้อมูลสินค้า',['คลังรหัสสินค้า']);
+  if(!readOnly()){
+    actionBtn('เพิ่มรหัสสินค้า','plus',()=>openForm('เพิ่มรหัสสินค้า',productFields(),{dimUnit:'cm'},d=>{
+      if(findProduct(d.code)){toast('รหัส '+d.code+' มีอยู่แล้วในคลัง');return;}
+      DB.products.unshift(Object.assign({added:today()},d));save();render();toast('เพิ่มรหัสสินค้าแล้ว');}));
+    actionBtn('นำเข้าจาก Excel','up',importProducts,'btn gh');
+  }
+  actionBtn('ดาวน์โหลดเทมเพลต','dl',()=>{
+    downloadXLSX('เทมเพลตนำเข้าสินค้า.xlsx',[PRODUCT_FIELDS.map(f=>f.label),
+      ['09FXX-BNS001','09FXX-BNS001','PE SHRINK FILM 40 CM X 35 MIC','40','cm','35','09EXX','0.95','ตัวอย่าง บริษัท เอบีซี จำกัด',''],
+      ['01FXX-CJK001','','','40','cm','75','','0.85','ซีเจเค อินดัสทรี','ไม่มีชื่อสินค้าก็ได้ ระบบประกอบชื่อให้จากขนาด']
+    ],[26,26,44,12,16,14,16,16,32,30],'สินค้า');
+    toast('ดาวน์โหลดเทมเพลตแล้ว — ลบ 2 แถวตัวอย่างออกก่อนใช้จริง');},'btn gh');
+
+  const q=(S.prodQ||'').trim().toLowerCase();
+  const all=allProducts();
+  const list=q?all.filter(p=>prodKey(p.code).includes(q)||prodKey(p.code2).includes(q)
+    ||String(prodName(p)).toLowerCase().includes(q)||String(p.customer||'').toLowerCase().includes(q)):all;
+
+  v.append(hint('รหัสในคลังนี้จะขึ้นให้เลือกตอนกรอกรายการสินค้าในใบเสนอราคาและ PO — พิมพ์รหัสใหม่ในเอกสารได้เลย ระบบจะเก็บเข้าคลังให้เอง'));
+  v.append(searchRow(S.prodQ||'','ค้นหารหัส ชื่อสินค้า หรือชื่อลูกค้า',x=>{S.prodQ=x;render();}));
+  v.append(el(`<div class="tiny" style="margin:10px 0 4px">ทั้งหมด ${all.length} รหัส${q?' · ตรงกับคำค้น '+list.length+' รหัส':''}</div>`));
+
+  if(!all.length){
+    v.append(emptyState('ยังไม่มีรหัสสินค้าในคลัง',
+      'กด "นำเข้าจาก Excel" เพื่อดึงรหัสสินค้าทั้งหมดเข้ามาครั้งเดียว',
+      readOnly()?null:'นำเข้าจาก Excel',importProducts));
+    return;
+  }
+  v.append(listCard(list.slice(0,300),{
+    avatar:p=>svg('cart','ic s'),
+    title:p=>esc(p.code),
+    meta:p=>esc([prodName(p)||'—',prodMeta(p)].filter(Boolean).join(' · ')),
+    onOpen:p=>{
+      if(readOnly()){toast('โหมดดูอย่างเดียว แก้ไขไม่ได้');return;}
+      openForm('แก้ไข '+p.code,productFields(),p,d=>{Object.assign(p,d);save();render();toast('บันทึกแล้ว');},
+        {extra:{label:'ลบรหัสนี้',cls:'gh dg',fn:()=>{
+          const i=DB.products.indexOf(p);if(i<0)return;
+          const g=DB.products.splice(i,1)[0];save();render();
+          toast('ลบรหัส '+g.code+' แล้ว',()=>{DB.products.splice(i,0,g);save();render();});}}});},
+    footer:list.length>300?el(`<div class="pad tiny">แสดง 300 รหัสแรก จากทั้งหมด ${list.length} — ใช้ช่องค้นหาด้านบนเพื่อหารหัสที่ต้องการ</div>`):null,
+    empty:emptyState('ไม่พบรหัสที่ค้นหา','ลองพิมพ์รหัสหรือชื่อสินค้าบางส่วน')}));
+}
+function importProducts(){
+  const ov=el('<div class="ov"></div>');
+  const m=el(`<div class="modal" style="max-width:860px"><header><div><b>นำเข้ารหัสสินค้าจาก Excel</b>
+      <div class="tiny" style="margin-top:2px">รองรับ .xlsx และ .csv · รหัสที่ซ้ำกับในคลังจะถูกข้าม</div></div>
+      <button class="close">✕</button></header>
+    <div class="mb"><div id="ipBody"></div></div>
+    <footer><div style="flex:1"></div>
+      <button class="btn gh" id="c">ปิด</button><button class="btn" id="go" style="display:none">นำเข้า</button></footer></div>`);
+  const body=m.querySelector('#ipBody');
+  const close=()=>ov.remove();
+  m.querySelector('.close').onclick=close;m.querySelector('#c').onclick=close;
+
+  const step1=()=>{
+    body.innerHTML='';
+    body.append(dropZone('ไฟล์ .xlsx หรือ .csv (มีหลายชีตก็ได้ เลือกได้ทีหลัง)',async fs=>{
+      if(!fs.length)return;
+      body.innerHTML='<div class="empty">กำลังอ่านไฟล์…</div>';
+      try{const sheets=(await readSheet(fs[0])).filter(s=>s.rows.length>=2);
+        if(!sheets.length)throw new Error('ไม่พบชีตที่มีข้อมูลอย่างน้อย 2 แถว');
+        step2(sheets,fs[0].name,0);}
+      catch(e){body.innerHTML='';
+        body.append(el(`<div class="hint" style="background:#fef2f2;border-color:#fbcaca;color:#b91c1c;margin-bottom:14px">${esc(e.message)}</div>`));
+        step1();}}));
+  };
+  const step2=(sheets,fname,sheetIdx,headerRow)=>{
+    const sheet=sheets[sheetIdx],rows=sheet.rows;
+    const hr=headerRow===undefined?guessProductHeader(rows):headerRow;
+    const head=rows[hr]||[],data=rows.slice(hr+1);
+    /* จับคู่ตามลำดับคำใบ้ คำที่เจาะจงกว่ามาก่อน เช่น "ชื่อลูกค้า" ต้องชนะ "รหัสลูกค้า" */
+    const map={};
+    PRODUCT_FIELDS.forEach(f=>{
+      for(const kh of f.hint){
+        const k=kh.toLowerCase().replace(/\s/g,'');
+        const i=head.findIndex((h,j)=>{const t=String(h||'').toLowerCase().replace(/\s/g,'');
+          return t&&t.includes(k)&&!Object.values(map).includes(j);});
+        if(i>=0){map[f.k]=i;break;}
+      }});
+    body.innerHTML='';
+    body.append(el(`<div class="hint" style="margin-bottom:14px">อ่านไฟล์ <b>${esc(fname)}</b> · ชีต <b>${esc(sheet.name)}</b> · ข้อมูล ${data.length} แถว</div>`));
+    const pick=el('<div class="grid g2" style="gap:12px;margin-bottom:16px"></div>');
+    const sSel=el(`<div class="field"><label>เลือกชีต</label><select>${sheets.map((s,i)=>
+      `<option value="${i}" ${i===sheetIdx?'selected':''}>${esc(s.name)} (${s.rows.length} แถว)</option>`).join('')}</select></div>`);
+    sSel.querySelector('select').onchange=e=>step2(sheets,fname,+e.target.value);
+    const hSel=el(`<div class="field"><label>แถวที่เป็นหัวตาราง</label><select>${rows.slice(0,12).map((r,i)=>
+      `<option value="${i}" ${i===hr?'selected':''}>แถว ${i+1} — ${esc(r.filter(Boolean).slice(0,4).join(' / ').slice(0,55)||'(ว่าง)')}</option>`).join('')}</select></div>`);
+    hSel.querySelector('select').onchange=e=>step2(sheets,fname,sheetIdx,+e.target.value);
+    pick.append(sSel,hSel);body.append(pick);
+    const grid=el('<div class="grid g2" style="gap:12px"></div>');
+    PRODUCT_FIELDS.forEach(f=>grid.append(el(`<div class="field">
+      <label>${esc(f.label)}${f.req?' <span class="rq">*</span>':''}</label>
+      <select data-k="${f.k}"><option value="">— ไม่นำเข้า —</option>
+      ${head.map((h,i)=>`<option value="${i}" ${map[f.k]===i?'selected':''}>${esc(h||('คอลัมน์ '+(i+1)))}</option>`).join('')}
+      </select></div>`)));
+    body.append(grid);
+    const prev=el('<div style="margin-top:16px"><div style="font-size:14px;font-weight:600;margin-bottom:8px">ตัวอย่างข้อมูล 3 แถวแรก</div></div>');
+    const tw=el('<div class="tw" style="border:1px solid var(--bd);border-radius:10px"></div>');
+    tw.innerHTML=`<table style="border-collapse:collapse;width:100%;font-size:12.5px">
+      <thead><tr>${head.map(h=>`<th style="padding:8px 10px;background:#f8fafc;text-align:left;white-space:nowrap">${esc(h||'')}</th>`).join('')}</tr></thead>
+      <tbody>${data.slice(0,3).map(r=>`<tr>${head.map((_,i)=>`<td style="padding:8px 10px;border-top:1px solid var(--bd2);white-space:nowrap">${esc(r[i]||'')}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+    prev.append(tw);body.append(prev);
+
+    const go=m.querySelector('#go');go.style.display='';
+    go.onclick=()=>{
+      const sel={};grid.querySelectorAll('select').forEach(s=>{if(s.value!=='')sel[s.dataset.k]=+s.value;});
+      if(sel.code===undefined){toast('ต้องเลือกคอลัมน์ "Item Code (รหัสหลัก)" ก่อน');return;}
+      let added=0,dup=0,skipped=0;
+      const before=DB.products.length;
+      data.forEach(r=>{
+        const code=String(r[sel.code]||'').trim();
+        if(!code||/^\d+$/.test(code)&&code.length<3){skipped++;return;}
+        if(findProduct(code)){dup++;return;}
+        const p={code,code2:'',name:'',width:'',dimUnit:'',thick:'',mat:'',coreKg:'',customer:'',note:'',added:today()};
+        PRODUCT_FIELDS.forEach(f=>{if(f.k!=='code'&&sel[f.k]!==undefined)p[f.k]=String(r[sel[f.k]]||'').trim();});
+        DB.products.push(p);added++;});
+      save();close();render();
+      toast('นำเข้า '+added+' รหัส'+(dup?' · ข้ามที่ซ้ำ '+dup:'')+(skipped?' · ข้ามแถวว่าง '+skipped:''),
+        added?()=>{DB.products.length=before;save();render();}:null);
+    };
+  };
+  step1();
+  ov.append(m);$('#layer').append(ov);
 }
 
 /* ---------- 2. CUSTOMERS ---------- */
@@ -3266,14 +3537,14 @@ function quoteDetail(v,d){
   const items=el('<div class="card"></div>');
   const ih=el('<div class="pad" style="padding-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px"><div class="h3" style="margin:0">รายการสินค้า</div></div>');
   const itemForm=(vals,fn)=>openForm(vals.name?'แก้ไขรายการ':'เพิ่มรายการสินค้า',[
-    {key:'code',label:'รหัสสินค้า'},
+    {key:'code',label:'รหัสสินค้า',type:'product'},
     {key:'unit',label:'หน่วย',type:'select',options:UNITS,def:'ม้วน'},
     {key:'name',label:'รายละเอียดสินค้า',req:true,full:true,type:'textarea',
       hint:'ขึ้นบรรทัดใหม่ได้ เช่น รายละเอียดสินค้า แล้วเว้นบรรทัด ตามด้วยเงื่อนไขการสั่งซื้อ'},
     {key:'qty',label:'จำนวน',type:'number',def:1},
     {key:'price',label:'ราคา/หน่วย (บาท)',type:'number',def:0}],vals,fn);
   const addI=el(`<button class="btn sm">${svg('plus','ic s')}เพิ่มรายการ</button>`);
-  addI.onclick=()=>itemForm({},o=>{d.items.push(o);d.amount=qtTotal(d);save();render();toast('เพิ่มรายการแล้ว');});
+  addI.onclick=()=>itemForm({},o=>{learnProduct(o);d.items.push(o);d.amount=qtTotal(d);save();render();toast('เพิ่มรายการแล้ว');});
   ih.append(addI);items.append(ih);
   if(!d.items.length)items.append(emptyState('ยังไม่มีรายการสินค้า','กด "เพิ่มรายการ" เพื่อใส่สินค้าที่จะเสนอราคา'));
   else{
@@ -3476,10 +3747,10 @@ function poDetail(v,p){
   const ih=el('<div class="pad" style="padding-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px"><div class="h3" style="margin:0">รายการสินค้า</div></div>');
   const addI=el(`<button class="btn sm">${svg('plus','ic s')}เพิ่มรายการ</button>`);
   addI.onclick=()=>openForm('เพิ่มรายการสินค้า',[
-    {key:'code',label:'รหัสสินค้า',req:true},{key:'unit',label:'หน่วย',type:'select',options:UNITS,def:'ม้วน'},
+    {key:'code',label:'รหัสสินค้า',req:true,type:'product'},{key:'unit',label:'หน่วย',type:'select',options:UNITS,def:'ม้วน'},
     {key:'name',label:'ชื่อสินค้า',req:true,full:true},
     {key:'qty',label:'จำนวน',type:'number',def:1},{key:'price',label:'ราคา/หน่วย (บาท)',type:'number',def:0}
-  ],{},d=>{p.items.push(d);save();render();toast('เพิ่มรายการแล้ว');});
+  ],{},d=>{learnProduct(d);p.items.push(d);save();render();toast('เพิ่มรายการแล้ว');});
   ih.append(addI);items.append(ih);
 
   if(!p.items.length)items.append(emptyState('ยังไม่มีรายการสินค้า','กด "เพิ่มรายการ" เพื่อใส่สินค้าใน PO นี้'));
@@ -4163,6 +4434,7 @@ async function viewUser(id,name,mine){
 /* ================= boot ================= */
 function migrate(){
   if(!DB.company)DB.company=Object.assign({},COMPANY);
+  if(!DB.products)DB.products=[];
   if(DB.cert===undefined)DB.cert=null;
   (DB.docs||[]).filter(d=>d.type==='quotation').forEach(d=>{
     ensureQuote(d);
