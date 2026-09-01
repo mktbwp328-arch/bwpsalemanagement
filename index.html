@@ -3263,10 +3263,11 @@ function loginScreen(msg){
       <div class="field" style="margin-bottom:14px"><label>เบอร์โทรศัพท์</label>
         <input id="lgEmail" autocomplete="username" inputmode="tel" placeholder="เช่น 081-234-5678" autocapitalize="off" spellcheck="false">
         <div class="fh">เบอร์ที่ผู้ดูแลลงทะเบียนไว้ให้</div></div>
-      <div class="field" id="lgPinWrap" style="margin-bottom:14px"><label>PIN 6 หลัก</label>
-        <input id="lgPass" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password"
-          placeholder="••••••" style="letter-spacing:6px;font-size:19px;text-align:center">
-        <div class="fh" id="lgPinHint">เข้าครั้งแรก: ตั้ง PIN ที่ต้องการได้เลย ระบบจะจำไว้</div></div>
+      <div class="field" id="lgPinWrap" style="margin-bottom:14px"><label>PIN 6 หลัก (ตัวเลขเท่านั้น)</label>
+        <input id="lgPass" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6"
+          autocomplete="current-password" placeholder="••••••"
+          style="letter-spacing:8px;font-size:20px;text-align:center">
+        <div class="fh" id="lgPinHint">เข้าครั้งแรก: ตั้ง PIN ตัวเลข 6 หลักที่ต้องการได้เลย ระบบจะจำไว้</div></div>
       <div class="field" id="lgNameWrap" style="margin-bottom:14px;display:none"><label>ชื่อ-นามสกุล (แสดงในระบบ)</label>
         <input id="lgName" placeholder="เช่น คุณวราลักษณ์ บุตะกุล"></div>
       <button class="btn blk" id="lgGo" style="height:48px;margin-top:4px">เข้าสู่ระบบ</button>
@@ -3299,6 +3300,14 @@ function loginScreen(msg){
     w.querySelector('#lgGo').textContent=adm?'เข้าสู่ระบบผู้ดูแล':'เข้าสู่ระบบ';
   };
   uEl.addEventListener('input',syncMode);
+
+  /* ช่อง PIN รับเฉพาะตัวเลข พิมพ์ตัวอักษรไม่ติด วางข้อความมาก็กรองให้ */
+  const pinEl=w.querySelector('#lgPass');
+  pinEl.addEventListener('keypress',e=>{if(!/^\d$/.test(e.key))e.preventDefault();});
+  pinEl.addEventListener('input',()=>{
+    const v=pinEl.value.replace(/\D/g,'').slice(0,6);
+    if(v!==pinEl.value)pinEl.value=v;
+  });
 
   const go=async()=>{
     const b=w.querySelector('#lgGo');
