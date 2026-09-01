@@ -1418,12 +1418,14 @@ function approveView(p,onlineId){
       try{
         await sbRpc('sign_quote_approval',{p_id:onlineId,p_name:back.name,p_sig:img,p_ok:ok});
         ov.remove();
-        const ov3=el('<div class="ov"></div>');
-        ov3.append(el(`<div class="modal" style="max-width:440px"><header><b>${ok?'อนุมัติเรียบร้อย ✓':'บันทึกผลไม่อนุมัติแล้ว'}</b></header>
-          <div class="mb" style="font-size:15px;color:#41546f">ส่งกลับให้ฝ่ายขายเรียบร้อยแล้ว ไม่ต้องคัดลอกอะไรเพิ่ม<br>
-          <span class="tiny">เอกสาร ${esc(p.no)} · ${esc(back.name||'')} · ${fmtDate(back.date)}</span></div>
-          <footer><button class="btn" onclick="location.hash='';location.reload()">ปิด</button></footer></div>`));
-        $('#layer').append(ov3);
+        const now3=new Date();
+        signResultScreen({
+          tone:ok?'ok':'bad',
+          title:ok?'เซ็นเรียบร้อยแล้ว':'บันทึกไม่อนุมัติแล้ว',
+          sub:'ส่งกลับให้ฝ่ายขายเรียบร้อย ไม่ต้องคัดลอกอะไรเพิ่ม',
+          time:hhmm(now3),dateText:thaiFullDate(now3),
+          name:back.name||'',role:'ผู้อนุมัติใบเสนอราคา',
+          line3:'ใบเสนอราคา '+p.no});
         applySignature(back,true);
         return;
       }catch(e){
@@ -1511,6 +1513,45 @@ async function shareCredit(d){
   m.querySelector('.close').onclick=close;m.querySelector('#dn').onclick=close;
   ov.append(m);$('#layer').append(ov);
 }
+/* ---------- หน้าจอยืนยันหลังเซ็นเสร็จ ----------
+   เต็มจอ อ่านง่ายบนมือถือ ให้ผู้เซ็นมั่นใจว่าลายเซ็นถูกบันทึกแล้วจริง */
+const TH_DAY=['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'];
+const TH_MON=['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน',
+  'กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+function thaiFullDate(dt){
+  const d=dt instanceof Date?dt:new Date(dt);
+  if(isNaN(d))return '';
+  return 'วัน'+TH_DAY[d.getDay()]+'ที่ '+d.getDate()+' '+TH_MON[d.getMonth()]+' '+(d.getFullYear()+543);
+}
+const hhmm=dt=>{const d=dt instanceof Date?dt:new Date(dt);return isNaN(d)?'':
+  String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');};
+function signResultScreen(o){
+  const bad=o.tone==='bad';
+  const ring=bad?'rgba(255,255,255,.16)':'rgba(255,255,255,.18)';
+  const sc=el(`<div style="position:fixed;inset:0;z-index:900;overflow:auto;
+      background:${bad?'linear-gradient(165deg,#7f1d1d,#3f0d0d)':'linear-gradient(165deg,#14428f,#0a2350)'};
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      padding:28px 20px;text-align:center;color:#fff;font-family:inherit">
+    <div style="width:112px;height:112px;border-radius:50%;background:${ring};
+        display:flex;align-items:center;justify-content:center;margin-bottom:26px">
+      <svg viewBox="0 0 24 24" style="width:56px;height:56px;fill:none;stroke:#fff;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round">
+        ${bad?'<path d="M18 6L6 18M6 6l12 12"/>':'<path d="M20 6L9 17l-5-5"/>'}</svg></div>
+    <div style="font-size:27px;font-weight:700;letter-spacing:.3px">${esc(o.title)}</div>
+    <div style="font-size:14.5px;opacity:.72;margin-top:7px">${esc(o.sub||'')}</div>
+    <div style="font-size:46px;font-weight:700;margin-top:26px;line-height:1">${esc(o.time)}<span style="font-size:19px;font-weight:500;opacity:.8"> น.</span></div>
+    <div style="font-size:14px;opacity:.72;margin-top:9px">${esc(o.dateText)}</div>
+    <div style="background:rgba(255,255,255,.11);border-radius:16px;padding:16px 20px;margin-top:26px;
+        min-width:min(320px,86vw);max-width:min(420px,90vw)">
+      <div style="font-size:16.5px;font-weight:600">${esc(o.name||'ไม่ได้ระบุชื่อ')}</div>
+      <div style="font-size:13px;opacity:.75;margin-top:5px">${esc(o.role||'')}</div>
+      ${o.line3?`<div style="font-size:13px;opacity:.9;margin-top:9px;padding-top:9px;border-top:1px solid rgba(255,255,255,.15)">${esc(o.line3)}</div>`:''}</div>
+    <button id="fin" style="margin-top:30px;background:#fff;color:${bad?'#991b1b':'#123f9e'};border:0;
+      border-radius:14px;font-size:16px;font-weight:700;padding:15px 0;width:min(320px,86vw);cursor:pointer;font-family:inherit">เสร็จสิ้น</button>
+  </div>`);
+  sc.querySelector('#fin').onclick=()=>{try{location.hash='';}catch(e){}location.reload();};
+  document.querySelectorAll('.prevov,.ov').forEach(x=>x.remove());
+  $('#layer').append(sc);
+}
 /* หน้าจอผู้เซ็น (เปิดจากลิงก์) */
 function creditSignView(row,id,role){
   loadPrintFonts();
@@ -1540,10 +1581,15 @@ function creditSignView(row,id,role){
   sheets.forEach(s=>ov.append(s));
 
   if(done){
-    ov.append(el(`<div style="max-width:210mm;margin:18px auto 0;background:#fff;border-radius:14px;padding:22px;text-align:center">
-      <div style="font-size:17px;font-weight:700;color:#15803d">✓ ท่านเซ็นเอกสารนี้ไปแล้ว</div>
-      <div class="mut" style="margin-top:6px">${esc(row.sigs[role].name||'')} · ${fmtDate(row.sigs[role].date)}</div></div>`));
-    $('#layer').append(ov);return;
+    const s0=row.sigs[role],when=new Date(s0.date||row.updated_at||Date.now());
+    signResultScreen({
+      tone:s0.ok===false?'bad':'ok',
+      title:s0.ok===false?'ท่านบันทึกไม่อนุมัติไปแล้ว':'ท่านเซ็นเอกสารนี้ไปแล้ว',
+      sub:'ลายเซ็นถูกบันทึกเรียบร้อย ไม่ต้องเซ็นซ้ำ',
+      time:hhmm(when),dateText:thaiFullDate(when),
+      name:s0.name||'',role:roleName(role,type),
+      line3:title+' '+d.no+' · '+d.customer});
+    return;
   }
   const box=el(`<div style="max-width:210mm;margin:18px auto 0;background:#fff;border-radius:14px;padding:20px">
     <div class="h3">ลายเซ็น — ${esc(roleName(role,type))}</div>
@@ -1566,17 +1612,18 @@ function creditSignView(row,id,role){
         p_name:box.querySelector('#an').value.trim(),p_sig:img,p_ok:ok,p_note:null,
         p_roles_required:roles.map(r=>r[0])});
       ov.remove();
-      const st=res&&res.status;
-      const ov2=el('<div class="ov"></div>');
-      ov2.append(el(`<div class="modal" style="max-width:460px"><header><b>${
-        st==='complete'?'เซ็นครบทุกท่านแล้ว ✓':st==='rejected'?'บันทึกผลไม่อนุมัติแล้ว':'บันทึกลายเซ็นเรียบร้อย ✓'}</b></header>
-        <div class="mb" style="font-size:15px;color:#41546f">${
-          st==='complete'?'เอกสารนี้ได้รับอนุมัติครบทั้ง '+roles.length+' ลายเซ็นแล้ว':
-          st==='rejected'?'ระบบบันทึกว่าไม่อนุมัติ และแจ้งกลับฝ่ายขายแล้ว':
-          'ส่งกลับให้ฝ่ายขายเรียบร้อย รออีก '+(roles.length-Object.keys(res.sigs||{}).length)+' ลายเซ็น'}
-          <div class="tiny" style="margin-top:8px">${esc(d.no)} · ${esc(roleName(role,type))}</div></div>
-        <footer><button class="btn" onclick="location.hash='';location.reload()">ปิด</button></footer></div>`));
-      $('#layer').append(ov2);
+      const st=res&&res.status,now=new Date();
+      const left=roles.length-Object.keys(res.sigs||{}).length;
+      signResultScreen({
+        tone:st==='rejected'?'bad':'ok',
+        title:st==='rejected'?'บันทึกไม่อนุมัติแล้ว':'เซ็นเรียบร้อยแล้ว',
+        sub:st==='complete'?'เซ็นครบทุกท่าน เอกสารได้รับอนุมัติสมบูรณ์'
+          :st==='rejected'?'ระบบแจ้งกลับฝ่ายขายแล้ว'
+          :'ส่งกลับให้ฝ่ายขายเรียบร้อย'+(left>0?' · รออีก '+left+' ลายเซ็น':''),
+        time:hhmm(now),dateText:thaiFullDate(now),
+        name:box.querySelector('#an').value.trim(),
+        role:roleName(role,type),
+        line3:title+' '+d.no+' · '+d.customer});
       applyCreditSigs(d.no,res.sigs,st,true,type);
     }catch(e){bOk.disabled=bNo.disabled=false;bOk.textContent='บันทึกลายเซ็น';toast(e.message);}
   };
