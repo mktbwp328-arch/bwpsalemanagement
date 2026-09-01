@@ -534,7 +534,9 @@ async function cloudSave(){
   if(!authed()||readOnly())return;
   syncPending=false;
   try{
-    const body=JSON.stringify({user_id:AUTH.user.id,data:DB,updated_at:new Date().toISOString()});
+    /* คลังรหัสสินค้าเก็บในตารางกลาง ไม่ต้องใส่มากับข้อมูลส่วนตัวของแต่ละคน */
+    const mine=Object.assign({},DB);delete mine.products;
+    const body=JSON.stringify({user_id:AUTH.user.id,data:mine,updated_at:new Date().toISOString()});
     if(body.length>4.5*1024*1024)toast('ข้อมูลใหญ่เกิน 4.5 MB แล้ว — ควรลบรูปเก่าที่ไม่ใช้ออก');
     await sbFetch('user_data?on_conflict=user_id',{method:'POST',
       headers:Object.assign(sbHeaders(),{Prefer:'resolution=merge-duplicates,return=minimal'}),body});
@@ -1864,16 +1866,72 @@ function prodMeta(p){
 }
 /* จำรหัสใหม่ที่พนักงานพิมพ์เอง เพื่อให้ครั้งต่อไปเลือกจากดรอปดาวน์ได้ */
 function learnProduct(it){
-  if(!it||!DB||!DB.products)return false;
+  if(!it||!DB||!DB.products||readOnly())return false;
   const code=String(it.code||'').trim();
   if(!code||findProduct(code))return false;
-  DB.products.push({code,code2:'',name:String(it.name||'').split('\n')[0].trim(),
-    width:'',dimUnit:'',thick:'',mat:'',coreKg:'',customer:'',added:today(),auto:1});
+  const p={code,code2:'',name:String(it.name||'').split('\n')[0].trim(),
+    width:'',dimUnit:'',thick:'',mat:'',coreKg:'',customer:'',note:'',added:today(),auto:1};
+  DB.products.push(p);
+  /* ส่งเข้าคลังกลางให้ทุกคนเห็นด้วย ถ้าเน็ตมีปัญหาก็ยังใช้ในเครื่องได้ */
+  productsPush([p]).catch(()=>{});
   return true;
 }
 function learnItems(items){
   let n=0;(items||[]).forEach(it=>{if(learnProduct(it))n++;});
   if(n)toast('เก็บรหัสสินค้าใหม่ '+n+' รายการเข้าคลังแล้ว');
+  return n;
+}
+/* ---------- คลังสินค้ากลาง: ใช้ร่วมกันทุกคนในบริษัท ----------
+   เก็บในตาราง products บนคลาวด์ ไม่ได้อยู่ในข้อมูลส่วนตัวของแต่ละคน
+   ใครเพิ่มรหัสใหม่ คนอื่นเห็นทันทีที่เปิดแอปหรือกดโหลดใหม่ */
+const PROD_COLS='id,code,code2,name,width,dim_unit,thick,mat,core_kg,customer,note,updated_at';
+const rowToProd=r=>({id:r.id,code:r.code||'',code2:r.code2||'',name:r.name||'',width:r.width||'',
+  dimUnit:r.dim_unit||'',thick:r.thick||'',mat:r.mat||'',coreKg:r.core_kg||'',
+  customer:r.customer||'',note:r.note||''});
+const prodToRow=p=>({code:String(p.code||'').trim(),code2:p.code2||'',name:p.name||'',width:String(p.width||''),
+  dim_unit:p.dimUnit||'',thick:String(p.thick||''),mat:p.mat||'',core_kg:String(p.coreKg||''),
+  customer:p.customer||'',note:p.note||''});
+const PRODSYNC={at:null,err:null,busy:false,pending:0};
+const prodTableMissing=e=>/relation .*products|does not exist|schema cache/i.test(String(e&&e.message||e));
+
+async function productsPull(){
+  if(!authed())return false;
+  PRODSYNC.busy=true;PRODSYNC.err=null;
+  try{
+    const out=[];let from=0;
+    for(;;){                                   /* PostgREST ส่งทีละ 1000 แถว ต้องวนดึงจนครบ */
+      const part=await sbFetch('products?select='+PROD_COLS+'&order=code.asc',
+        {method:'GET',headers:Object.assign(sbHeaders(),{Range:from+'-'+(from+999)})});
+      if(!part||!part.length)break;
+      out.push(...part);
+      if(part.length<1000)break;
+      from+=1000;
+    }
+    /* ถ้าคลังกลางยังว่างแต่ในเครื่องมีรหัสอยู่ (นำเข้าไว้ก่อนเปลี่ยนมาใช้คลังกลาง)
+       เก็บของเดิมไว้ก่อน แล้วให้กดปุ่มส่งขึ้นคลังกลางเอง */
+    const local=allProducts();
+    PRODSYNC.pending=(!out.length&&local.length)?local.length:0;
+    if(!PRODSYNC.pending)DB.products=out.map(rowToProd);
+    PRODSYNC.at=new Date().toISOString();
+    try{localStorage.setItem(localKey(),JSON.stringify(DB));}catch(e){}
+    return true;
+  }catch(e){
+    PRODSYNC.err=prodTableMissing(e)
+      ? 'ยังไม่ได้ติดตั้งคลังสินค้ากลางในฐานข้อมูล — เปิด Supabase แล้วรันไฟล์ supabase-setup-6.sql ก่อน'
+      : (e.message||'โหลดคลังสินค้าไม่สำเร็จ');
+    return false;
+  }finally{PRODSYNC.busy=false;}
+}
+/* ส่งรหัสขึ้นคลาวด์ ถ้าซ้ำให้ข้าม (ทีละ 300 แถว กันคำขอใหญ่เกิน) */
+async function productsPush(list){
+  if(!authed()||!list.length)return 0;
+  let n=0;
+  for(let i=0;i<list.length;i+=300){
+    const body=JSON.stringify(list.slice(i,i+300).map(prodToRow));
+    await sbFetch('products?on_conflict=code',{method:'POST',
+      headers:Object.assign(sbHeaders(),{Prefer:'resolution=ignore-duplicates,return=minimal'}),body});
+    n+=Math.min(300,list.length-i);
+  }
   return n;
 }
 /* ช่องพิมพ์แล้วเลือกรหัสสินค้าได้ (combobox) — พิมพ์รหัสใหม่ก็ได้ */
@@ -2776,13 +2834,17 @@ function productFields(){return [
   {key:'note',label:'หมายเหตุ',full:true}
 ];}
 function pgProducts(v){
-  header('ข้อมูลสินค้า',['คลังรหัสสินค้า']);
+  header('ข้อมูลสินค้า',['คลังรหัสสินค้าของบริษัท']);
   if(!readOnly()){
-    actionBtn('เพิ่มรหัสสินค้า','plus',()=>openForm('เพิ่มรหัสสินค้า',productFields(),{dimUnit:'cm'},d=>{
+    actionBtn('เพิ่มรหัสสินค้า','plus',()=>openForm('เพิ่มรหัสสินค้า',productFields(),{dimUnit:'cm'},async d=>{
       if(findProduct(d.code)){toast('รหัส '+d.code+' มีอยู่แล้วในคลัง');return;}
-      DB.products.unshift(Object.assign({added:today()},d));save();render();toast('เพิ่มรหัสสินค้าแล้ว');}));
+      try{await productsPush([d]);await productsPull();render();toast('เพิ่มรหัส '+d.code+' แล้ว — ทุกคนเห็นเหมือนกัน');}
+      catch(e){toast(e.message);}}));
     actionBtn('นำเข้าจาก Excel','up',importProducts,'btn gh');
   }
+  actionBtn('โหลดใหม่','up',async()=>{render();
+    if(await productsPull())toast('อัปเดตคลังสินค้าแล้ว · '+allProducts().length+' รหัส');
+    render();},'btn gh');
   actionBtn('ดาวน์โหลดเทมเพลต','dl',()=>{
     downloadXLSX('เทมเพลตนำเข้าสินค้า.xlsx',[PRODUCT_FIELDS.map(f=>f.label),
       ['09FXX-BNS001','09FXX-BNS001','PE SHRINK FILM 40 CM X 35 MIC','40','cm','35','09EXX','0.95','ตัวอย่าง บริษัท เอบีซี จำกัด',''],
@@ -2795,7 +2857,23 @@ function pgProducts(v){
   const list=q?all.filter(p=>prodKey(p.code).includes(q)||prodKey(p.code2).includes(q)
     ||String(prodName(p)).toLowerCase().includes(q)||String(p.customer||'').toLowerCase().includes(q)):all;
 
-  v.append(hint('รหัสในคลังนี้จะขึ้นให้เลือกตอนกรอกรายการสินค้าในใบเสนอราคาและ PO — พิมพ์รหัสใหม่ในเอกสารได้เลย ระบบจะเก็บเข้าคลังให้เอง'));
+  v.append(hint('คลังนี้ใช้ร่วมกันทั้งบริษัท — ใครเพิ่มรหัสใหม่ ทุกคนเห็นเหมือนกัน · รหัสจะขึ้นให้เลือกตอนกรอกรายการสินค้าในใบเสนอราคาและ PO'));
+  if(PRODSYNC.pending&&!readOnly()){
+    const w=el(`<div class="hint" style="background:#fffbeb;border-color:#fde68a;color:#92400e;display:block">
+      <b>รหัสสินค้า ${PRODSYNC.pending} รายการนี้ยังอยู่แค่ในเครื่องคุณ</b>
+      <div style="margin-top:4px">คลังกลางของบริษัทยังว่าง กดปุ่มด้านล่างเพื่อส่งขึ้นไปให้ทุกคนใช้ร่วมกัน (ทำครั้งเดียว)</div></div>`);
+    const b=el(`<button class="btn" style="margin:0 0 14px">ส่ง ${PRODSYNC.pending} รหัสขึ้นคลังกลาง</button>`);
+    b.onclick=async()=>{b.disabled=true;b.textContent='กำลังส่ง…';
+      try{await productsPush(allProducts());PRODSYNC.pending=0;await productsPull();render();
+        toast('ส่งขึ้นคลังกลางแล้ว — ทุกคนเห็นเหมือนกัน');}
+      catch(e){b.disabled=false;b.textContent='ลองส่งใหม่';
+        toast(prodTableMissing(e)?'ยังไม่ได้ติดตั้งคลังสินค้ากลาง — ให้ผู้ดูแลรันไฟล์ supabase-setup-6.sql ก่อน':e.message);}};
+    v.append(w,b);
+  }
+  if(PRODSYNC.err)v.append(el(`<div class="hint" style="background:#fef2f2;border-color:#fbcaca;color:#b91c1c">${esc(PRODSYNC.err)}</div>`));
+  else v.append(el(`<div class="tiny" style="margin:-4px 0 10px">${PRODSYNC.busy?'กำลังซิงก์กับคลังกลาง…':
+    PRODSYNC.at?'ซิงก์กับคลังกลางล่าสุด '+ago(PRODSYNC.at):'ยังไม่ได้ซิงก์ — กด "โหลดใหม่" เพื่อดึงรหัสล่าสุดของทุกคน'}${
+    isManager()?'':' · พนักงานขายเพิ่มรหัสใหม่ได้ แต่แก้/ลบต้องให้ผู้จัดการทำ'}</div>`));
   v.append(searchRow(S.prodQ||'','ค้นหารหัส ชื่อสินค้า หรือชื่อลูกค้า',x=>{S.prodQ=x;render();}));
   v.append(el(`<div class="tiny" style="margin:10px 0 4px">ทั้งหมด ${all.length} รหัส${q?' · ตรงกับคำค้น '+list.length+' รหัส':''}</div>`));
 
@@ -2811,11 +2889,19 @@ function pgProducts(v){
     meta:p=>esc([prodName(p)||'—',prodMeta(p)].filter(Boolean).join(' · ')),
     onOpen:p=>{
       if(readOnly()){toast('โหมดดูอย่างเดียว แก้ไขไม่ได้');return;}
-      openForm('แก้ไข '+p.code,productFields(),p,d=>{Object.assign(p,d);save();render();toast('บันทึกแล้ว');},
-        {extra:{label:'ลบรหัสนี้',cls:'gh dg',fn:()=>{
-          const i=DB.products.indexOf(p);if(i<0)return;
-          const g=DB.products.splice(i,1)[0];save();render();
-          toast('ลบรหัส '+g.code+' แล้ว',()=>{DB.products.splice(i,0,g);save();render();});}}});},
+      if(!isManager()){toast('รหัสสินค้าเป็นข้อมูลกลางของบริษัท — แก้ไขได้เฉพาะผู้จัดการและผู้ดูแลระบบ');return;}
+      if(!p.id){toast('รหัสนี้ยังไม่ได้ซิงก์ขึ้นคลังกลาง กด "โหลดใหม่" ก่อน');return;}
+      openForm('แก้ไข '+p.code,productFields(),p,async d=>{
+        try{await sbFetch('products?id=eq.'+encodeURIComponent(p.id),{method:'PATCH',
+            headers:Object.assign(sbHeaders(),{Prefer:'return=minimal'}),body:JSON.stringify(prodToRow(d))});
+          await productsPull();render();toast('บันทึกแล้ว — อัปเดตให้ทุกคนเหมือนกัน');}
+        catch(e){toast(e.message);}},
+        {extra:{label:'ลบรหัสนี้',cls:'gh dg',fn:()=>askConfirm('ลบรหัสสินค้า',
+          'ลบ '+p.code+' ออกจากคลังกลาง? ทุกคนจะไม่เห็นรหัสนี้อีก','ลบรหัส',async()=>{
+            try{await sbFetch('products?id=eq.'+encodeURIComponent(p.id),{method:'DELETE',
+                headers:Object.assign(sbHeaders(),{Prefer:'return=minimal'})});
+              await productsPull();render();toast('ลบรหัส '+p.code+' แล้ว');}
+            catch(e){toast(e.message);}})}});},
     footer:list.length>300?el(`<div class="pad tiny">แสดง 300 รหัสแรก จากทั้งหมด ${list.length} — ใช้ช่องค้นหาด้านบนเพื่อหารหัสที่ต้องการ</div>`):null,
     empty:emptyState('ไม่พบรหัสที่ค้นหา','ลองพิมพ์รหัสหรือชื่อสินค้าบางส่วน')}));
 }
@@ -2881,21 +2967,30 @@ function importProducts(){
     prev.append(tw);body.append(prev);
 
     const go=m.querySelector('#go');go.style.display='';
-    go.onclick=()=>{
+    go.onclick=async()=>{
       const sel={};grid.querySelectorAll('select').forEach(s=>{if(s.value!=='')sel[s.dataset.k]=+s.value;});
       if(sel.code===undefined){toast('ต้องเลือกคอลัมน์ "Item Code (รหัสหลัก)" ก่อน');return;}
-      let added=0,dup=0,skipped=0;
-      const before=DB.products.length;
+      const seen=new Set(),fresh=[];let dup=0,skipped=0;
       data.forEach(r=>{
         const code=String(r[sel.code]||'').trim();
-        if(!code||/^\d+$/.test(code)&&code.length<3){skipped++;return;}
-        if(findProduct(code)){dup++;return;}
-        const p={code,code2:'',name:'',width:'',dimUnit:'',thick:'',mat:'',coreKg:'',customer:'',note:'',added:today()};
+        if(!code||(/^\d+$/.test(code)&&code.length<3)){skipped++;return;}
+        if(seen.has(code.toLowerCase())||findProduct(code)){dup++;return;}
+        seen.add(code.toLowerCase());
+        const p={code,code2:'',name:'',width:'',dimUnit:'',thick:'',mat:'',coreKg:'',customer:'',note:''};
         PRODUCT_FIELDS.forEach(f=>{if(f.k!=='code'&&sel[f.k]!==undefined)p[f.k]=String(r[sel[f.k]]||'').trim();});
-        DB.products.push(p);added++;});
-      save();close();render();
-      toast('นำเข้า '+added+' รหัส'+(dup?' · ข้ามที่ซ้ำ '+dup:'')+(skipped?' · ข้ามแถวว่าง '+skipped:''),
-        added?()=>{DB.products.length=before;save();render();}:null);
+        fresh.push(p);});
+      if(!fresh.length){toast('ไม่มีรหัสใหม่ให้นำเข้า · ซ้ำ '+dup+' · ข้าม '+skipped);return;}
+      go.disabled=true;go.textContent='กำลังส่งขึ้นคลังกลาง '+fresh.length+' รหัส…';
+      try{
+        await productsPush(fresh);
+        await productsPull();
+        close();render();
+        toast('นำเข้า '+fresh.length+' รหัสเข้าคลังกลางแล้ว — ทุกคนเห็นเหมือนกัน'
+          +(dup?' · ข้ามที่ซ้ำ '+dup:'')+(skipped?' · ข้ามแถวว่าง '+skipped:''));
+      }catch(e){
+        go.disabled=false;go.textContent='นำเข้า';
+        toast(prodTableMissing(e)?'ยังไม่ได้ติดตั้งคลังสินค้ากลาง — ให้ผู้ดูแลรันไฟล์ supabase-setup-6.sql ใน Supabase ก่อน':e.message);
+      }
     };
   };
   step1();
@@ -4465,7 +4560,9 @@ async function viewUser(id,name,mine){
   try{
     const d=await cloudLoad(id);
     AUTH.viewing=mine?null:id;AUTH.viewingName=mine?null:name;
+    const keepProducts=allProducts();      /* คลังสินค้าเป็นของกลาง ไม่เปลี่ยนตามคนที่กำลังดู */
     DB=d&&d.customers?d:seed();
+    DB.products=keepProducts;
     migrate();
     S.page='dashboard';S.docOpen=S.poOpen=S.rcOpen=S.profSel=null;
     setSync(readOnly()?'readonly':'idle');render();
@@ -4501,6 +4598,8 @@ async function startApp(){
   render();
   if(failed){setSync('offline');toast('เชื่อมคลาวด์ไม่ได้ — ใช้ข้อมูลในเครื่องไปก่อน แล้วจะบันทึกให้เมื่อกลับมาออนไลน์');}
   else if(!cloud){save();}   /* ผู้ใช้ใหม่: อัปข้อมูลเริ่มต้นขึ้นคลาวด์ */
+  /* ดึงคลังรหัสสินค้ากลาง — ใช้ร่วมกันทุกคน ไม่ขึ้นกับข้อมูลส่วนตัว */
+  productsPull().then(ok=>{if(ok)render();});
   sbPing();
 }
 async function boot(){
