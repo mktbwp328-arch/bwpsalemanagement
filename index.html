@@ -3329,7 +3329,14 @@ function loginScreen(msg){
         }catch(e1){
           if(!/ไม่ถูกต้อง/.test(e1.message))throw e1;
           /* ยังไม่เคยตั้ง PIN -> ตั้งครั้งแรก (ฐานข้อมูลจะเช็คทะเบียนพนักงานให้) */
-          const ok=await signUp(user,pass);
+          let ok;
+          try{ok=await signUp(user,pass);}
+          catch(e2){
+            /* สมัครไม่ได้เพราะมีบัญชีอยู่แล้ว = ตั้ง PIN ไปแล้ว แปลว่า PIN ที่ใส่ผิด */
+            if(/มีคนใช้แล้ว|already/i.test(e2.message))
+              throw new Error('PIN ไม่ถูกต้อง — เบอร์นี้ตั้ง PIN ไว้แล้ว ถ้าลืม PIN ให้ติดต่อผู้ดูแลระบบ');
+            throw e2;
+          }
           if(!ok){b.disabled=false;syncMode();
             err('ตั้ง PIN แล้วแต่ระบบยังบังคับยืนยันอีเมล — ให้ผู้ดูแลปิด "Confirm email" ใน Supabase');return;}
         }
