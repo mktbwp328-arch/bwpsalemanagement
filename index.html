@@ -939,7 +939,9 @@ function requirementSheet(d){
       ${[0,1,2,3].map(i=>`<div class="ln">${dots((d.detail||'').split('\n')[i]||'',700)}</div>`).join('')}
       <div style="text-align:right;margin-top:14px">จึงเรียนมาเพื่อทราบและโปรดดำเนินการ</div>
       <div style="text-align:right">ขอแสดงความนับถือ</div>
-      <div style="display:flex;justify-content:flex-end;margin-top:6px"><div style="width:260px">${sgBox('เจ้าหน้าที่ฝ่ายขาย',s.sales||(d.salesName?{name:d.salesName}:null))}</div></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:6px">
+        <div style="width:250px;display:flex">${sgBox('เจ้าหน้าที่ฝ่ายขาย',s.sales||(d.salesName?{name:d.salesName}:null))}</div>
+        <div style="width:250px;display:flex">${sgBox('หัวหน้าฝ่ายขาย',s.salesMgr)}</div></div>
       <div style="display:flex;gap:8px;margin-top:16px">
         ${sgBox('ฝ่ายผลิตส่วนงานเป่า',s.blow)}${sgBox('ฝ่ายควบคุมคุณภาพ',s.qc)}${sgBox('ผู้ช่วยกรรมการผู้จัดการ',s.asstMd)}</div>
       <div style="display:flex;gap:8px;margin-top:10px">
@@ -3290,7 +3292,8 @@ const SIGN_ROLES={
     ['accMgr','ผู้จัดการฝ่ายบัญชีและการเงิน'],['md','กรรมการผู้จัดการ']],
   sample:[['sales','ผู้ร้องขอ (ฝ่ายขาย)'],['rd','ผู้รับเรื่อง (ฝ่ายวิจัยและพัฒนา)'],
     ['preApprove','ผู้อนุมัติเบื้องต้น (ผู้ช่วยกรรมการผู้จัดการ)'],['md','ผู้อนุมัติ (กรรมการผู้จัดการ)']],
-  requirement:[['sales','เจ้าหน้าที่ฝ่ายขาย'],['blow','ฝ่ายผลิตส่วนงานเป่า'],['print','ฝ่ายผลิตส่วนงานพิมพ์'],
+  requirement:[['sales','เจ้าหน้าที่ฝ่ายขาย'],['salesMgr','หัวหน้าฝ่ายขาย'],
+    ['blow','ฝ่ายผลิตส่วนงานเป่า'],['print','ฝ่ายผลิตส่วนงานพิมพ์'],
     ['qc','ฝ่ายควบคุมคุณภาพ'],['store','ฝ่ายคลังสินค้า'],['plan','ฝ่ายวางแผน'],
     ['logistics','ฝ่ายขนส่ง'],['asstMd','ผู้ช่วยกรรมการผู้จัดการ']],
   receipt:[['sender','ผู้ส่งสินค้า'],['authorized','ผู้มีอำนาจลงนาม']]
