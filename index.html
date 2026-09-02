@@ -3450,11 +3450,12 @@ function timelineRow(c,t,last,after,big){
         <div style="flex:1;min-width:0"><div style="font-size:${big?'14.5px':'14px'};font-weight:600">${esc(t.title)}</div>
         <div class="tiny">${fmtDate(t.date)}${t.by?' · '+esc(t.by):''}${t.note?' · '+esc(t.note):''}</div></div>
       </div></div></div>`);
-  if(!readOnly()){
-    const b=el(`<button class="btn gh sm" style="flex-shrink:0;padding:4px 10px">แก้ไข</button>`);
-    b.onclick=e=>{e.stopPropagation();timelineEdit(c,t,after);};
-    r.querySelector('div[style*="display:flex"]').append(b);
-  }
+  /* ปุ่มแก้ไขขึ้นเสมอ ถ้าอยู่ในโหมดดูข้อมูลของคนอื่นจะบอกเหตุผลตอนกด */
+  const b=el(`<button class="btn gh sm" style="flex-shrink:0;padding:4px 10px">${svg('edit','ic s')}แก้ไข</button>`);
+  b.onclick=e=>{e.stopPropagation();
+    if(readOnly()){toast('กำลังดูข้อมูลของ '+(AUTH.viewingName||'เพื่อนร่วมทีม')+' — แก้ไขไม่ได้ กดเมนูผู้ใช้แล้วเลือก "กลับไปข้อมูลของฉัน" ก่อน');return;}
+    timelineEdit(c,t,after);};
+  r.querySelector('div[style*="display:flex"]').append(b);
   return r;
 }
 function openCustomer(c){
