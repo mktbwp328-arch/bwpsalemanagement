@@ -3368,7 +3368,7 @@ function customerFields(){return [
   {group:'สถานะงานขาย'},
   {key:'channel',label:'ช่องทางที่ติดต่อเข้ามา',type:'select',options:['LINE','Facebook','Email','Website','Referral','โทรศัพท์','Walk-in']},
   {key:'status',label:'สถานะดำเนินการ',type:'select',options:Object.keys(CUST_ST)},
-  {key:'date',label:'วันที่ติดต่อ',type:'date',def:today()},{key:'owner',label:'ผู้ดูแล',def:'คุณกัญญ์'},
+  {key:'date',label:'วันที่ติดต่อ',type:'date',def:today()},{key:'owner',label:'ผู้ดูแล',def:meName()},
   {group:'ข้อมูลบริษัท (ไม่บังคับ)'},
   {key:'taxId',label:'เลขประจำตัวผู้เสียภาษี'},{key:'website',label:'เว็บไซต์'},
   {key:'address',label:'ที่อยู่',type:'textarea',full:true},
@@ -3423,17 +3423,50 @@ function pgCustomers(v){
     empty:emptyState('ยังไม่มีลูกค้าในกลุ่มนี้','เพิ่มลูกค้ารายแรก หรือเปลี่ยนตัวกรองด้านบน','เพิ่มลูกค้าใหม่',()=>$('#topActions .btn').click())
   }));
 }
+/* ชื่อผู้ใช้ที่ล็อกอินอยู่ ใช้เป็นค่าตั้งต้นของช่อง "ผู้บันทึก" และ "ผู้ดูแล" */
+function meName(){
+  const p=AUTH.profile;
+  return p?(personName(p,EMP_NAMES)||''):'';
+}
+/* แก้ไข / ลบ บันทึกการดำเนินการที่บันทึกไปแล้ว */
+function timelineEdit(c,t,after){
+  openForm('แก้ไขบันทึก',[
+    {key:'title',label:'ทำอะไรไป',req:true,full:true},
+    {key:'date',label:'วันที่',type:'date'},
+    {key:'by',label:'ผู้บันทึก'},
+    {key:'note',label:'หมายเหตุ',type:'textarea',full:true}
+  ],t,d=>{Object.assign(t,d);save();render();toast('แก้ไขบันทึกแล้ว');if(after)after();},
+  {okLabel:'บันทึกการแก้ไข',extra:{label:'ลบบันทึกนี้',cls:'gh dg',fn:()=>{
+    const i=c.timeline.indexOf(t);if(i<0)return;
+    const g=c.timeline.splice(i,1)[0];save();render();
+    toast('ลบบันทึกแล้ว',()=>{c.timeline.splice(i,0,g);save();render();});
+    if(after)after();}}});
+}
+/* แถวบันทึกหนึ่งรายการ พร้อมปุ่มแก้ไข */
+function timelineRow(c,t,last,after,big){
+  const r=el(`<div class="tl"><div class="dot"><i></i>${last?'':'<s></s>'}</div>
+    <div style="padding-bottom:${big?'15px':'14px'};flex:1;min-width:0">
+      <div style="display:flex;align-items:flex-start;gap:8px">
+        <div style="flex:1;min-width:0"><div style="font-size:${big?'14.5px':'14px'};font-weight:600">${esc(t.title)}</div>
+        <div class="tiny">${fmtDate(t.date)}${t.by?' · '+esc(t.by):''}${t.note?' · '+esc(t.note):''}</div></div>
+      </div></div></div>`);
+  if(!readOnly()){
+    const b=el(`<button class="btn gh sm" style="flex-shrink:0;padding:4px 10px">แก้ไข</button>`);
+    b.onclick=e=>{e.stopPropagation();timelineEdit(c,t,after);};
+    r.querySelector('div[style*="display:flex"]').append(b);
+  }
+  return r;
+}
 function openCustomer(c){
   const tl=el('<div></div>');
   tl.append(el('<div style="font-size:14px;font-weight:700;margin-bottom:10px">ดำเนินการถึงไหนแล้ว</div>'));
-  c.timeline.forEach((t,i)=>tl.append(el(`<div class="tl"><div class="dot"><i></i>${i<c.timeline.length-1?'<s></s>':''}</div>
-    <div style="padding-bottom:14px"><div style="font-size:14px;font-weight:600">${esc(t.title)}</div>
-    <div class="tiny">${fmtDate(t.date)}${t.by?' · '+esc(t.by):''}${t.note?' · '+esc(t.note):''}</div></div></div>`)));
+  c.timeline.forEach((t,i)=>tl.append(
+    timelineRow(c,t,i===c.timeline.length-1,()=>openCustomer(c),false)));
   tl.append(el(`<div class="tl pend"><div class="dot"><i></i></div><div><div style="font-size:14px;font-weight:600;color:var(--mut2)">ขั้นถัดไป: ${esc(c.status)}</div></div></div>`));
   const addBtn=el(`<button class="btn gh blk">${svg('plus','ic s')}บันทึกการดำเนินการ</button>`);
   addBtn.onclick=()=>openForm('บันทึกการดำเนินการ — '+c.name,[
     {key:'title',label:'ทำอะไรไป',req:true,full:true,ph:'เช่น โทรติดตามใบเสนอราคา'},
-    {key:'date',label:'วันที่',type:'date',def:today()},{key:'by',label:'ผู้บันทึก',def:'คุณกัญญ์'},
+    {key:'date',label:'วันที่',type:'date',def:today()},{key:'by',label:'ผู้บันทึก',def:meName()},
     {key:'note',label:'หมายเหตุ',type:'textarea',full:true},
     {key:'status',label:'อัปเดตสถานะเป็น',type:'select',options:Object.keys(CUST_ST),def:c.status,full:true}
   ],{},d=>{c.timeline.push({date:d.date,title:d.title,note:d.note,by:d.by});c.status=d.status;save();render();toast('บันทึกแล้ว');openCustomer(c);});
@@ -4037,7 +4070,7 @@ function poFields(){return [
   {key:'payment',label:'การชำระเงิน',type:'select',options:['เงินสด','เครดิต 30 วัน','เครดิต 45 วัน','เครดิต 60 วัน']},
   {key:'quoteRef',label:'อ้างอิงใบเสนอราคา'},
   {key:'ship',label:'สถานที่จัดส่ง',full:true},
-  {key:'owner',label:'ผู้ดูแล',def:'คุณกัญญ์'}];}
+  {key:'owner',label:'ผู้ดูแล',def:meName()}];}
 function pgPO(v){
   if(S.poOpen){const p=DB.pos.find(x=>x.id===S.poOpen);if(p)return poDetail(v,p);S.poOpen=null;}
   header('PO ลูกค้า',['งานขาย']);
@@ -4397,13 +4430,12 @@ function pgProfiles(v){
     const b=el(`<button class="btn sm">${svg('plus','ic s')}เพิ่มบันทึก</button>`);
     b.onclick=()=>openForm('เพิ่มบันทึกกิจกรรม',[
       {key:'title',label:'ทำอะไรไป',req:true,full:true},{key:'date',label:'วันที่',type:'date',def:today()},
-      {key:'by',label:'ผู้บันทึก',def:'คุณกัญญ์'},{key:'note',label:'หมายเหตุ',type:'textarea',full:true}
+      {key:'by',label:'ผู้บันทึก',def:meName()},{key:'note',label:'หมายเหตุ',type:'textarea',full:true}
     ],{},d=>{c.timeline.push(d);save();render();toast('บันทึกแล้ว');});
     h.append(b);card.append(h);
     if(!c.timeline.length)card.append(el('<div class="empty">ยังไม่มีบันทึก</div>'));
-    [...c.timeline].reverse().forEach((t,i,arr)=>card.append(el(`<div class="tl"><div class="dot"><i></i>${i<arr.length-1?'<s></s>':''}</div>
-      <div style="padding-bottom:15px"><div style="font-size:14.5px;font-weight:600">${esc(t.title)}</div>
-      <div class="tiny">${fmtDate(t.date)}${t.by?' · '+esc(t.by):''}${t.note?' · '+esc(t.note):''}</div></div></div>`)));
+    [...c.timeline].reverse().forEach((t,i,arr)=>
+      card.append(timelineRow(c,t,i===arr.length-1,null,true)));
     v.append(card);
   }
 }
