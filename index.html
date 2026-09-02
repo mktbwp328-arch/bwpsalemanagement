@@ -2869,6 +2869,7 @@ async function loadTeam(force){
   if(S.page==='team')render();
   try{
     const list=await sbRpc('team_list',{})||[];
+    await empNames();                      /* ดึงชื่อจากทะเบียนพนักงานมาแสดงแทนเบอร์ */
     const me=AUTH.user.id;
     const all=[{id:me,name:(AUTH.profile&&AUTH.profile.name)||'ฉัน',
       email:(AUTH.profile&&AUTH.profile.email)||'',role:(AUTH.profile&&AUTH.profile.role)||'sales',mine:true}]
@@ -2911,7 +2912,7 @@ function pgTeam(v){
   const sel=S.teamSel&&rows.some(r=>r.p.id===S.teamSel)?S.teamSel:null;
   const cur=sel?rows.find(r=>r.p.id===sel):null;
   const view=cur?cur.st:null;
-  const nameOf=p=>p.name||toUsername(p.email)||'ไม่ระบุชื่อ';
+  const nameOf=p=>personName(p,EMP_NAMES)||'ไม่ระบุชื่อ';
 
   v.append(hint(TEAM.at
     ? 'ข้อมูลอัปเดตเมื่อ '+ago(TEAM.at)+' · กดชื่อเซลในตารางอันดับเพื่อดูตัวเลขเฉพาะคนนั้น กดซ้ำเพื่อกลับมาดูรวมทั้งทีม'
@@ -4781,26 +4782,46 @@ function userEdit(u,isMe){
 }
 
 /* หัวหน้าเลือกดูข้อมูลของเซลแต่ละคน */
+/* ชื่อพนักงานจากทะเบียน — บางบัญชีตั้ง PIN ก่อนจะกรอกชื่อ โปรไฟล์เลยเป็นเบอร์
+   จึงดึงชื่อจากทะเบียนพนักงานมาแสดงแทนเบอร์ */
+let EMP_NAMES=null;
+async function empNames(){
+  if(EMP_NAMES)return EMP_NAMES;
+  const map={};
+  try{(await sbRpc('employee_list',{})||[]).forEach(e=>{
+    if(e.phone&&e.name)map[normPhone(e.phone)]=e.name;});}catch(e){}
+  EMP_NAMES=map;return map;
+}
+/* ชื่อที่จะโชว์: ชื่อในโปรไฟล์ → ชื่อในทะเบียนพนักงาน → เบอร์ */
+function personName(t,map){
+  const login=toUsername(t.email||'');
+  const nm=String(t.name||'').trim();
+  if(nm&&nm!==login&&nm!==normPhone(login))return nm;
+  return (map&&map[normPhone(login)])||nm||login;
+}
 async function teamPicker(){
   let team=[];
   try{team=await sbRpc('team_list',{})||[];}catch(e){toast(e.message);return;}
+  const emp=await empNames();
   const ov=el('<div class="ov"></div>');
   const m=el(`<div class="modal" style="max-width:560px"><header><div><b>ข้อมูลของทีมขาย</b>
       <div class="tiny" style="margin-top:2px">เลือกดูข้อมูลของแต่ละคน (ดูได้อย่างเดียว แก้ไม่ได้)</div></div>
       <button class="close">✕</button></header><div class="mb"><div class="list2"></div></div></div>`);
   const list=m.querySelector('.list2');
   const me=AUTH.user.id;
-  [{id:me,name:(AUTH.profile.name||'ฉัน')+' (ข้อมูลของฉัน)',email:AUTH.profile.email,role:AUTH.profile.role,mine:true,
+  [{id:me,name:personName(AUTH.profile,emp)||'ฉัน',email:AUTH.profile.email,role:AUTH.profile.role,mine:true,
     updated_at:null,size_kb:null}]
     .concat(team.filter(t=>t.id!==me))
     .forEach(t=>{
       const on=(AUTH.viewing||me)===t.id;
+      const nm=personName(t,emp),login=toUsername(t.email);
+      const label=nm+(t.mine?' (ข้อมูลของฉัน)':'');
       const r=el(`<div class="lrow" style="border-radius:10px;${on?'background:var(--blue-l);box-shadow:inset 3px 0 0 var(--blue)':''}">
-        <div class="lav">${esc(initials(t.name||toUsername(t.email)||'?'))}</div>
-        <div class="lmain"><div class="lt">${esc(t.name||toUsername(t.email))}</div>
-          <div class="lm">${esc(toUsername(t.email))} · ${esc(t.role==='sales'?'พนักงานขาย':t.role==='manager'?'ผู้จัดการ':'ผู้ดูแล')}${t.updated_at?' · แก้ล่าสุด '+ago(t.updated_at):''}${t.size_kb?' · '+t.size_kb+' KB':''}</div></div>
+        <div class="lav">${esc(initials(nm))}</div>
+        <div class="lmain"><div class="lt">${esc(label)}</div>
+          <div class="lm">${esc(nm===login?'':fmtPhone(login)+' · ')}${esc(t.role==='sales'?'พนักงานขาย':t.role==='manager'?'ผู้จัดการ':'ผู้ดูแล')}${t.updated_at?' · แก้ล่าสุด '+ago(t.updated_at):''}${t.size_kb?' · '+t.size_kb+' KB':''}</div></div>
         <div class="lright">${on?'<span class="pill" style="background:#dbeafe;color:#1d4ed8">กำลังดู</span>':''}</div></div>`);
-      r.onclick=async()=>{ov.remove();await viewUser(t.id,t.name||t.email,t.mine);};
+      r.onclick=async()=>{ov.remove();await viewUser(t.id,nm,t.mine);};
       list.append(r);});
   if(!team.length)list.append(el('<div class="empty">ยังไม่มีผู้ใช้คนอื่นในระบบ</div>'));
   m.querySelector('.close').onclick=()=>ov.remove();
