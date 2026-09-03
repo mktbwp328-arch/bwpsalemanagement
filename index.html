@@ -690,7 +690,7 @@ const COMPANY={
   nameEn:'BEST WORLD INTERPLAS CO.,LTD',
   address:'328 หมู่6 ต.คลองนิยมยาตรา อ.บางบ่อ จ.สมุทรปราการ 10560',
   phone:'โทรศัพท์ (02) 317-5470-3  โทรสาร (02) 317-5474',
-  docCode:'FQP-MKT-01:01 Rev.02'};
+  docCode:'FQP-MKT-01:01 Rev.03'};
 const DEFAULT_NOTES='บริษัทฯ ขอสงวนสิทธิ์ที่จะเปลี่ยนแปลงราคาโดยมิต้องแจ้งให้ทราบล่วงหน้า และราคาอาจมีการเปลี่ยนแปลงตามสภาวการณ์\nกำหนดส่งสินค้า 7-10 วัน โดยประมาณ นับจากวันที่ได้รับใบสั่งซื้อหรือส่งมอบภายใน 1 เดือน';
 /* วันที่แบบฟอร์ม: 24/08/69 */
 function fmtShort(iso){const d=new Date(iso);if(!iso||isNaN(d))return '';
@@ -4948,6 +4948,9 @@ async function viewUser(id,name,mine){
 function migrate(){
   if(!DB.company)DB.company=Object.assign({},COMPANY);
   if(!DB.products)DB.products=[];
+  /* อัปเดตรหัสแบบฟอร์มใบเสนอราคาให้เป็นรุ่นล่าสุด (ถ้ายังเป็นรุ่นเก่าที่ระบบตั้งไว้) */
+  if(DB.company&&/^FQP-MKT-01:01 Rev\.0[12]$/.test(DB.company.docCode||''))
+    DB.company.docCode=COMPANY.docCode;
   (DB.pos||[]).forEach(p=>{if(!p.items)p.items=[];if(!p.images)p.images=[];if(!p.files)p.files=[];});
   if(DB.cert===undefined)DB.cert=null;
   /* เอาบรรทัด "ราคาดังกล่าวยังไม่ภาษีมูลค่าเพิ่ม 7%" ออกจากใบเสนอราคาเดิม (ทำครั้งเดียว) */
