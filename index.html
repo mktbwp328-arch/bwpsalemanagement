@@ -2704,8 +2704,72 @@ function statsOf(db){
       quoteN:quotes.length,quoteOk:quotes.filter(d=>d.status==='อนุมัติแล้ว').length,
       poN:pos.length,poSum:pos.reduce((a,b)=>a+poGross(b),0),
       custN:css.length,custWon:css.filter(c=>c.status==='ปิดการขาย').length,
-      products:productStats(inPeriod),months,cnts,year:yr};
+      products:productStats(inPeriod),buyers:customerStats(inPeriod),months,cnts,year:yr};
   });
+}
+/* ลูกค้าแต่ละรายซื้อสินค้าอะไรไปบ้าง — รวมจากแหล่งเดียวกับสินค้าที่ขายได้ */
+function customerStats(inP){
+  const map={};
+  const add=(cust,it)=>{
+    const c=String(cust||'').trim()||'(ไม่ระบุลูกค้า)';
+    const e=map[c]||(map[c]={customer:c,amount:0,deals:0,items:{}});
+    const name=String(it.name||'').trim()||'(ไม่ระบุชื่อสินค้า)',k=name.toLowerCase();
+    const p=e.items[k]||(e.items[k]={name,qty:0,unit:it.unit||'',amount:0});
+    p.qty+=(+it.qty||0);p.amount+=(+it.qty||0)*(+it.price||0);
+    if(!p.unit&&it.unit)p.unit=it.unit;
+    e.amount+=(+it.qty||0)*(+it.price||0);
+  };
+  const doc=(cust,items)=>{
+    if(!(items||[]).length)return;
+    (items||[]).forEach(i=>add(cust,i));
+    const c=String(cust||'').trim()||'(ไม่ระบุลูกค้า)';
+    if(map[c])map[c].deals++;
+  };
+  DB.pos.filter(p=>p.status!=='ยกเลิก'&&inP(p.date)).forEach(p=>doc(p.customer,p.items));
+  DB.docs.filter(d=>d.type==='quotation'&&d.status==='อนุมัติแล้ว'&&inP(d.date)
+    &&!DB.pos.some(p=>p.status!=='ยกเลิก'&&p.quoteRef===d.no)).forEach(d=>doc(d.customer,d.items));
+  return Object.values(map)
+    .map(e=>Object.assign(e,{list:Object.values(e.items).sort((a,b)=>b.amount-a.amount)}))
+    .sort((a,b)=>b.amount-a.amount);
+}
+/* การ์ด "ลูกค้าซื้ออะไรบ้าง" */
+function customersCard(rows,title,sub){
+  const card=el(`<div class="card"><div class="pad" style="padding-bottom:6px">
+    <div class="h3" style="margin:0">${esc(title)}</div>
+    <div class="tiny" style="margin-top:3px">${esc(sub)}</div></div></div>`);
+  if(!rows.length){card.append(el('<div class="empty">ยังไม่มีข้อมูลการซื้อในช่วงนี้<div style="font-size:14px">จะขึ้นเมื่อมี PO หรือใบเสนอราคาที่อนุมัติแล้ว</div></div>'));return card;}
+  const mx=Math.max(...rows.map(r=>r.amount),1);
+  const box=el('<div class="pad" style="padding-top:4px"></div>');
+  rows.slice(0,8).forEach((r,i)=>{
+    const names=r.list.slice(0,3).map(p=>p.name).join(' · ');
+    const w=el(`<div style="cursor:pointer;padding:9px 10px;margin:0 -10px;border-radius:10px">
+      <div style="display:flex;justify-content:space-between;gap:10px;font-size:14px;margin-bottom:6px">
+        <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i+1}. ${esc(r.customer)}</span>
+        <b style="white-space:nowrap">${num0(Math.round(r.amount))} ฿</b></div>
+      <div style="height:9px;background:#eef2f8;border-radius:99px;overflow:hidden">
+        <div style="width:${(r.amount/mx*100).toFixed(0)}%;height:100%;background:#0e7490;transition:width .3s"></div></div>
+      <div class="tiny" style="margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.list.length} ชนิดสินค้า · ${r.deals} รายการ · ${esc(names)}${r.list.length>3?' …':''}</div></div>`);
+    w.onmouseenter=()=>w.style.background='#f6f9ff';w.onmouseleave=()=>w.style.background='';
+    w.onclick=()=>customerBuyModal(r);
+    box.append(w);});
+  card.append(box);
+  if(rows.length>8)card.append(el(`<div class="pad tiny" style="padding-top:0">และอีก ${rows.length-8} ราย</div>`));
+  return card;
+}
+function customerBuyModal(r){
+  const ov=el('<div class="ov"></div>');
+  const m=el(`<div class="modal" style="max-width:640px"><header><div><b>${esc(r.customer)}</b>
+      <div class="tiny" style="margin-top:2px">ซื้อ ${r.list.length} ชนิดสินค้า · ${r.deals} รายการ · รวม ${num0(Math.round(r.amount))} บาท</div></div>
+      <button class="close">✕</button></header><div class="mb"><div class="list"></div></div>
+    <footer><div style="flex:1"></div><button class="btn gh" id="c">ปิด</button></footer></div>`);
+  const list=m.querySelector('.list');
+  r.list.forEach((p,i)=>list.append(el(`<div class="lrow" style="cursor:default">
+    <div class="lav">${i+1}</div>
+    <div class="lmain"><div class="lt">${esc(p.name)}</div>
+      <div class="lm">${num0(p.qty)} ${esc(p.unit||'หน่วย')}</div></div>
+    <div class="lright"><div class="lamt">${num0(Math.round(p.amount))} ฿</div></div></div>`)));
+  m.querySelector('.close').onclick=()=>ov.remove();m.querySelector('#c').onclick=()=>ov.remove();
+  ov.append(m);$('#layer').append(ov);
 }
 /* รายการดีลที่มีสินค้าชิ้นนี้ — ใช้ตอนกดดูรายละเอียดสินค้า */
 function productDeals(db,name){
@@ -2912,8 +2976,13 @@ function pgDashboard(v){
     r.onclick=()=>go('receipts',{rcFilter:k,rcMonth:null,rcQ:''});rcCard.append(r);});
   row3.append(rcCard);v.append(row3);
 
-  v.append(productsCard(DB,st.products,'สินค้าที่ขายได้',
-    'รวมจากรายการใน PO และใบเสนอราคาที่อนุมัติแล้ว · กดที่สินค้าเพื่อดูว่าขายให้ใครบ้าง'));
+  const row4=el('<div class="split"></div>');
+  row4.append(productsCard(DB,st.products,'สินค้าที่ขายได้',
+    'กดที่สินค้าเพื่อดูว่าขายให้ลูกค้ารายไหนบ้าง'));
+  row4.append(customersCard(st.buyers,'ลูกค้าซื้ออะไรบ้าง',
+    'กดที่ชื่อลูกค้าเพื่อดูรายการสินค้าที่ซื้อไป'));
+  v.append(row4);
+  v.append(el('<div class="tiny" style="margin-top:-4px">ทั้งสองการ์ดนับจากรายการใน PO และใบเสนอราคาที่อนุมัติแล้วแต่ยังไม่มี PO (ไม่นับซ้ำ)</div>'));
 }
 
 /* ---------- 1b. ภาพรวมทีมขาย (เฉพาะผู้จัดการ/ผู้ดูแล) ----------
@@ -3061,9 +3130,23 @@ function pgTeam(v){
       const k=p.name.toLowerCase(),e=mp[k]||(mp[k]={name:p.name,qty:0,unit:p.unit,amount:0,deals:0});
       e.qty+=p.qty;e.amount+=p.amount;e.deals+=p.deals;if(!e.unit&&p.unit)e.unit=p.unit;}));
     prods=Object.values(mp).sort((a,b)=>b.amount-a.amount);}
-  v.append(productsCard(cur?cur.p.db:null,prods,
-    'สินค้าขายดี — '+who,
-    cur?'กดที่สินค้าเพื่อดูว่าขายให้ลูกค้ารายไหนบ้าง':'รวมทุกคนในทีม · เลือกเซลรายคนด้านบนเพื่อดูรายละเอียดสินค้าของคนนั้น'));
+  /* ลูกค้าซื้ออะไรบ้าง — รวมทั้งทีมหรือเฉพาะคนที่เลือก */
+  let buyers;
+  if(cur)buyers=cur.st.buyers;
+  else{const bm={};ok.forEach(r=>r.st.buyers.forEach(b=>{
+      const e=bm[b.customer]||(bm[b.customer]={customer:b.customer,amount:0,deals:0,items:{},list:[]});
+      e.amount+=b.amount;e.deals+=b.deals;
+      b.list.forEach(p=>{const k=p.name.toLowerCase();
+        const q=e.items[k]||(e.items[k]={name:p.name,qty:0,unit:p.unit,amount:0});
+        q.qty+=p.qty;q.amount+=p.amount;if(!q.unit&&p.unit)q.unit=p.unit;});}));
+    buyers=Object.values(bm).map(e=>Object.assign(e,{list:Object.values(e.items).sort((a,b)=>b.amount-a.amount)}))
+      .sort((a,b)=>b.amount-a.amount);}
+
+  const row4=el('<div class="split"></div>');
+  row4.append(productsCard(cur?cur.p.db:null,prods,'สินค้าขายดี — '+who,
+    cur?'กดที่สินค้าเพื่อดูว่าขายให้ลูกค้ารายไหนบ้าง':'รวมทุกคนในทีม · เลือกเซลรายคนด้านบนเพื่อดูรายละเอียดสินค้า'));
+  row4.append(customersCard(buyers,'ลูกค้าซื้ออะไรบ้าง — '+who,'กดที่ชื่อลูกค้าเพื่อดูรายการสินค้าที่ซื้อไป'));
+  v.append(row4);
 
   if(cur&&!cur.p.mine){
     const b=el(`<button class="btn gh" style="margin:16px auto 0;display:flex">เปิดดูข้อมูลทั้งหมดของ ${esc(nameOf(cur.p))}</button>`);
