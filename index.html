@@ -769,9 +769,9 @@ function quoteSheet(d){
     <div class="itemswrap"><table class="items">
       <thead><tr><th>No.</th><th>รหัสสินค้า/รายละเอียด</th><th>จำนวน</th><th>ราคา/หน่วย</th><th>จำนวนเงิน</th></tr></thead>
       <tbody>${rowsHtml}<tr class="fill"><td class="no"></td><td></td><td></td><td></td><td></td></tr>
-        <tr class="sum"><td colspan="2" class="nt"><b>หมายเหตุฯ</b> ราคาอาจมีการเปลี่ยนแปลงตามสภาวการณ์</td>
+        <tr class="sum"><td colspan="2" class="nt"></td>
           <td colspan="2" class="lb">มูลค่า</td><td class="am">${num(sub)}</td></tr>
-        <tr class="sum"><td colspan="2" class="nt"><b>กำหนดยืนราคา</b> ${esc(d.validDays)} วัน นับจากวันที่เสนอราคา</td>
+        <tr class="sum"><td colspan="2" class="nt"></td>
           <td colspan="2" class="lb">ภาษีมูลค่าเพิ่ม 7%</td><td class="am">${num(vat)}</td></tr>
         <tr class="sum tot"><td colspan="2" class="nt"></td>
           <td colspan="2" class="lb">รวมมูลค่าทั้งสิ้น</td><td class="am">${num(sub+vat)}</td></tr>
