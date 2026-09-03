@@ -1383,7 +1383,7 @@ function saveMySig(sig){
 /* เติมลายเซ็นฝ่ายขายให้เอกสารที่เพิ่งสร้าง */
 function autoSignSales(doc){
   const s=mySig();
-  if(!s)return false;
+  if(!s||readOnly()||!doc)return false;
   const stamp={img:s.img,name:s.name||(AUTH.profile&&AUTH.profile.name)||'',date:today()};
   if(doc.type==='quotation'){
     if(doc.sigSales)return false;
@@ -3783,6 +3783,8 @@ function pgDocuments(v){
 /* ---- หน้ารายละเอียดใบขอเครดิต (พิมพ์ 2 หน้า + เซ็น 4 ลายเซ็น) ---- */
 /* การ์ดลายเซ็น ใช้ร่วมกันทุกเอกสาร */
 function signCard(d,onSigned){
+  /* เอกสารของตัวเอง ถ้าช่องฝ่ายขายยังว่างและมีลายเซ็นประจำตัวอยู่ ให้เซ็นให้เลย */
+  if(autoSignSales(d)){save();if(onSigned)onSigned();}
   const roles=rolesOf(d.type),n=Object.keys(d.sigs||{}).length;
   const sg=el(`<div class="card pad"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px">
     <div class="h3" style="margin:0">ลายเซ็นอนุมัติ</div>
@@ -4024,6 +4026,8 @@ function quoteDetail(v,d){
   const right=el('<div style="display:flex;flex-direction:column;gap:16px;align-self:start"></div>');
 
   /* ---- ลายเซ็นและการอนุมัติ ---- */
+  /* เซ็นช่องฝ่ายขายให้อัตโนมัติจากลายเซ็นประจำตัว ไม่ต้องเซ็นซ้ำทุกใบ */
+  if(autoSignSales(d)){if(d.status==='ร่าง')d.status='ส่งแล้ว';save();}
   const sg=el('<div class="card pad"><div class="h3">ลายเซ็นและการอนุมัติ</div></div>');
   const step=(n,label,sig,btnLabel,onSign,locked)=>{
     const done=!!(sig&&sig.img);
