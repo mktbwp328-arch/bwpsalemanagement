@@ -691,7 +691,7 @@ const COMPANY={
   address:'328 หมู่6 ต.คลองนิยมยาตรา อ.บางบ่อ จ.สมุทรปราการ 10560',
   phone:'โทรศัพท์ (02) 317-5470-3  โทรสาร (02) 317-5474',
   docCode:'FQP-MKT-01:01 Rev.02'};
-const DEFAULT_NOTES='ราคาดังกล่าวยังไม่ภาษีมูลค่าเพิ่ม 7%\nบริษัทฯ ขอสงวนสิทธิ์ที่จะเปลี่ยนแปลงราคาโดยมิต้องแจ้งให้ทราบล่วงหน้า และราคาอาจมีการเปลี่ยนแปลงตามสภาวการณ์\nกำหนดส่งสินค้า 7-10 วัน โดยประมาณ นับจากวันที่ได้รับใบสั่งซื้อหรือส่งมอบภายใน 1 เดือน';
+const DEFAULT_NOTES='บริษัทฯ ขอสงวนสิทธิ์ที่จะเปลี่ยนแปลงราคาโดยมิต้องแจ้งให้ทราบล่วงหน้า และราคาอาจมีการเปลี่ยนแปลงตามสภาวการณ์\nกำหนดส่งสินค้า 7-10 วัน โดยประมาณ นับจากวันที่ได้รับใบสั่งซื้อหรือส่งมอบภายใน 1 เดือน';
 /* วันที่แบบฟอร์ม: 24/08/69 */
 function fmtShort(iso){const d=new Date(iso);if(!iso||isNaN(d))return '';
   return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+String((d.getFullYear()+543)%100).padStart(2,'0');}
@@ -4946,6 +4946,13 @@ function migrate(){
   if(!DB.products)DB.products=[];
   (DB.pos||[]).forEach(p=>{if(!p.items)p.items=[];if(!p.images)p.images=[];if(!p.files)p.files=[];});
   if(DB.cert===undefined)DB.cert=null;
+  /* เอาบรรทัด "ราคาดังกล่าวยังไม่ภาษีมูลค่าเพิ่ม 7%" ออกจากใบเสนอราคาเดิม (ทำครั้งเดียว) */
+  if(!DB.notesFix){
+    (DB.docs||[]).forEach(d=>{
+      if(d.type==='quotation'&&typeof d.notes==='string')
+        d.notes=d.notes.split('\n').filter(l=>!/ราคาดังกล่าวยังไม่ภาษีมูลค่าเพิ่ม/.test(l)).join('\n');});
+    DB.notesFix=1;
+  }
   (DB.docs||[]).filter(d=>d.type==='quotation').forEach(d=>{
     ensureQuote(d);
     if(!d.items.length&&d.amount)d.items=[{name:'สินค้าตามรายละเอียดที่เสนอ',qty:1,unit:'รายการ',price:d.amount}];
