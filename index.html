@@ -518,7 +518,15 @@ const ICON={
 const svg=(k,cls='ic')=>`<svg class="${cls}" viewBox="0 0 24 24">${ICON[k]}</svg>`;
 
 /* ================= status ================= */
-const CUST_ST={'ใหม่':['#dbeafe','#1d4ed8'],'กำลังติดต่อ':['#cffafe','#0e7490'],'ส่งใบเสนอราคา':['#fef3c7','#b45309'],'รอ PO':['#ede9fe','#6d28d9'],'ปิดการขาย':['#dcfce7','#15803d'],'ยกเลิก':['#fee2e2','#b91c1c']};
+const CUST_ST={'ใหม่':['#dbeafe','#1d4ed8'],'กำลังติดต่อ':['#cffafe','#0e7490'],'ส่งตัวอย่าง':['#ffe4e6','#be123c'],'ส่งใบเสนอราคา':['#fef3c7','#b45309'],'รอ PO':['#ede9fe','#6d28d9'],'ปิดการขาย':['#dcfce7','#15803d'],'ยกเลิก':['#fee2e2','#b91c1c']};
+/* สถานะที่พนักงานพิมพ์เพิ่มเอง จะถูกเก็บไว้ให้เลือกซ้ำได้ */
+function custStatuses(){
+  const out=Object.keys(CUST_ST);
+  ((DB&&DB.customers)||[]).forEach(c=>{
+    const s=String(c.status||'').trim();
+    if(s&&out.indexOf(s)<0)out.push(s);});
+  return out;
+}
 const DOC_ST={'ร่าง':['#f1f5f9','#64748b'],'รออนุมัติ':['#fef3c7','#b45309'],'ส่งแล้ว':['#dbeafe','#1d4ed8'],'อนุมัติแล้ว':['#dcfce7','#15803d'],'ยกเลิก':['#fee2e2','#b91c1c']};
 const PO_ST={'รอตรวจสอบ':['#fef3c7','#b45309'],'อนุมัติแล้ว':['#dcfce7','#15803d'],'กำลังผลิต':['#dbeafe','#1d4ed8'],'ส่งมอบแล้ว':['#e0e7ff','#4338ca'],'ยกเลิก':['#fee2e2','#b91c1c']};
 const RC_ST={'รอชำระ':['#fef3c7','#b45309'],'บางส่วน':['#e0e7ff','#4338ca'],'ชำระแล้ว':['#dcfce7','#15803d'],'ยกเลิก':['#fee2e2','#b91c1c']};
@@ -2152,6 +2160,45 @@ async function productsPush(list){
   }
   return n;
 }
+/* ช่องพิมพ์แล้วเลือกจากรายการสั้น ๆ ได้ (เช่น สถานะลูกค้า) พิมพ์ค่าใหม่เองก็ได้ */
+function listCombo(input,options){
+  const wrap=el('<div class="pcw"></div>');
+  input.parentNode.insertBefore(wrap,input);wrap.append(input);
+  const menu=el('<div class="pcm"></div>');wrap.append(menu);
+  let list=[],idx=-1;
+  const close=()=>{menu.classList.remove('on');idx=-1;};
+  const pick=v=>{input.value=v;close();input.dispatchEvent(new Event('change',{bubbles:true}));};
+  const open=()=>{
+    const q=String(input.value||'').trim().toLowerCase();
+    const all=(typeof options==='function'?options():options)||[];
+    list=q?all.filter(o=>String(o).toLowerCase().includes(q)):all.slice();
+    idx=-1;
+    menu.innerHTML=(list.length
+      ? list.map((o,i)=>`<div class="pci" data-i="${i}"><div class="cd" style="font-weight:500">${esc(o)}</div></div>`).join('')
+      : '')+(q&&!list.some(o=>String(o).toLowerCase()===q)
+      ? `<div class="pce">กด Enter เพื่อใช้ "${esc(input.value.trim())}" เป็นค่าใหม่</div>`:'');
+    menu.querySelectorAll('.pci').forEach(n=>{
+      n.onmousedown=e=>{e.preventDefault();pick(list[+n.dataset.i]);};});
+    menu.classList.add('on');
+  };
+  input.setAttribute('autocomplete','off');
+  input.addEventListener('input',open);
+  input.addEventListener('focus',open);
+  input.addEventListener('blur',()=>setTimeout(close,150));
+  input.addEventListener('keydown',e=>{
+    if(!menu.classList.contains('on'))return;
+    if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+      if(!list.length)return;
+      e.preventDefault();e.stopPropagation();
+      idx=Math.max(0,Math.min(list.length-1,idx+(e.key==='ArrowDown'?1:-1)));
+      menu.querySelectorAll('.pci').forEach((n,i)=>n.classList.toggle('on',i===idx));
+    }else if(e.key==='Enter'){
+      if(idx>=0&&list[idx]){e.preventDefault();e.stopPropagation();pick(list[idx]);}
+      else close();
+    }else if(e.key==='Escape'){e.stopPropagation();close();}
+  });
+  return wrap;
+}
 /* ช่องพิมพ์แล้วเลือกรหัสสินค้าได้ (combobox) — พิมพ์รหัสใหม่ก็ได้ */
 function productCombo(input,onPick){
   const wrap=el('<div class="pcw"></div>');
@@ -2349,6 +2396,15 @@ function openForm(title,fields,values,onSubmit,opts){
         paint();}));
       w.append(prev);paint();
       custom[f.key]=()=>({images:imgs,files:fls});
+      ff.append(w);return;
+    }
+    /* ช่องเลือกที่พิมพ์เองได้ — เลือกจากรายการ หรือพิมพ์ค่าใหม่ก็ได้ */
+    if(f.type==='combo'){
+      const w=el(`<div class="field" style="${f.full?'grid-column:1/-1':''}">
+        <label>${esc(f.label)}${f.req?' <span class="rq">*</span>':''}</label>
+        <input name="${f.key}" autocomplete="off" placeholder="${esc(f.ph||'เลือกจากรายการ หรือพิมพ์เอง')}" value="${esc(values[f.key]??f.def??'')}">
+        ${f.hint?`<div class="fh">${esc(f.hint)}</div>`:''}</div>`);
+      listCombo(w.querySelector('input'),f.options||[]);
       ff.append(w);return;
     }
     if(f.type==='product'){
@@ -2821,10 +2877,11 @@ function pgDashboard(v){
   cc.append(chart);row.append(cc);
 
   const pipe=el('<div class="card pad"><div class="h3">Pipeline การขาย</div></div>');
-  const counts={};Object.keys(CUST_ST).forEach(k=>counts[k]=css.filter(c=>c.status===k).length);
+  const STL=custStatuses();
+  const counts={};STL.forEach(k=>counts[k]=css.filter(c=>c.status===k).length);
   const mxn=Math.max(...Object.values(counts),1);
-  Object.keys(CUST_ST).filter(k=>k!=='ยกเลิก').forEach(k=>{
-    const col=CUST_ST[k][1],n=counts[k];
+  STL.filter(k=>k!=='ยกเลิก').forEach(k=>{
+    const col=(CUST_ST[k]||['#f1f5f9','#64748b'])[1],n=counts[k];
     const r=el(`<div style="cursor:pointer;padding:9px 10px;margin:0 -10px;border-radius:10px">
       <div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:6px"><span>${k}</span><b>${n}</b></div>
       <div style="height:9px;background:#eef2f8;border-radius:99px;overflow:hidden"><div style="width:${(n/mxn*100).toFixed(0)}%;height:100%;background:${col};transition:width .3s"></div></div></div>`);
@@ -3339,7 +3396,7 @@ function importCustomers(){
           timeline:[{date:today(),title:'นำเข้าจากไฟล์ Excel',note:fname+' · ชีต '+sheet.name,by:(AUTH.profile&&AUTH.profile.name)||''}]};
         IMPORT_FIELDS.forEach(f=>{if(sel[f.k]!==undefined)c[f.k]=String(r[sel[f.k]]||'').trim();});
         /* สถานะต้องเป็นค่าที่ระบบรู้จัก ไม่งั้นใช้ "ใหม่" */
-        if(!CUST_ST[c.status])c.status='ใหม่';
+        if(!String(c.status||'').trim())c.status='ใหม่';
         if(!c.channel)c.channel='นำเข้า';
         if(c.note)c.timeline.push({date:today(),title:'หมายเหตุจากไฟล์นำเข้า',note:c.note,by:''});
         DB.customers.unshift(c);added++;
@@ -3367,7 +3424,7 @@ function customerFields(){return [
   {key:'email',label:'อีเมล',type:'email'},{key:'biz',label:'ประเภทธุรกิจ'},
   {group:'สถานะงานขาย'},
   {key:'channel',label:'ช่องทางที่ติดต่อเข้ามา',type:'select',options:['LINE','Facebook','Email','Website','Referral','โทรศัพท์','Walk-in']},
-  {key:'status',label:'สถานะดำเนินการ',type:'select',options:Object.keys(CUST_ST)},
+  {key:'status',label:'สถานะดำเนินการ',type:'combo',options:custStatuses,def:'ใหม่',hint:'เลือกจากรายการ หรือพิมพ์สถานะใหม่ได้เลย'},
   {key:'date',label:'วันที่ติดต่อ',type:'date',def:today()},{key:'owner',label:'ผู้ดูแล',def:meName()},
   {group:'ข้อมูลบริษัท (ไม่บังคับ)'},
   {key:'taxId',label:'เลขประจำตัวผู้เสียภาษี'},{key:'website',label:'เว็บไซต์'},
@@ -3390,7 +3447,7 @@ function pgCustomers(v){
   v.append(bar);
 
   const chipItems=[['ทั้งหมด','ทั้งหมด ('+DB.customers.length+')'],
-    ...Object.keys(CUST_ST).map(k=>[k,k+' ('+DB.customers.filter(c=>c.status===k).length+')'])];
+    ...custStatuses().map(k=>[k,k+' ('+DB.customers.filter(c=>c.status===k).length+')'])];
   let clear=null;
   if(S.custFilter!=='ทั้งหมด'||S.custQ){clear=el('<button class="chip clear">ล้างตัวกรอง ✕</button>');
     clear.onclick=()=>{S.custFilter='ทั้งหมด';S.custQ='';render();};}
@@ -3469,7 +3526,7 @@ function openCustomer(c){
     {key:'title',label:'ทำอะไรไป',req:true,full:true,ph:'เช่น โทรติดตามใบเสนอราคา'},
     {key:'date',label:'วันที่',type:'date',def:today()},{key:'by',label:'ผู้บันทึก',def:meName()},
     {key:'note',label:'หมายเหตุ',type:'textarea',full:true},
-    {key:'status',label:'อัปเดตสถานะเป็น',type:'select',options:Object.keys(CUST_ST),def:c.status,full:true}
+    {key:'status',label:'อัปเดตสถานะเป็น',type:'combo',options:custStatuses,def:c.status,full:true,hint:'เลือกจากรายการ หรือพิมพ์สถานะใหม่ได้เลย'}
   ],{},d=>{c.timeline.push({date:d.date,title:d.title,note:d.note,by:d.by});c.status=d.status;save();render();toast('บันทึกแล้ว');openCustomer(c);});
   tl.append(addBtn);
 
