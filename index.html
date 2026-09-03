@@ -4211,10 +4211,17 @@ function openDoc(d){
 }
 
 /* ---------- 4. PO ---------- */
+/* เลขที่ PO ภายใน — ไม่ให้ซ้ำกับที่มีอยู่ */
+function nextPoNo(){
+  const yr=new Date().getFullYear()+543;
+  let n=DB.pos.length+90,no;
+  do{no='PO-'+yr+'-'+String(n++).padStart(4,'0');}while(DB.pos.some(p=>p.no===no));
+  return no;
+}
 function poFields(){return [
   {group:'ข้อมูล PO'},
-  {key:'no',label:'เลขที่ PO (ภายใน)',req:true},
-  {key:'custPoNo',label:'เลขที่ PO ของลูกค้า'},
+  /* เลขที่ภายในระบบสร้างให้เอง ไม่ต้องกรอก */
+  {key:'custPoNo',label:'เลขที่ PO ของลูกค้า',req:true,ph:'เลขที่ตามใบ PO ที่ลูกค้าส่งมา'},
   {key:'customer',label:'ลูกค้า',type:'select',options:DB.customers.map(c=>c.name),req:true},
   {key:'status',label:'สถานะ',type:'select',options:Object.keys(PO_ST),def:'รอตรวจสอบ'},
   {key:'date',label:'วันที่รับ PO',type:'date',def:today()},
@@ -4223,7 +4230,9 @@ function poFields(){return [
   {key:'payment',label:'การชำระเงิน',type:'select',options:['เงินสด','เครดิต 30 วัน','เครดิต 45 วัน','เครดิต 60 วัน']},
   {key:'quoteRef',label:'อ้างอิงใบเสนอราคา'},
   {key:'ship',label:'สถานที่จัดส่ง',full:true},
-  {key:'owner',label:'ผู้ดูแล',def:meName()}];}
+  {key:'owner',label:'ผู้ดูแล',def:meName()},
+  {group:'รายการสินค้า',sub:'พิมพ์รหัสสินค้าแล้วเลือกจากคลังได้ · ยอดรวมคำนวณให้อัตโนมัติ'},
+  {key:'items',type:'items'}];}
 function pgPO(v){
   if(S.poOpen){const p=DB.pos.find(x=>x.id===S.poOpen);if(p)return poDetail(v,p);S.poOpen=null;}
   header('PO ลูกค้า',['งานขาย']);
@@ -4231,11 +4240,15 @@ function pgPO(v){
     poFields().concat([{group:'รูป PO ที่ลูกค้าส่งมา',sub:'ถ่ายรูปหรือแนบไฟล์ PO ของลูกค้าได้เลย จะเพิ่มทีหลังก็ได้'},
       {key:'attach',type:'uploads',label:'แนบรูป / ไฟล์ PO จากลูกค้า',
        hint:'JPG, PNG, PDF · แนบได้หลายไฟล์ · รูปจะถูกย่อขนาดอัตโนมัติ'}]),
-    {no:'PO-'+(new Date().getFullYear()+543)+'-'+String(DB.pos.length+90).padStart(4,'0')},d=>{
+    {},d=>{
       const at=d.attach||{};delete d.attach;
-      const p=Object.assign({id:uid(),items:[],images:at.images||[],files:at.files||[]},d);
+      /* เลขที่ภายในสร้างให้อัตโนมัติ ใช้อ้างอิงกับใบเสร็จ ผู้ใช้ไม่ต้องกรอก */
+      const p=Object.assign({id:uid(),no:nextPoNo(),items:[],
+        images:at.images||[],files:at.files||[]},d);
+      if(!p.no)p.no=nextPoNo();
       DB.pos.unshift(p);save();go('po',{poOpen:p.id});
-      toast('สร้าง PO แล้ว'+((at.images||[]).length+(at.files||[]).length?' พร้อมไฟล์แนบ':' — เพิ่มรายการสินค้าและแนบรูปได้เลย'));}));
+      toast('สร้าง PO แล้ว'+((at.images||[]).length+(at.files||[]).length?' พร้อมไฟล์แนบ':''));},
+    {wide:true,okLabel:'สร้าง PO'}));
 
   v.append(hint('แนบรูป PO ของลูกค้าได้ตั้งแต่ตอนกด "เพิ่ม PO" หรือคลิกที่ PO ในรายการเพื่อเข้าไปแนบเพิ่มทีหลัง'));
 
@@ -4255,8 +4268,8 @@ function pgPO(v){
   v.append(el(`<div class="tiny">พบ ${items.length} รายการ · ยอดรวม ${num0(items.reduce((a,b)=>a+poTotal(b),0))} ฿</div>`));
   v.append(listCard(items,{
     avatar:()=>svg('cart','ic s'),
-    title:p=>esc(p.no),
-    meta:p=>esc(p.customer)+' · รับ '+fmtDate(p.date)+' · ส่ง '+fmtDate(p.dueDate)+
+    title:p=>esc(p.custPoNo||p.no),
+    meta:p=>esc(p.customer)+' · '+esc(p.no)+' · รับ '+fmtDate(p.date)+' · ส่ง '+fmtDate(p.dueDate)+
       ((p.images.length+p.files.length)?' · 📎 '+(p.images.length+p.files.length):''),
     amount:p=>num0(poTotal(p))+' ฿',
     status:p=>pill(p.status,PO_ST),
@@ -4265,9 +4278,10 @@ function pgPO(v){
   }));
 }
 function poDetail(v,p){
-  header(p.no,['PO ลูกค้า',p.customer]);
+  header(p.custPoNo||p.no,['PO ลูกค้า',p.customer]);
   backBtn('กลับ',()=>go('po',{poOpen:null}));
-  actionBtn('แก้ไขข้อมูล','edit',()=>openForm('แก้ไข '+p.no,poFields(),p,d=>{Object.assign(p,d);save();render();toast('บันทึกแล้ว');}),'btn gh');
+  actionBtn('แก้ไขข้อมูล','edit',()=>openForm('แก้ไข '+(p.custPoNo||p.no),poFields(),p,
+    d=>{Object.assign(p,d);save();render();toast('บันทึกแล้ว');},{wide:true}),'btn gh');
   actionBtn('แนบรูป PO','up',()=>pickFiles('image/*,.pdf,.doc,.docx,.xls,.xlsx',true,
     fs=>addUploads(fs,p.images,p.files)),'btn gh');
   actionBtn('พิมพ์','print',()=>doPrint(),'btn gh');
