@@ -2527,6 +2527,14 @@ function poReadReport(r,got,ff,ctl){
 }
 
 /* ================= form ================= */
+/* เงื่อนไขการชำระเงินที่ใช้บ่อย + ที่เคยพิมพ์เองไว้ใน PO */
+const PAY_BASE=['เงินสด','เครดิต 30 วัน','เครดิต 45 วัน','เครดิต 60 วัน','เครดิต 90 วัน','โอนก่อนส่งของ','เก็บเงินปลายทาง'];
+function PAY_TERMS(){
+  const out=PAY_BASE.slice();
+  ((DB&&DB.pos)||[]).forEach(p=>{const v=String(p.payment||'').trim();
+    if(v&&out.indexOf(v)<0)out.push(v);});
+  return out;
+}
 const UNITS=['ม้วน','ใบ','กก.','แผ่น','ชิ้น','กล่อง','ลัง','ถุง','ถัง','เมตร','ชุด','อัน','รายการ'];
 /* ตารางกรอกรายการสินค้า — ใช้ในฟอร์มสร้าง/แก้ไขใบเสนอราคาและ PO */
 function itemsEditor(initial){
@@ -4521,7 +4529,8 @@ function poFields(){return [
   {key:'date',label:'วันที่รับ PO',type:'date',def:today()},
   {key:'dueDate',label:'กำหนดส่งมอบ',type:'date'},
   {group:'เงื่อนไข'},
-  {key:'payment',label:'การชำระเงิน',type:'select',options:['เงินสด','เครดิต 30 วัน','เครดิต 45 วัน','เครดิต 60 วัน']},
+  {key:'payment',label:'การชำระเงิน',type:'combo',options:PAY_TERMS,
+   ph:'เลือกจากรายการ หรือพิมพ์เงื่อนไขเอง'},
   {key:'quoteRef',label:'อ้างอิงใบเสนอราคา',type:'combo',
    options:()=>DB.docs.filter(d=>d.type==='quotation').map(d=>d.no+' · '+d.customer),
    ph:'เลือกจากใบเสนอราคาที่มี หรือพิมพ์เลขที่เอง'},
