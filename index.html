@@ -2537,7 +2537,8 @@ function PAY_TERMS(){
 }
 const UNITS=['ม้วน','ใบ','กก.','แผ่น','ชิ้น','กล่อง','ลัง','ถุง','ถัง','เมตร','ชุด','อัน','รายการ'];
 /* ตารางกรอกรายการสินค้า — ใช้ในฟอร์มสร้าง/แก้ไขใบเสนอราคาและ PO */
-function itemsEditor(initial){
+function itemsEditor(initial,opts){
+  opts=opts||{};
   const box=el('<div class="itbl"><div class="itrows"></div></div>');
   const rowsEl=box.querySelector('.itrows');
   const renum=()=>rowsEl.querySelectorAll('.itrow').forEach((r,i)=>r.querySelector('.itno').textContent='รายการที่ '+(i+1));
@@ -2574,7 +2575,8 @@ function itemsEditor(initial){
         <label class="itf"><span>ราคา/หน่วย (บาท)</span>
           <input class="itprice" type="number" step="0.001" inputmode="decimal" placeholder="0.00" value="${it.price??''}"></label>
         <div class="itf itamtwrap"><span>จำนวนเงิน</span><div class="itamtbox"><span class="itamt">0.00</span></div></div>
-      </div></div>`);
+      </div>${opts.due?`<div class="itl2" style="margin-top:10px"><label class="itf"><span>กำหนดส่งมอบ</span>
+        <input class="itdue" type="date" value="${esc(it.due||'')}"></label><div style="flex:1"></div></div>`:''}</div>`);
     /* พิมพ์รหัสแล้วเลือกจากคลังได้ เลือกแล้วเติมรายละเอียดให้ถ้ายังว่าง */
     productCombo(r.querySelector('.itcode'),p=>{
       const n=r.querySelector('.itname');
@@ -2598,7 +2600,8 @@ function itemsEditor(initial){
       name:r.querySelector('.itname').value.trim(),
       qty:parseFloat(r.querySelector('.itqty').value)||0,
       unit:r.querySelector('.itunit').value,
-      price:parseFloat(r.querySelector('.itprice').value)||0
+      price:parseFloat(r.querySelector('.itprice').value)||0,
+      due:r.querySelector('.itdue')?r.querySelector('.itdue').value:''
     })).filter(i=>i.name||i.code||i.qty||i.price)
       /* รหัสที่พิมพ์เองแล้วยังไม่มีในคลัง เก็บไว้ให้เลือกครั้งหน้า */
       .map(i=>{learnProduct(i);return i;})};
@@ -2619,7 +2622,7 @@ function openForm(title,fields,values,onSubmit,opts){
       ff.append(el(`<div class="fgroup"><span class="n">${gi}</span><span>${esc(f.group)}</span>
         ${f.sub?`<span class="sub">${esc(f.sub)}</span>`:''}</div>`));return;}
     if(f.type==='items'){
-      const ed=itemsEditor(values[f.key]);
+      const ed=itemsEditor(values[f.key],{due:f.due});
       custom[f.key]=ed.value;ctl[f.key]=ed;
       const w=el('<div style="grid-column:1/-1"></div>');
       w.append(ed.el);ff.append(w);return;
@@ -4514,6 +4517,11 @@ function openDoc(d){
 
 /* ---------- 4. PO ---------- */
 /* เลขที่ PO ภายใน — ไม่ให้ซ้ำกับที่มีอยู่ */
+/* กำหนดส่งมอบของ PO = วันที่เร็วที่สุดในรายการสินค้า */
+function poDue(p){
+  const ds=(p.items||[]).map(i=>i.due).filter(Boolean).sort();
+  return ds[0]||p.dueDate||"";
+}
 function nextPoNo(){
   const yr=new Date().getFullYear()+543;
   let n=DB.pos.length+90,no;
@@ -4527,7 +4535,6 @@ function poFields(){return [
   {key:'customer',label:'ลูกค้า',type:'select',options:DB.customers.map(c=>c.name),req:true},
   {key:'status',label:'สถานะ',type:'select',options:Object.keys(PO_ST),def:'รอตรวจสอบ'},
   {key:'date',label:'วันที่รับ PO',type:'date',def:today()},
-  {key:'dueDate',label:'กำหนดส่งมอบ',type:'date'},
   {group:'เงื่อนไข'},
   {key:'payment',label:'การชำระเงิน',type:'combo',options:PAY_TERMS,
    ph:'เลือกจากรายการ หรือพิมพ์เงื่อนไขเอง'},
@@ -4540,7 +4547,7 @@ function poFields(){return [
   {key:'ship',label:'สถานที่จัดส่ง',full:true},
   {key:'owner',label:'ผู้ดูแล',def:meName()},
   {group:'รายการสินค้า',sub:'พิมพ์รหัสสินค้าแล้วเลือกจากคลังได้ · ยอดรวมคำนวณให้อัตโนมัติ'},
-  {key:'items',type:'items'}];}
+  {key:'items',type:'items',due:true}];}
 function pgPO(v){
   if(S.poOpen){const p=DB.pos.find(x=>x.id===S.poOpen);if(p)return poDetail(v,p);S.poOpen=null;}
   header('PO ลูกค้า',['งานขาย']);
@@ -4577,7 +4584,7 @@ function pgPO(v){
   v.append(listCard(items,{
     avatar:()=>svg('cart','ic s'),
     title:p=>esc(p.custPoNo||p.no),
-    meta:p=>esc(p.customer)+' · '+esc(p.no)+' · รับ '+fmtDate(p.date)+' · ส่ง '+fmtDate(p.dueDate)+
+    meta:p=>esc(p.customer)+' · '+esc(p.no)+' · รับ '+fmtDate(p.date)+' · ส่ง '+fmtDate(poDue(p))+
       ((p.images.length+p.files.length)?' · 📎 '+(p.images.length+p.files.length):''),
     amount:p=>num0(poTotal(p))+' ฿',
     status:p=>pill(p.status,PO_ST),
@@ -4605,7 +4612,7 @@ function poDetail(v,p){
       <div class="fl"><span>ลูกค้า</span><b>${esc(p.customer)}</b></div>
       <div class="fl"><span>เลขที่ PO ลูกค้า</span><b>${esc(p.custPoNo||'-')}</b></div>
       <div class="fl"><span>วันที่รับ PO</span><b>${fmtDate(p.date)}</b></div>
-      <div class="fl"><span>กำหนดส่งมอบ</span><b>${fmtDate(p.dueDate)}</b></div>
+      <div class="fl"><span>กำหนดส่งมอบ (เร็วที่สุด)</span><b>${fmtDate(poDue(p))}</b></div>
       <div class="fl"><span>การชำระเงิน</span><b>${esc(p.payment||'-')}</b></div>
       <div class="fl"><span>ผู้ดูแล</span><b>${esc(p.owner||'-')}</b></div>
       <div class="fl"><span>อ้างอิงใบเสนอราคา</span><b>${esc(p.quoteRef||'-')}</b></div>
@@ -4630,7 +4637,7 @@ function poDetail(v,p){
       const r=el(`<div class="lrow" style="cursor:default">
         <div class="lav">${i+1}</div>
         <div class="lmain"><div class="lt">${esc(it.name)}</div>
-        <div class="lm">${esc(it.code)} · ${num0(it.qty)} ${esc(it.unit)} × ${num(it.price)} ฿</div></div>
+        <div class="lm">${esc(it.code||'-')} · ${num0(it.qty)} ${esc(it.unit)} × ${num(it.price)} ฿${it.due?' · ส่ง '+fmtDate(it.due):''}</div></div>
         <div class="lright"><div class="lamt">${num(it.qty*it.price)} ฿</div>
         <button class="btn gh sm rm">ลบ</button></div></div>`);
       r.querySelector('.rm').onclick=()=>{const g=p.items.splice(i,1)[0];save();render();
@@ -4893,7 +4900,7 @@ function pgProfiles(v){
       avatar:()=>svg('doc','ic s'),title:d=>esc(d.no),meta:d=>docTypeName(d.type)+' · '+fmtDate(d.date),
       amount:d=>num0(d.amount)+' ฿',status:d=>pill(d.status,DOC_ST),onOpen:openDocSmart}));
     v.append(mk('PO ลูกค้า',DB.pos.filter(p=>p.customer===c.name),{
-      avatar:()=>svg('cart','ic s'),title:p=>esc(p.no),meta:p=>'รับ '+fmtDate(p.date)+' · ส่ง '+fmtDate(p.dueDate),
+      avatar:()=>svg('cart','ic s'),title:p=>esc(p.custPoNo||p.no),meta:p=>'รับ '+fmtDate(p.date)+' · ส่ง '+fmtDate(poDue(p)),
       amount:p=>num0(poTotal(p))+' ฿',status:p=>pill(p.status,PO_ST),onOpen:p=>go('po',{poOpen:p.id})}));
     v.append(mk('ใบเสร็จรับเงิน',DB.receipts.filter(r=>r.customer===c.name),{
       avatar:()=>svg('receipt','ic s'),title:r=>esc(r.no),meta:r=>fmtDate(r.date)+' · '+esc(r.method||'-'),
