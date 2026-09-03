@@ -3491,8 +3491,16 @@ function timelineEdit(c,t,after){
     {key:'title',label:'ทำอะไรไป',req:true,full:true},
     {key:'date',label:'วันที่',type:'date'},
     {key:'by',label:'ผู้บันทึก'},
-    {key:'note',label:'หมายเหตุ',type:'textarea',full:true}
-  ],t,d=>{Object.assign(t,d);save();render();toast('แก้ไขบันทึกแล้ว');if(after)after();},
+    {key:'note',label:'หมายเหตุ',type:'textarea',full:true},
+    {key:'status',label:'อัปเดตสถานะลูกค้าเป็น',type:'combo',options:custStatuses,full:true,
+     hint:'สถานะปัจจุบันของลูกค้ารายนี้ · เลือกจากรายการ หรือพิมพ์สถานะใหม่ได้เลย'}
+  ],Object.assign({},t,{status:c.status}),d=>{
+    const st=String(d.status||'').trim();delete d.status;
+    const changed=!!st&&st!==c.status;
+    Object.assign(t,d);
+    if(changed)c.status=st;
+    save();render();toast(changed?'แก้ไขบันทึก และเปลี่ยนสถานะเป็น "'+st+'" แล้ว':'แก้ไขบันทึกแล้ว');
+    if(after)after();},
   {okLabel:'บันทึกการแก้ไข',extra:{label:'ลบบันทึกนี้',cls:'gh dg',fn:()=>{
     const i=c.timeline.indexOf(t);if(i<0)return;
     const g=c.timeline.splice(i,1)[0];save();render();
