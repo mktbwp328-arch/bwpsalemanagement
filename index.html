@@ -2167,7 +2167,9 @@ function listCombo(input,options){
   const menu=el('<div class="pcm"></div>');wrap.append(menu);
   let list=[],idx=-1;
   const close=()=>{menu.classList.remove('on');idx=-1;};
-  const pick=v=>{input.value=v;close();input.dispatchEvent(new Event('change',{bubbles:true}));};
+  /* ตัวเลือกที่เขียนแบบ "เลขที่ · ชื่อลูกค้า" ให้เก็บเฉพาะเลขที่ */
+  const pick=v=>{input.value=String(v).split(' · ')[0];close();
+    input.dispatchEvent(new Event('change',{bubbles:true}));};
   const open=()=>{
     const q=String(input.value||'').trim().toLowerCase();
     const all=(typeof options==='function'?options():options)||[];
@@ -2242,6 +2244,288 @@ function productCombo(input,onPick){
   return wrap;
 }
 
+/* ================= อ่านไฟล์ PO ของลูกค้า (PDF) แล้วกรอกให้อัตโนมัติ =================
+   ใช้ตัวอ่าน PDF ที่เขียนเอง ไม่พึ่งไลบรารีภายนอก (นโยบายความปลอดภัยของเว็บบล็อกไว้)
+   อ่านได้เฉพาะ PDF ที่เป็นข้อความจริง ถ้าเป็นรูปถ่าย/สแกนจะอ่านไม่ออก */
+const bin=u8=>{let s='';for(let i=0;i<u8.length;i+=8192)s+=String.fromCharCode.apply(null,u8.subarray(i,i+8192));return s;};
+async function inflate(u8){
+  for(const fmt of ['deflate','deflate-raw']){
+    const parts=[];let len=0;
+    /* ท้ายสตรีมใน PDF มักมีอักขระขึ้นบรรทัดติดมาด้วย ตัวคลายบีบจะฟ้อง error
+       แต่ข้อมูลที่ถอดได้ก่อนหน้านั้นใช้ได้ครบแล้ว จึงเก็บส่วนที่ได้ไว้ */
+    try{
+      const rd=new Blob([u8]).stream().pipeThrough(new DecompressionStream(fmt)).getReader();
+      for(;;){const {done,value}=await rd.read();if(done)break;parts.push(value);len+=value.length;}
+    }catch(e){}
+    if(len){
+      const out=new Uint8Array(len);let off=0;
+      parts.forEach(p=>{out.set(p,off);off+=p.length;});
+      return out;
+    }
+  }
+  return null;
+}
+async function pdfText(buf){
+  const u8=new Uint8Array(buf),s=bin(u8);
+  if(s.slice(0,5)!=='%PDF-')throw new Error('ไม่ใช่ไฟล์ PDF');
+  /* หา object ทั้งหมด */
+  const objs={};
+  for(const m of s.matchAll(/(\d+)\s+\d+\s+obj\b/g)){
+    const start=m.index+m[0].length,end=s.indexOf('endobj',start);
+    objs[+m[1]]={dict:s.slice(start,Math.min(end,start+4000)),start,end};
+  }
+  const streamOf=async o=>{
+    if(!o||o.start<0)return null;
+    const i=s.indexOf('stream',o.start);
+    if(i<0||i>o.end)return null;
+    let p=i+6;if(s[p]==='\r')p++;if(s[p]==='\n')p++;
+    const e=s.indexOf('endstream',p);
+    const raw=u8.subarray(p,e);
+    return /\/FlateDecode/.test(o.dict)?await inflate(raw):raw;
+  };
+  /* คลาย ObjStm เพื่อให้เห็น object ที่ถูกบีบไว้ */
+  for(const [n,o] of Object.entries(objs)){
+    if(!/\/ObjStm/.test(o.dict))continue;
+    const d=await streamOf(o);if(!d)continue;
+    const t=bin(d),first=+((o.dict.match(/\/First\s+(\d+)/)||[])[1]||0);
+    const head=t.slice(0,first).trim().split(/\s+/).map(Number);
+    for(let i=0;i<head.length;i+=2){
+      const num=head[i],off=head[i+1];
+      const end=(i+3<head.length)?first+head[i+3]:t.length;
+      if(!objs[num])objs[num]={dict:t.slice(first+off,end),start:-1,end:-1};
+    }
+  }
+  /* ตาราง ToUnicode ของแต่ละฟอนต์ */
+  const cmapOf=txt=>{
+    const map={};
+    for(const blk of txt.match(/beginbfchar([\s\S]*?)endbfchar/g)||[])
+      for(const m of blk.matchAll(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g))
+        map[parseInt(m[1],16)]=String.fromCharCode.apply(null,(m[2].match(/.{4}/g)||[]).map(x=>parseInt(x,16)));
+    for(const blk of txt.match(/beginbfrange([\s\S]*?)endbfrange/g)||[])
+      for(const m of blk.matchAll(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g)){
+        const a=parseInt(m[1],16),b=parseInt(m[2],16),c=parseInt(m[3],16);
+        for(let i=a;i<=b&&i-a<20000;i++)map[i]=String.fromCharCode(c+i-a);
+      }
+    return map;
+  };
+  const uni={};
+  for(const [n,o] of Object.entries(objs)){
+    const m=o.dict.match(/\/ToUnicode\s+(\d+)\s+0\s+R/);
+    if(!m||!objs[+m[1]])continue;
+    const d=await streamOf(objs[+m[1]]);if(!d)continue;
+    uni[n]=cmapOf(bin(d));
+  }
+  const fontRes={};
+  Object.values(objs).forEach(o=>{
+    const fm=o.dict.match(/\/Font\s*<<([^>]*)>>/);
+    if(!fm)return;
+    for(const g of fm[1].matchAll(/\/(F\d+)\s+(\d+)\s+0\s+R/g))fontRes[g[1]]=g[2];
+  });
+  let content='';
+  for(const o of Object.values(objs)){
+    const d=await streamOf(o);if(!d)continue;
+    const t=bin(d);
+    if((t.match(/TJ|Tj/g)||[]).length>10)content+=t+'\n';
+  }
+  if(!content)return '';
+  const ESC={n:'\n',r:'\r',t:'\t',b:'\b',f:'\f'};
+  const unesc=x=>x.replace(/\\([0-7]{1,3})/g,(m,o)=>String.fromCharCode(parseInt(o,8)))
+                  .replace(/\\(.)/g,(m,c)=>ESC[c]!==undefined?ESC[c]:c);
+  const dec=(str,font)=>{
+    const cm=uni[fontRes[font]];
+    if(!cm)return str;
+    let out='';
+    for(let i=0;i+1<str.length;i+=2){
+      const c=(str.charCodeAt(i)<<8)|str.charCodeAt(i+1);
+      out+=cm[c]!==undefined?cm[c]:'';
+    }
+    return out;
+  };
+  let font='F1',out=[],line='';
+  const re=/\/(F\d+)\s+[\d.]+\s+Tf|\[((?:[^\][\\]|\\.)*)\]\s*TJ|\(((?:[^()\\]|\\.)*)\)\s*Tj|(T\*|Td|TD|ET)/g;
+  let m;
+  while(m=re.exec(content)){
+    if(m[1]){font=m[1];continue;}
+    if(m[2]!==undefined){
+      let txt='';
+      for(const g of m[2].matchAll(/\(((?:[^()\\]|\\.)*)\)|(-?[\d.]+)/g)){
+        if(g[1]!==undefined)txt+=dec(unesc(g[1]),font);
+        else if(+g[2]<-150)txt+=' ';
+      }
+      line+=txt;continue;
+    }
+    if(m[3]!==undefined){line+=dec(unesc(m[3]),font);continue;}
+    if(m[4]){if(line.trim())out.push(line.trim());line='';}
+  }
+  if(line.trim())out.push(line.trim());
+  return out.join('\n');
+}
+/* ---------- แปลงข้อความจาก PO เป็นข้อมูลกรอกฟอร์ม ---------- */
+const MONS={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+function parseAnyDate(str){
+  const s=String(str||'').trim();
+  let m=s.match(/(\d{1,2})[-\/\s]([A-Za-z]{3,})[-\/\s](\d{2,4})/);
+  if(m){
+    const mo=MONS[m[2].slice(0,3).toLowerCase()];
+    if(mo!==undefined){
+      let y=+m[3];if(y<100)y+=2500;               /* 69 = 2569 */
+      if(y>2400)y-=543;                            /* พ.ศ. -> ค.ศ. */
+      return new Date(Date.UTC(y,mo,+m[1])).toISOString().slice(0,10);
+    }
+  }
+  m=s.match(/(\d{1,2})[-\/](\d{1,2})[-\/](\d{2,4})/);
+  if(m){
+    let y=+m[3];if(y<100)y+=2500;
+    if(y>2400)y-=543;
+    return new Date(Date.UTC(y,+m[2]-1,+m[1])).toISOString().slice(0,10);
+  }
+  return '';
+}
+const numOf=s=>{const m=String(s||'').replace(/,/g,'').match(/-?\d+(\.\d+)?/);return m?parseFloat(m[0]):0;};
+function parsePO(text){
+  const lines=String(text||'').split('\n').map(l=>l.trim()).filter(Boolean);
+  const all=lines.join('\n'),flat=lines.join(' ');
+  const r={custPoNo:'',date:'',dueDate:'',customer:'',payment:'',items:[],total:0,lines};
+
+  /* เลขที่ PO */
+  let m=all.match(/\b((?:PO|P\/O|PR)[-\s]?[A-Z0-9][A-Z0-9\-\/]{3,})/i);
+  if(m)r.custPoNo=m[1].replace(/\s+/g,'');
+  if(!r.custPoNo){
+    m=all.match(/(?:เลขที่|เลขที|No\.?|Number)\s*[:：]?\s*([A-Z0-9][A-Z0-9\-\/]{4,})/i);
+    if(m)r.custPoNo=m[1];
+  }
+  /* วันที่ */
+  for(const l of lines){const d=parseAnyDate(l);if(d){r.date=d;break;}}
+  m=all.match(/(?:กำหนดส่ง|Delivery|Due|Ship(?:ping)?\s*Date)[^\n]{0,30}/i);
+  if(m)r.dueDate=parseAnyDate(m[0]);
+  /* เงื่อนไขการชำระเงิน */
+  m=all.match(/(?:Credit|Crdit|Term|เครดิต)[^\n]{0,30}?(\d{2,3})\s*(?:days|วัน)/i);
+  if(m)r.payment='เครดิต '+m[1]+' วัน';
+  else if(/เงินสด|\bcash\b/i.test(flat))r.payment='เงินสด';
+  /* ลูกค้า: หาชื่อที่ตรงกับรายชื่อลูกค้าในระบบก่อน */
+  const norm=x=>String(x||'').toLowerCase().replace(/[^a-z0-9ก-๙]/g,'');
+  const flatN=norm(flat);
+  let best=null;
+  (DB.customers||[]).forEach(c=>{
+    const n=norm(c.name);
+    if(n.length>=4&&flatN.includes(n)&&(!best||n.length>norm(best).length))best=c.name;
+  });
+  if(!best){
+    /* ชื่อบริษัทภาษาอังกฤษที่โผล่ในไฟล์ (มักเป็นผู้ออก PO) */
+    const co=lines.find(l=>/co\.?,?\s*ltd|company|limited|จำกัด/i.test(l)&&l.length>10
+      &&!/best\s*world|เบสท์เวิลด์/i.test(l));
+    if(co)best=co.replace(/\s+/g,' ').trim();
+  }
+  r.customer=best||'';
+  /* ยอดรวม */
+  m=all.match(/Total[^\d]{0,20}([\d,]+(?:\.\d+)?)/i)||all.match(/รวมทั้งสิ้น[^\d]{0,20}([\d,]+(?:\.\d+)?)/);
+  if(m)r.total=numOf(m[1]);
+
+  /* รายการสินค้า: จับคู่บรรทัดคำอธิบาย + จำนวน + ราคา/หน่วย */
+  const qtyIdx=[],priceIdx=[],descIdx=[];
+  lines.forEach((l,i)=>{
+    if(/^[\d,]+(\.\d+)?\s*(kg|kgs|กก\.?|ม้วน|roll|rolls|pcs|ชิ้น|ใบ|กล่อง|ถุง|แผ่น|ตัน|เมตร|m)\b/i.test(l))qtyIdx.push(i);
+    if(/(?:THB|บาท|฿)?\s*[\d,]+(?:\.\d+)?\s*(?:THB|บาท)?\s*\/\s*(kg|kgs|กก\.?|ม้วน|roll|pcs|ชิ้น|ใบ|กล่อง|m|เมตร)\b/i.test(l))priceIdx.push(i);
+    if(/[A-Za-z]{4,}/.test(l)&&/(film|shrink|ฟิล์ม|bag|ถุง|sheet|micron|mic\b|pe\b|ldpe|hdpe)/i.test(l)
+       &&!/^(description|no\.?|quantity|unit|amount|total)$/i.test(l))descIdx.push(i);
+  });
+  const n=Math.max(qtyIdx.length,priceIdx.length,descIdx.length);
+  for(let i=0;i<n;i++){
+    const q=qtyIdx[i]!==undefined?lines[qtyIdx[i]]:'';
+    const p=priceIdx[i]!==undefined?lines[priceIdx[i]]:'';
+    let d=descIdx[i]!==undefined?lines[descIdx[i]]:'';
+    /* บรรทัดถัดไปที่สั้น ๆ มักเป็นรายละเอียดต่อ เช่น (AB) */
+    if(descIdx[i]!==undefined){
+      const nx=lines[descIdx[i]+1]||'';
+      if(nx&&nx.length<=12&&/^[A-Za-z()\d\s\-]+$/.test(nx)&&!/^\d+$/.test(nx))d+=' ('+nx.replace(/[()]/g,'')+')';
+    }
+    const unitM=q.match(/(kg|kgs|กก\.?|ม้วน|roll|rolls|pcs|ชิ้น|ใบ|กล่อง|ถุง|แผ่น|ตัน|เมตร|m)\b/i);
+    const unit=unitM?({kg:'กก.',kgs:'กก.',roll:'ม้วน',rolls:'ม้วน',pcs:'ชิ้น',m:'เมตร'}[unitM[1].toLowerCase()]||unitM[1]):'';
+    const it={code:'',name:d.trim(),qty:numOf(q),unit:unit,price:numOf(p)};
+    if(!it.qty&&!it.price&&!it.name)continue;
+    /* เดารหัสสินค้าจากคลัง โดยเทียบคำในคำอธิบาย */
+    it.code=guessProductCode(it.name,r.customer);
+    r.items.push(it);
+  }
+  return r;
+}
+/* เดารหัสสินค้าจากคำอธิบายในใบ PO เทียบกับคลังรหัสสินค้า */
+function guessProductCode(desc,customer){
+  const d=String(desc||'').toLowerCase();
+  if(!d)return '';
+  const nums=(d.match(/\d+(?:[-.]\d+)?/g)||[]);
+  let best='',score=0;
+  allProducts().forEach(p=>{
+    const t=(prodName(p)+' '+(p.code||'')).toLowerCase();
+    let sc=0;
+    nums.forEach(n=>{if(t.includes(n))sc+=2;});
+    ['shrink','film','ldpe','hdpe','pe','bag','ab'].forEach(w=>{if(d.includes(w)&&t.includes(w))sc++;});
+    if(customer&&p.customer&&String(p.customer).length>3
+       &&customer.toLowerCase().includes(String(p.customer).toLowerCase().slice(0,4)))sc+=2;
+    if(sc>score){score=sc;best=p.code;}
+  });
+  return score>=4?best:'';
+}
+
+/* อ่านไฟล์ PO แล้วเติมลงฟอร์มที่เปิดอยู่ */
+async function autofillFromPO(file,ff,ctl){
+  toast('กำลังอ่านไฟล์ PO…');
+  let text='';
+  try{text=await pdfText(await file.arrayBuffer());}
+  catch(e){toast('อ่านไฟล์ไม่สำเร็จ: '+e.message);return;}
+  if(!text||text.replace(/\s/g,'').length<20){
+    toast('อ่านข้อความจากไฟล์นี้ไม่ได้ (น่าจะเป็นไฟล์สแกนหรือรูปถ่าย) — กรอกเองได้ตามปกติ');return;}
+  const r=parsePO(text);
+  const got=[];
+  const set=(name,val)=>{
+    if(!val)return;
+    const n=ff.querySelector('[name="'+name+'"]');
+    if(!n||String(n.value||'').trim())return;
+    if(n.tagName==='SELECT'){
+      const opt=[...n.options].find(o=>o.value===val);
+      if(!opt)return;
+      n.value=val;
+    }else n.value=val;
+    return true;
+  };
+  if(set('custPoNo',r.custPoNo))got.push('เลขที่ PO '+r.custPoNo);
+  if(set('date',r.date))got.push('วันที่ '+fmtDate(r.date));
+  if(set('dueDate',r.dueDate))got.push('กำหนดส่ง '+fmtDate(r.dueDate));
+  if(set('payment',r.payment))got.push('การชำระเงิน');
+  if(r.customer&&set('customer',r.customer))got.push('ลูกค้า '+r.customer);
+  if(r.items.length&&ctl&&ctl.items){
+    const cur=ctl.items.value().filter(i=>i.name||i.code||i.qty||i.price);
+    if(!cur.length){
+      ctl.items.set(r.items);
+      got.push(r.items.length+' รายการสินค้า');
+    }
+  }
+  poReadReport(r,got,ff,ctl);
+}
+/* สรุปให้ดูว่าอ่านอะไรได้บ้าง แก้ก่อนบันทึกได้ */
+function poReadReport(r,got,ff,ctl){
+  const ov=el('<div class="ov"></div>');
+  const m=el(`<div class="modal" style="max-width:620px"><header><div><b>อ่านไฟล์ PO แล้ว</b>
+      <div class="tiny" style="margin-top:2px">${got.length?'กรอกให้อัตโนมัติ '+got.length+' ช่อง — ตรวจความถูกต้องก่อนบันทึก':'อ่านไฟล์ได้ แต่จับข้อมูลไม่ได้ กรอกเองได้ตามปกติ'}</div></div>
+      <button class="close">✕</button></header>
+    <div class="mb">
+      ${got.length?`<div class="hint" style="display:block;margin-bottom:14px"><b>กรอกให้แล้ว</b>
+        <div style="margin-top:5px">${got.map(g=>'· '+esc(g)).join('<br>')}</div></div>`:''}
+      ${r.items.length?`<div style="font-size:14px;font-weight:600;margin-bottom:8px">รายการสินค้าที่อ่านได้</div>
+        <div class="list" style="margin-bottom:14px">${r.items.map((i,n)=>`<div class="lrow" style="cursor:default">
+          <div class="lav">${n+1}</div>
+          <div class="lmain"><div class="lt">${esc(i.name||'-')}</div>
+            <div class="lm">${i.code?'รหัส '+esc(i.code)+' · ':'<span style="color:#b45309">ยังไม่รู้รหัส — เลือกเองในฟอร์ม</span> · '}${num0(i.qty)} ${esc(i.unit||'')} × ${num(i.price)} ฿</div></div>
+          <div class="lright"><div class="lamt">${num(i.qty*i.price)} ฿</div></div></div>`).join('')}</div>`:''}
+      ${r.total?`<div class="tiny">ยอดรวมในไฟล์ PO: <b>${num(r.total)} บาท</b> (รวม VAT แล้ว) — เทียบกับยอดที่คำนวณในฟอร์มได้</div>`:''}
+      <details style="margin-top:14px"><summary style="cursor:pointer;font-size:13px;color:var(--mut)">ดูข้อความทั้งหมดที่อ่านได้จากไฟล์</summary>
+        <pre style="white-space:pre-wrap;font-size:11.5px;background:#f8fafc;border:1px solid var(--bd2);border-radius:10px;padding:10px;margin-top:8px;max-height:220px;overflow:auto">${esc(r.lines.join('\n'))}</pre></details>
+    </div>
+    <footer><div style="flex:1"></div><button class="btn" id="c">เข้าใจแล้ว</button></footer></div>`);
+  m.querySelector('.close').onclick=()=>ov.remove();m.querySelector('#c').onclick=()=>ov.remove();
+  ov.append(m);$('#layer').append(ov);
+}
+
 /* ================= form ================= */
 const UNITS=['ม้วน','ใบ','กก.','แผ่น','ชิ้น','กล่อง','ลัง','ถุง','ถัง','เมตร','ชุด','อัน','รายการ'];
 /* ตารางกรอกรายการสินค้า — ใช้ในฟอร์มสร้าง/แก้ไขใบเสนอราคาและ PO */
@@ -2292,10 +2576,15 @@ function itemsEditor(initial){
     r.querySelector('.itdel').onclick=()=>{r.remove();if(!rowsEl.children.length)addRow();renum();calc();};
     rowsEl.append(r);renum();calc();return r;
   }
+  const setRows=items=>{
+    rowsEl.innerHTML='';
+    (items&&items.length?items:[{}]).forEach(addRow);
+    renum();calc();
+  };
   (initial&&initial.length?initial:[{}]).forEach(addRow);
   add.onclick=()=>{const r=addRow();r.querySelector('.itcode').focus();r.scrollIntoView({behavior:'smooth',block:'nearest'});};
   box.append(add,sum);
-  return {el:box,
+  return {el:box,set:setRows,
     value:()=>[...rowsEl.querySelectorAll('.itrow')].map(r=>({
       code:r.querySelector('.itcode').value.trim(),
       name:r.querySelector('.itname').value.trim(),
@@ -2316,14 +2605,14 @@ function openForm(title,fields,values,onSubmit,opts){
     <footer>${opts.extra?`<button class="btn ${opts.extra.cls||'gh'}" id="x">${esc(opts.extra.label)}</button><div style="flex:1"></div>`:''}
       <button class="btn gh" id="c">ยกเลิก</button><button class="btn" id="s">${svg('check','ic s')}${esc(opts.okLabel||'บันทึก')}</button></footer></div>`);
   const ff=m.querySelector('#ff');
-  const custom={};let gi=0;
+  const custom={},ctl={};let gi=0;
   fields.forEach(f=>{
     if(f.group){gi++;
       ff.append(el(`<div class="fgroup"><span class="n">${gi}</span><span>${esc(f.group)}</span>
         ${f.sub?`<span class="sub">${esc(f.sub)}</span>`:''}</div>`));return;}
     if(f.type==='items'){
       const ed=itemsEditor(values[f.key]);
-      custom[f.key]=ed.value;
+      custom[f.key]=ed.value;ctl[f.key]=ed;
       const w=el('<div style="grid-column:1/-1"></div>');
       w.append(ed.el);ff.append(w);return;
     }
@@ -2393,7 +2682,12 @@ function openForm(title,fields,values,onSubmit,opts){
         for(const file of fs){const r=await readAny(file);if(!r)continue;
           (r.type==='image'?imgs:fls).push(Object.assign({id:uid()},r));n++;}
         if(n)toast('แนบ '+n+' ไฟล์แล้ว — กดบันทึกเพื่อเก็บเข้าระบบ');
-        paint();}));
+        paint();
+        /* ไฟล์ PO เป็น PDF ข้อความ ให้ลองอ่านแล้วกรอกให้เลย */
+        if(f.autofill==='po'){
+          const pdf=[...fs].find(x=>/\.pdf$/i.test(x.name));
+          if(pdf)autofillFromPO(pdf,ff,ctl);
+        }}));
       w.append(prev);paint();
       custom[f.key]=()=>({images:imgs,files:fls});
       ff.append(w);return;
@@ -4228,7 +4522,12 @@ function poFields(){return [
   {key:'dueDate',label:'กำหนดส่งมอบ',type:'date'},
   {group:'เงื่อนไข'},
   {key:'payment',label:'การชำระเงิน',type:'select',options:['เงินสด','เครดิต 30 วัน','เครดิต 45 วัน','เครดิต 60 วัน']},
-  {key:'quoteRef',label:'อ้างอิงใบเสนอราคา'},
+  {key:'quoteRef',label:'อ้างอิงใบเสนอราคา',type:'combo',
+   options:()=>DB.docs.filter(d=>d.type==='quotation').map(d=>d.no+' · '+d.customer),
+   ph:'เลือกจากใบเสนอราคาที่มี หรือพิมพ์เลขที่เอง'},
+  {key:'sampleRef',label:'อ้างอิงใบขอตัวอย่าง',type:'combo',
+   options:()=>DB.docs.filter(d=>d.type==='sample').map(d=>d.no+' · '+d.customer),
+   ph:'เลือกจากใบขอตัวอย่างที่มี หรือพิมพ์เลขที่เอง'},
   {key:'ship',label:'สถานที่จัดส่ง',full:true},
   {key:'owner',label:'ผู้ดูแล',def:meName()},
   {group:'รายการสินค้า',sub:'พิมพ์รหัสสินค้าแล้วเลือกจากคลังได้ · ยอดรวมคำนวณให้อัตโนมัติ'},
@@ -4238,8 +4537,8 @@ function pgPO(v){
   header('PO ลูกค้า',['งานขาย']);
   actionBtn('เพิ่ม PO','plus',()=>openForm('เพิ่ม PO ลูกค้า',
     poFields().concat([{group:'รูป PO ที่ลูกค้าส่งมา',sub:'ถ่ายรูปหรือแนบไฟล์ PO ของลูกค้าได้เลย จะเพิ่มทีหลังก็ได้'},
-      {key:'attach',type:'uploads',label:'แนบรูป / ไฟล์ PO จากลูกค้า',
-       hint:'JPG, PNG, PDF · แนบได้หลายไฟล์ · รูปจะถูกย่อขนาดอัตโนมัติ'}]),
+      {key:'attach',type:'uploads',autofill:'po',label:'แนบรูป / ไฟล์ PO จากลูกค้า',
+       hint:'JPG, PNG, PDF · ถ้าเป็น PDF ที่เป็นข้อความ ระบบจะอ่านแล้วกรอกให้อัตโนมัติ'}]),
     {},d=>{
       const at=d.attach||{};delete d.attach;
       /* เลขที่ภายในสร้างให้อัตโนมัติ ใช้อ้างอิงกับใบเสร็จ ผู้ใช้ไม่ต้องกรอก */
@@ -4301,6 +4600,7 @@ function poDetail(v,p){
       <div class="fl"><span>การชำระเงิน</span><b>${esc(p.payment||'-')}</b></div>
       <div class="fl"><span>ผู้ดูแล</span><b>${esc(p.owner||'-')}</b></div>
       <div class="fl"><span>อ้างอิงใบเสนอราคา</span><b>${esc(p.quoteRef||'-')}</b></div>
+      <div class="fl"><span>อ้างอิงใบขอตัวอย่าง</span><b>${esc(p.sampleRef||'-')}</b></div>
       <div class="fl"><span>สถานที่จัดส่ง</span><b>${esc(p.ship||'-')}</b></div>
     </div></div>`));
 
