@@ -2558,7 +2558,7 @@ function itemsEditor(initial,opts){
   }
   function addRow(it){
     it=it||{};
-    const r=el(`<div class="itrow">
+    const r=el(`<div class="itrow" data-id="${esc(it.id||'')}">
       <div class="ittop"><span class="itno">รายการ</span>
         <button type="button" class="itdel">✕ ลบรายการนี้</button></div>
       <div class="itl1">
@@ -2601,7 +2601,8 @@ function itemsEditor(initial,opts){
       qty:parseFloat(r.querySelector('.itqty').value)||0,
       unit:r.querySelector('.itunit').value,
       price:parseFloat(r.querySelector('.itprice').value)||0,
-      due:r.querySelector('.itdue')?r.querySelector('.itdue').value:''
+      due:r.querySelector('.itdue')?r.querySelector('.itdue').value:'',
+      id:r.dataset.id||uid()
     })).filter(i=>i.name||i.code||i.qty||i.price)
       /* รหัสที่พิมพ์เองแล้วยังไม่มีในคลัง เก็บไว้ให้เลือกครั้งหน้า */
       .map(i=>{learnProduct(i);return i;})};
@@ -2945,7 +2946,21 @@ const poGross=p=>poTotal(p)*1.07;
    ลูกค้าที่ซื้อโดยไม่มี PO จึงเข้ายอดขายได้ทันทีเมื่อออกใบเสร็จอ้างอิงใบเสนอราคา */
 const rcRef=r=>r.poRef||'';
 const liveRc=()=>DB.receipts.filter(r=>r.status!=='ยกเลิก');
-function poHasReceipt(po){return liveRc().some(r=>rcRef(r)===po.no);}
+/* ใบเสร็จออกตามรายการสินค้าใน PO — PO 1 ใบมีหลายรายการ ก็ออกได้หลายใบ
+   (ลูกค้ามักขอแบ่งส่งทีละรายการ) */
+const itemGross=it=>(+it.qty||0)*(+it.price||0)*1.07;
+function itemHasReceipt(po,it){
+  if(!it||!it.id)return false;
+  return liveRc().some(r=>rcRef(r)===po.no&&r.poItemId===it.id);
+}
+function poItemsLeft(po){return (po.items||[]).filter(it=>!itemHasReceipt(po,it));}
+function poHasReceipt(po){
+  const items=po.items||[];
+  /* PO ที่ยังไม่ได้ใส่รายการสินค้า ใช้เกณฑ์เดิมคือมีใบเสร็จอ้างอิงเลขที่ PO นี้ */
+  if(!items.length)return liveRc().some(r=>rcRef(r)===po.no);
+  if(items.some(it=>!it.id))return liveRc().some(r=>rcRef(r)===po.no);
+  return poItemsLeft(po).length===0;
+}
 function quoteHasReceipt(q){
   const pos=DB.pos.filter(p=>p.quoteRef===q.no).map(p=>p.no);
   return liveRc().some(r=>rcRef(r)===q.no||pos.includes(rcRef(r)));
@@ -2953,12 +2968,55 @@ function quoteHasReceipt(q){
 /* งานที่ปิดการขายแล้วแต่ยังไม่ได้ออกใบเสร็จ — ยังไม่นับเป็นยอดขาย */
 function pending(){
   const out=[];
-  DB.pos.filter(p=>p.status!=='ยกเลิก'&&!poHasReceipt(p)).forEach(p=>
-    out.push({src:'po',label:'PO',ref:p.no,customer:p.customer,date:p.date,amount:poGross(p),obj:p}));
+  DB.pos.filter(p=>p.status!=='ยกเลิก'&&!poHasReceipt(p)).forEach(p=>{
+    const items=(p.items||[]).filter(it=>it.id);
+    if(!items.length){
+      out.push({src:'po',label:'PO',ref:p.no,customer:p.customer,date:p.date,amount:poGross(p),obj:p});
+      return;
+    }
+    /* แยกทีละรายการ เพราะออกใบเสร็จตามรายการที่ส่งจริง */
+    items.filter(it=>!itemHasReceipt(p,it)).forEach((it,i)=>
+      out.push({src:'po',label:'PO · '+(String(it.name||'').split('\n')[0]||it.code||('รายการที่ '+(i+1))),
+        ref:p.no,customer:p.customer,date:it.due||p.date,amount:itemGross(it),obj:p,item:it}));
+  });
   DB.docs.filter(d=>d.type==='quotation'&&d.status==='อนุมัติแล้ว'
       &&!DB.pos.some(p=>p.status!=='ยกเลิก'&&p.quoteRef===d.no)&&!quoteHasReceipt(d))
     .forEach(d=>out.push({src:'quote',label:'ใบเสนอราคา (ไม่มี PO)',ref:d.no,customer:d.customer,date:d.date,amount:d.amount,obj:d}));
   return out.sort((a,b)=>b.date.localeCompare(a.date));
+}
+/* ออกใบเสร็จจาก PO — ถ้ามีหลายรายการให้เลือกก่อนว่าจะออกของรายการไหน */
+function issuePoReceipt(p,item){
+  const items=(p.items||[]).filter(it=>it.id);
+  const pre=it=>({customer:p.customer,poRef:p.no,poItemId:it?it.id:'',
+    shipTo:p.ship||'',salesman:p.owner||'',
+    amount:Math.round((it?itemGross(it):poGross(p))*100)/100,
+    items:it?[{code:it.code||'',name:it.name||'',qty:it.qty||0,unit:it.unit||'',price:it.price||0}]
+            :(p.items||[]).map(x=>({code:x.code||'',name:x.name||'',qty:x.qty||0,unit:x.unit||'',price:x.price||0}))});
+  if(item)return issueReceipt(pre(item));
+  const left=poItemsLeft(p);
+  if(!items.length)return issueReceipt(pre(null));
+  if(left.length===1)return issueReceipt(pre(left[0]));
+  /* หลายรายการ: ให้เลือกว่าจะออกใบเสร็จของรายการไหน (แบ่งส่งทีละรายการ) */
+  const ov=el('<div class="ov"></div>');
+  const m=el(`<div class="modal" style="max-width:560px"><header><div><b>ออกใบเสร็จของรายการไหน</b>
+      <div class="tiny" style="margin-top:2px">${esc(p.custPoNo||p.no)} · ${esc(p.customer)} · ออกใบเสร็จได้ทีละรายการตามที่ส่งจริง</div></div>
+      <button class="close">✕</button></header><div class="mb"><div class="list"></div></div>
+    <footer><button class="btn gh" id="all">ออกใบเดียวรวมทุกรายการ</button><div style="flex:1"></div>
+      <button class="btn gh" id="c">ปิด</button></footer></div>`);
+  const list=m.querySelector('.list');
+  items.forEach((it,i)=>{
+    const done=itemHasReceipt(p,it);
+    const r=el(`<div class="lrow" ${done?'style="cursor:default;opacity:.55"':''}>
+      <div class="lav">${done?'✓':i+1}</div>
+      <div class="lmain"><div class="lt">${esc(String(it.name||'').split('\n')[0]||it.code||'-')}</div>
+        <div class="lm">${esc(it.code||'-')} · ${num0(it.qty)} ${esc(it.unit||'')} × ${num(it.price)} ฿${it.due?' · ส่ง '+fmtDate(it.due):''}</div></div>
+      <div class="lright"><div class="lamt">${num(itemGross(it))} ฿</div>
+        ${done?'<span class="pill" style="background:#dcfce7;color:#15803d">ออกแล้ว</span>':''}</div></div>`);
+    if(!done)r.onclick=()=>{ov.remove();issueReceipt(pre(it));};
+    list.append(r);});
+  m.querySelector('#all').onclick=()=>{ov.remove();issueReceipt(pre(null));};
+  m.querySelector('.close').onclick=()=>ov.remove();m.querySelector('#c').onclick=()=>ov.remove();
+  ov.append(m);$('#layer').append(ov);
 }
 /* ออกใบเสร็จจากใบเสนอราคา หรือ PO — เติมข้อมูลให้อัตโนมัติ */
 function issueReceipt(pre){
@@ -3199,7 +3257,9 @@ function pgDashboard(v){
         <div class="lm">${esc(x.label)} · ${fmtDate(x.date)}</div></div>
         <div class="lright"><div class="lamt">${num0(Math.round(x.amount))} ฿</div>
         <button class="btn sm iss">ออกใบเสร็จ</button></div></div>`);
-      r.querySelector('.iss').onclick=()=>issueReceipt({customer:x.customer,amount:Math.round(x.amount*100)/100,poRef:x.ref});
+      r.querySelector('.iss').onclick=()=>issueReceipt({customer:x.customer,amount:Math.round(x.amount*100)/100,
+        poRef:x.ref,poItemId:x.item?x.item.id:'',
+        items:x.item?[{code:x.item.code||'',name:x.item.name||'',qty:x.item.qty||0,unit:x.item.unit||'',price:x.item.price||0}]:null});
       list.append(r);});
     pc.append(list);
     if(pend.length>6)pc.append(el(`<div class="pad tiny">และอีก ${pend.length-6} รายการ</div>`));
@@ -4600,7 +4660,7 @@ function poDetail(v,p){
   actionBtn('แนบรูป PO','up',()=>pickFiles('image/*,.pdf,.doc,.docx,.xls,.xlsx',true,
     fs=>addUploads(fs,p.images,p.files)),'btn gh');
   actionBtn('พิมพ์','print',()=>doPrint(),'btn gh');
-  if(!poHasReceipt(p))actionBtn('ออกใบเสร็จ','receipt',()=>issueReceipt({customer:p.customer,amount:Math.round(poGross(p)*100)/100,poRef:p.no}));
+  if(!poHasReceipt(p))actionBtn('ออกใบเสร็จ','receipt',()=>issuePoReceipt(p));
 
   const wrap=el('<div class="split"></div>');
   const left=el('<div style="display:flex;flex-direction:column;gap:16px;min-width:0"></div>');
@@ -4627,19 +4687,23 @@ function poDetail(v,p){
     {key:'code',label:'รหัสสินค้า',req:true,type:'product'},{key:'unit',label:'หน่วย',type:'select',options:UNITS,def:'ม้วน'},
     {key:'name',label:'ชื่อสินค้า',req:true,full:true},
     {key:'qty',label:'จำนวน',type:'number',def:1},{key:'price',label:'ราคา/หน่วย (บาท)',type:'number',def:0}
-  ],{},d=>{learnProduct(d);p.items.push(d);save();render();toast('เพิ่มรายการแล้ว');});
+  ],{},d=>{learnProduct(d);p.items.push(Object.assign({id:uid()},d));save();render();toast('เพิ่มรายการแล้ว');});
   ih.append(addI);items.append(ih);
 
   if(!p.items.length)items.append(emptyState('ยังไม่มีรายการสินค้า','กด "เพิ่มรายการ" เพื่อใส่สินค้าใน PO นี้'));
   else{
     const list=el('<div class="list"></div>');
     p.items.forEach((it,i)=>{
+      const done=itemHasReceipt(p,it);
       const r=el(`<div class="lrow" style="cursor:default">
-        <div class="lav">${i+1}</div>
+        <div class="lav" ${done?'style="background:#dcfce7;color:#15803d"':''}>${done?'✓':i+1}</div>
         <div class="lmain"><div class="lt">${esc(it.name)}</div>
-        <div class="lm">${esc(it.code||'-')} · ${num0(it.qty)} ${esc(it.unit)} × ${num(it.price)} ฿${it.due?' · ส่ง '+fmtDate(it.due):''}</div></div>
+        <div class="lm">${esc(it.code||'-')} · ${num0(it.qty)} ${esc(it.unit)} × ${num(it.price)} ฿${it.due?' · ส่ง '+fmtDate(it.due):''}${done?' · ออกใบเสร็จแล้ว':''}</div></div>
         <div class="lright"><div class="lamt">${num(it.qty*it.price)} ฿</div>
+        ${done?'<span class="pill" style="background:#dcfce7;color:#15803d">ออกใบเสร็จแล้ว</span>'
+               :'<button class="btn sm iss">ออกใบเสร็จ</button>'}
         <button class="btn gh sm rm">ลบ</button></div></div>`);
+      if(r.querySelector('.iss'))r.querySelector('.iss').onclick=()=>issuePoReceipt(p,it);
       r.querySelector('.rm').onclick=()=>{const g=p.items.splice(i,1)[0];save();render();
         toast('ลบรายการแล้ว',()=>{p.items.splice(i,0,g);save();render();});};
       list.append(r);});
@@ -5364,7 +5428,8 @@ function migrate(){
   /* อัปเดตรหัสแบบฟอร์มใบเสนอราคาให้เป็นรุ่นล่าสุด (ถ้ายังเป็นรุ่นเก่าที่ระบบตั้งไว้) */
   if(DB.company&&/^FQP-MKT-01:01 Rev\.0[12]$/.test(DB.company.docCode||''))
     DB.company.docCode=COMPANY.docCode;
-  (DB.pos||[]).forEach(p=>{if(!p.items)p.items=[];if(!p.images)p.images=[];if(!p.files)p.files=[];});
+  (DB.pos||[]).forEach(p=>{if(!p.items)p.items=[];if(!p.images)p.images=[];if(!p.files)p.files=[];
+    p.items.forEach(it=>{if(!it.id)it.id=uid();});});
   if(DB.cert===undefined)DB.cert=null;
   /* เอาบรรทัด "ราคาดังกล่าวยังไม่ภาษีมูลค่าเพิ่ม 7%" ออกจากใบเสนอราคาเดิม (ทำครั้งเดียว) */
   if(!DB.notesFix){
