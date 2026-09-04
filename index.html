@@ -546,11 +546,24 @@ let syncState='idle';      /* idle | saving | saved | offline | readonly */
 let syncTimer=null,syncPending=false;
 const localKey=()=>KEY+(AUTH.user?'_'+AUTH.user.id:'');
 function setSync(s){syncState=s;const e=document.getElementById('syncDot');if(e)paintSync(e);}
+function syncDetail(){
+  if(syncState!=='offline'){
+    if(syncPending){toast('กำลังบันทึก…');cloudSave();return;}
+    toast('บันทึกขึ้นคลาวด์เรียบร้อยแล้ว');return;
+  }
+  askConfirm('ยังบันทึกขึ้นคลาวด์ไม่ได้',
+    (lastSyncErr?'สาเหตุ: '+lastSyncErr+'\n\n':'')
+    +'ข้อมูลยังอยู่ในเครื่องนี้ครบ ไม่หาย · กด "ลองใหม่" เพื่อส่งขึ้นคลาวด์อีกครั้ง',
+    'ลองใหม่',()=>{syncErrShown=false;toast('กำลังส่งขึ้นคลาวด์…');cloudSave();});
+}
 function paintSync(e){
   const m={idle:['','',''],saving:['#f59e0b','กำลังบันทึก…','⟳'],saved:['#16a34a','บันทึกแล้ว','✓'],
     offline:['#dc2626','ยังไม่ได้บันทึกขึ้นคลาวด์','!'],readonly:['#6366f1','โหมดดูอย่างเดียว','👁']}[syncState]||['','',''];
   e.innerHTML=m[1]?`<span style="width:8px;height:8px;border-radius:50%;background:${m[0]};display:inline-block"></span>
-    <span style="font-size:12px;color:var(--mut)">${esc(m[1])}</span>`:'';
+    <span style="font-size:12px;color:${syncState==='offline'?'#dc2626':'var(--mut)'}">${esc(m[1])}</span>`:'';
+  e.style.cursor=m[1]?'pointer':'';
+  e.title=syncState==='offline'?'กดเพื่อดูสาเหตุและลองบันทึกใหม่':'';
+  e.onclick=m[1]?syncDetail:null;
 }
 function save(now){
   /* โหมดดูข้อมูลของคนอื่น: ห้ามเขียนทับข้อมูลตัวเองในเครื่อง และไม่ส่งขึ้นคลาวด์
@@ -582,8 +595,14 @@ function offerCompress(bytes){
       toast('บีบอัด '+r.n+' รูป ลดขนาดลง '+r.kb+' KB แล้ว');
     });
 }
-async function cloudSave(){
-  if(!authed()||readOnly())return;
+let lastSyncErr='',syncErrShown=false,retryTimer=null;
+async function cloudSave(tries){
+  if(readOnly())return;
+  if(!authed()){                      /* เซสชันหลุด: บอกให้เข้าระบบใหม่ ข้อมูลในเครื่องยังอยู่ */
+    setSync('offline');lastSyncErr='เซสชันหมดอายุ ต้องเข้าระบบใหม่';
+    if(!syncErrShown){syncErrShown=true;toast('เซสชันหมดอายุ — เข้าระบบใหม่เพื่อบันทึกงานขึ้นคลาวด์ (ข้อมูลยังอยู่ในเครื่อง)');}
+    return;
+  }
   syncPending=false;
   try{
     /* คลังรหัสสินค้าเก็บในตารางกลาง ไม่ต้องใส่มากับข้อมูลส่วนตัวของแต่ละคน */
@@ -592,8 +611,23 @@ async function cloudSave(){
     if(body.length>4*1024*1024)offerCompress(body.length);
     await sbFetch('user_data?on_conflict=user_id',{method:'POST',
       headers:Object.assign(sbHeaders(),{Prefer:'resolution=merge-duplicates,return=minimal'}),body});
+    lastSyncErr='';syncErrShown=false;
     setSync('saved');setTimeout(()=>{if(syncState==='saved'&&!syncPending)setSync('idle');},2500);
-  }catch(e){setSync('offline');}
+  }catch(e){
+    lastSyncErr=e&&e.message||'ไม่ทราบสาเหตุ';
+    setSync('offline');syncPending=true;
+    const n=(+tries||0)+1;
+    /* ลองใหม่อัตโนมัติ 3 ครั้ง เผื่อเน็ตสะดุดชั่วคราว */
+    if(n<=3){clearTimeout(retryTimer);retryTimer=setTimeout(()=>cloudSave(n),n*2500);return;}
+    if(syncErrShown)return;
+    syncErrShown=true;
+    if(/jwt|token|expired|401|unauthor/i.test(lastSyncErr)){
+      toast('เซสชันหมดอายุ — กรุณาเข้าระบบใหม่ ข้อมูลยังอยู่ในเครื่องนี้ ไม่หาย');
+      setTimeout(()=>loginScreen(),1200);
+    }else{
+      toast('บันทึกขึ้นคลาวด์ไม่สำเร็จ: '+lastSyncErr);
+    }
+  }
 }
 /* ปิดแท็บ / สลับไปแอปอื่น: ถ้ายังมีงานค้างไม่ได้อัปโหลด ให้รีบส่งทันที */
 document.addEventListener('visibilitychange',()=>{
@@ -721,7 +755,7 @@ function toast(msg,undo){
 function askConfirm(title,msg,okLabel,fn){
   const ov=el('<div class="ov"></div>');
   const m=el(`<div class="modal" style="max-width:430px"><header><b>${esc(title)}</b></header>
-    <div class="mb" style="font-size:14.5px;color:#41546f">${esc(msg)}</div>
+    <div class="mb" style="font-size:14.5px;color:#41546f;white-space:pre-line">${esc(msg)}</div>
     <footer><button class="btn gh" id="c">ยกเลิก</button><button class="btn dg" id="o" style="background:#dc2626;color:#fff;border-color:#dc2626">${esc(okLabel)}</button></footer></div>`);
   const close=()=>ov.remove();
   m.querySelector('#c').onclick=close;
