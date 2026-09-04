@@ -598,6 +598,7 @@ function offerCompress(bytes){
 let lastSyncErr='',syncErrShown=false,retryTimer=null;
 async function cloudSave(tries){
   if(readOnly())return;
+  if(!authed()&&AUTH.refresh&&await refreshSession()){}   /* ต่ออายุเซสชันให้เองก่อน */
   if(!authed()){                      /* เซสชันหลุด: บอกให้เข้าระบบใหม่ ข้อมูลในเครื่องยังอยู่ */
     setSync('offline');lastSyncErr='เซสชันหมดอายุ ต้องเข้าระบบใหม่';
     if(!syncErrShown){syncErrShown=true;toast('เซสชันหมดอายุ — เข้าระบบใหม่เพื่อบันทึกงานขึ้นคลาวด์ (ข้อมูลยังอยู่ในเครื่อง)');}
@@ -617,8 +618,11 @@ async function cloudSave(tries){
     lastSyncErr=e&&e.message||'ไม่ทราบสาเหตุ';
     setSync('offline');syncPending=true;
     const n=(+tries||0)+1;
-    /* ลองใหม่อัตโนมัติ 3 ครั้ง เผื่อเน็ตสะดุดชั่วคราว */
-    if(n<=3){clearTimeout(retryTimer);retryTimer=setTimeout(()=>cloudSave(n),n*2500);return;}
+    /* ลองใหม่ให้เองเรื่อย ๆ จนกว่าจะสำเร็จ ผู้ใช้ไม่ต้องกดอะไร
+       เริ่มถี่ก่อน แล้วค่อยห่างขึ้นเป็นทุก 30 วินาที */
+    clearTimeout(retryTimer);
+    retryTimer=setTimeout(()=>cloudSave(n),Math.min(n*2500,30000));
+    if(n<=3)return;
     if(syncErrShown)return;
     syncErrShown=true;
     if(/jwt|token|expired|401|unauthor/i.test(lastSyncErr)){
@@ -629,6 +633,10 @@ async function cloudSave(tries){
     }
   }
 }
+/* เน็ตกลับมา หรือกลับมาที่หน้าเว็บ: ส่งงานที่ค้างขึ้นคลาวด์ให้เองทันที */
+const retryNow=()=>{if(syncPending&&authed()&&!readOnly()){clearTimeout(retryTimer);cloudSave();}};
+window.addEventListener('online',retryNow);
+window.addEventListener('focus',retryNow);
 /* ปิดแท็บ / สลับไปแอปอื่น: ถ้ายังมีงานค้างไม่ได้อัปโหลด ให้รีบส่งทันที */
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='hidden'&&syncPending&&authed()&&!readOnly()){
