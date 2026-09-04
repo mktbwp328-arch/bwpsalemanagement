@@ -544,7 +544,7 @@ let booted=false;
 let dirtySince=0;
 let syncState='idle';      /* idle | saving | saved | offline | readonly */
 let syncTimer=null,syncPending=false;
-const localKey=()=>KEY+(AUTH.user?'_'+AUTH.user.id:'');
+const localKey=()=>KEY+(AUTH.user?'_'+dataOwner():'');
 function setSync(s){syncState=s;const e=document.getElementById('syncDot');if(e)paintSync(e);}
 function syncDetail(){
   if(syncState!=='offline'){
@@ -558,7 +558,7 @@ function syncDetail(){
 }
 function paintSync(e){
   const m={idle:['','',''],saving:['#f59e0b','กำลังบันทึก…','⟳'],saved:['#16a34a','บันทึกแล้ว','✓'],
-    offline:['#dc2626','ยังไม่ได้บันทึกขึ้นคลาวด์','!'],readonly:['#6366f1','โหมดดูอย่างเดียว','👁']}[syncState]||['','',''];
+    offline:['#dc2626','ยังไม่ได้บันทึกขึ้นคลาวด์','!'],readonly:['#6366f1','โหมดดูอย่างเดียว','👁'],editing:['#ea580c','กำลังแก้ข้อมูลของ '+(AUTH.viewingName||'เพื่อนร่วมทีม'),'✎']}[syncState]||['','',''];
   e.innerHTML=m[1]?`<span style="width:8px;height:8px;border-radius:50%;background:${m[0]};display:inline-block"></span>
     <span style="font-size:12px;color:${syncState==='offline'?'#dc2626':'var(--mut)'}">${esc(m[1])}</span>`:'';
   e.style.cursor=m[1]?'pointer':'';
@@ -608,7 +608,7 @@ async function cloudSave(tries){
   try{
     /* คลังรหัสสินค้าเก็บในตารางกลาง ไม่ต้องใส่มากับข้อมูลส่วนตัวของแต่ละคน */
     const mine=Object.assign({},DB);delete mine.products;
-    const body=JSON.stringify({user_id:AUTH.user.id,data:mine,updated_at:new Date().toISOString()});
+    const body=JSON.stringify({user_id:dataOwner(),data:mine,updated_at:new Date().toISOString()});
     if(body.length>4*1024*1024)offerCompress(body.length);
     await sbFetch('user_data?on_conflict=user_id',{method:'POST',
       headers:Object.assign(sbHeaders(),{Prefer:'resolution=merge-duplicates,return=minimal'}),body});
@@ -744,7 +744,9 @@ function seedDemo(){
 function clearAllData(){
   if(!isManager()){toast('เฉพาะผู้ดูแลระบบเท่านั้น');return;}
   askConfirm("ล้างข้อมูลทั้งหมด",
-    "ลบลูกค้า เอกสาร PO และใบเสร็จของบัญชีนี้ทั้งหมด กู้คืนไม่ได้ (หัวกระดาษ โลโก้ และการตั้งค่ายังอยู่)",
+    "ลบลูกค้า เอกสาร PO และใบเสร็จของ "
+    +(viewingOther()?('บัญชี '+(AUTH.viewingName||'เพื่อนร่วมทีม')):'บัญชีนี้')
+    +" ทั้งหมด กู้คืนไม่ได้ (หัวกระดาษ โลโก้ และการตั้งค่ายังอยู่)",
     "ล้างข้อมูล",()=>{
       const keep={logo:DB.logo,cert:DB.cert,company:DB.company,sb:DB.sb};
       DB=Object.assign(seed(),keep);
@@ -1426,7 +1428,12 @@ const isAdminUser=v=>String(v||'').trim().toLowerCase()===ADMIN_USER;
 const AUTH={token:null,refresh:null,user:null,profile:null,viewing:null};
 const authed=()=>!!AUTH.token;
 const isManager=()=>!!(AUTH.profile&&/manager|admin/.test(AUTH.profile.role));
-const readOnly=()=>!!(AUTH.viewing&&AUTH.viewing!==(AUTH.user&&AUTH.user.id));
+/* กำลังเปิดข้อมูลของคนอื่นอยู่หรือไม่ */
+const viewingOther=()=>!!(AUTH.viewing&&AUTH.viewing!==(AUTH.user&&AUTH.user.id));
+/* ดูอย่างเดียว = เปิดข้อมูลคนอื่น และไม่ใช่ผู้จัดการ/ผู้ดูแล */
+const readOnly=()=>viewingOther()&&!isManager();
+/* บันทึกลงบัญชีไหน — ผู้จัดการแก้ของคนอื่นได้ ต้องบันทึกกลับไปที่บัญชีนั้น */
+const dataOwner=()=>(viewingOther()?AUTH.viewing:(AUTH.user&&AUTH.user.id))||'';
 function sbHeaders(){
   const c=sbCfg();
   return {apikey:c.key,Authorization:'Bearer '+(AUTH.token||c.key),'Content-Type':'application/json'};
@@ -3140,6 +3147,14 @@ function render(){
       👁 กำลังดูข้อมูลของ <b>${esc(AUTH.viewingName||'เพื่อนร่วมทีม')}</b> — แก้ไขหรือสร้างเอกสารไม่ได้</div>`));
     $('#topActions').querySelectorAll('.btn').forEach(b=>{
       if(/เพิ่ม|สร้าง|ออกใบเสร็จ|แก้ไข/.test(b.textContent)){b.disabled=true;b.style.opacity=.45;b.style.cursor='not-allowed';}});
+  }else if(viewingOther()){
+    /* ผู้ดูแล/ผู้จัดการ: แก้ไขแทนเจ้าของบัญชีได้ ต้องเห็นชัดว่ากำลังแก้ของใคร */
+    const w=el(`<div class="hint" style="background:#fff7ed;border-color:#fed7aa;color:#9a3412;display:block">
+      ✎ กำลังทำงานในข้อมูลของ <b>${esc(AUTH.viewingName||'เพื่อนร่วมทีม')}</b> ในฐานะผู้ดูแลระบบ —
+      ทุกอย่างที่เพิ่มหรือแก้จะถูกบันทึกเข้าบัญชีของเขา</div>`);
+    const b=el('<button class="btn gh sm" style="margin:-6px 0 14px">กลับไปข้อมูลของฉัน</button>');
+    b.onclick=()=>viewUser(AUTH.user.id,'ฉัน',true);
+    v.prepend(b);v.prepend(w);
   }
   paintSync($('#syncDot'));
   saveView();
@@ -5657,7 +5672,7 @@ async function viewUser(id,name,mine){
     DB.products=keepProducts;
     migrate();
     S.page='dashboard';S.docOpen=S.poOpen=S.rcOpen=S.profSel=null;
-    setSync(readOnly()?'readonly':'idle');render();
+    setSync(readOnly()?'readonly':viewingOther()?'editing':'idle');render();
     toast(mine?'กลับมาที่ข้อมูลของคุณแล้ว':'กำลังดูข้อมูลของ '+name+' (แก้ไขไม่ได้)');
   }catch(e){toast(e.message);}
 }
