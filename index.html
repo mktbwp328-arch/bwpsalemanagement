@@ -4855,6 +4855,8 @@ function receiptDetail(v,r){
   actionBtn('แก้ไขข้อมูล','edit',()=>openForm('แก้ไข '+r.no,rcFields(),r,o=>{
     Object.assign(r,o);if(r.items&&r.items.length)r.amount=Math.round(rcTotal(r)*100)/100;
     save();render();toast('บันทึกแล้ว');},{wide:true,okLabel:'บันทึกการแก้ไข'}),'btn gh');
+  actionBtn('แนบรูป','up',()=>pickFiles('image/*,.pdf,.doc,.docx,.xls,.xlsx',true,
+    fs=>{r.photos=r.photos||[];r.files=r.files||[];addUploads(fs,r.photos,r.files);}),'btn gh');
   actionBtn('ดูตัวอย่าง / พิมพ์','print',()=>printDocSheet(r));
 
   const sub=rcTotal(r)/1.07,vat=rcTotal(r)-sub;
@@ -4893,6 +4895,8 @@ function receiptDetail(v,r){
     <div style="display:flex;gap:40px;font-size:17px;padding-top:8px;border-top:1px solid var(--bd2)"><span style="font-weight:600">รวมทั้งสิ้น</span><b style="width:150px;text-align:right;color:var(--blue-d)">${num(rcTotal(r))} ฿</b></div>
     <div class="tiny">ตัวอักษร: ${esc(bahtText(rcTotal(r)))}</div></div>`));
   left.append(it);
+  left.append(attachPanel(r,'รูปภาพและไฟล์แนบ',
+    'เช่น สลิปโอนเงิน ใบวางบิล หรือใบส่งของที่ลูกค้าเซ็นรับแล้ว'));
   wrap.append(left);
 
   const right=el('<div style="display:flex;flex-direction:column;gap:16px;align-self:start"></div>');
@@ -5470,6 +5474,7 @@ function migrate(){
   /* อัปเดตรหัสแบบฟอร์มใบเสนอราคาให้เป็นรุ่นล่าสุด (ถ้ายังเป็นรุ่นเก่าที่ระบบตั้งไว้) */
   if(DB.company&&/^FQP-MKT-01:01 Rev\.0[12]$/.test(DB.company.docCode||''))
     DB.company.docCode=COMPANY.docCode;
+  (DB.receipts||[]).forEach(r=>{if(!r.photos)r.photos=[];if(!r.files)r.files=[];});
   (DB.pos||[]).forEach(p=>{if(!p.items)p.items=[];if(!p.images)p.images=[];if(!p.files)p.files=[];
     p.items.forEach(it=>{if(!it.id)it.id=uid();});});
   if(DB.cert===undefined)DB.cert=null;
