@@ -551,10 +551,12 @@ function paintSync(e){
     <span style="font-size:12px;color:var(--mut)">${esc(m[1])}</span>`:'';
 }
 function save(){
+  /* โหมดดูข้อมูลของคนอื่น: ห้ามเขียนทับข้อมูลตัวเองในเครื่อง และไม่ส่งขึ้นคลาวด์
+     (ของเดิมเขียนลงเครื่อง ทำให้ดูเหมือนบันทึกได้ แต่พอรีเฟรชแล้วหาย) */
+  if(booted&&readOnly()){setSync('readonly');return;}
   try{localStorage.setItem(localKey(),JSON.stringify(DB));}
   catch(e){if(booted)toast('พื้นที่ในเครื่องเต็ม — ข้อมูลยังบันทึกขึ้นคลาวด์ตามปกติ');}
   if(!booted)return;
-  if(readOnly()){setSync('readonly');return;}
   if(!authed())return;
   syncPending=true;setSync('saving');
   clearTimeout(syncTimer);syncTimer=setTimeout(cloudSave,1500);
@@ -2734,6 +2736,11 @@ function openForm(title,fields,values,onSubmit,opts){
   });
   const close=()=>{ov.remove();document.removeEventListener('keydown',key);};
   const submit=()=>{
+    /* กันบันทึกทับข้อมูลของคนอื่นตอนอยู่ในโหมดดูอย่างเดียว */
+    if(readOnly()&&!opts.allowRO){
+      toast('กำลังดูข้อมูลของ '+(AUTH.viewingName||'เพื่อนร่วมทีม')+' — บันทึกไม่ได้ กดเมนูผู้ใช้แล้วเลือก "กลับไปข้อมูลของฉัน" ก่อน');
+      return;
+    }
     const out={};let bad=null;
     Object.keys(custom).forEach(k=>out[k]=custom[k]());
     fields.filter(f=>!f.group&&!custom[f.key]).forEach(f=>{
@@ -3020,6 +3027,7 @@ function issuePoReceipt(p,item){
 }
 /* ออกใบเสร็จจากใบเสนอราคา หรือ PO — เติมข้อมูลให้อัตโนมัติ */
 function issueReceipt(pre){
+  if(readOnly()){toast('กำลังดูข้อมูลของ '+(AUTH.viewingName||'เพื่อนร่วมทีม')+' — ออกใบเสร็จไม่ได้');return;}
   openForm('ออกใบเสร็จรับเงิน',rcFields(),Object.assign({
     no:'RC-'+(new Date().getFullYear()+543)+'-'+String(DB.receipts.length+67).padStart(4,'0'),
     date:today(),status:'รอชำระ'},pre),d=>{
@@ -4874,7 +4882,8 @@ function openRc(r){
     blocks:[rows([['ลูกค้า',esc(r.customer)],['วันที่',fmtDate(r.date)],['ใบกำกับภาษี',esc(r.invNo||'-')],
       ['อ้างอิง PO',esc(r.poRef||'-')],['ยอดก่อนภาษี',num(sub)],['ภาษีมูลค่าเพิ่ม 7%',num(r.amount-sub)],
       ['<b style="color:#16233a">ยอดรวม</b>','<span style="color:#1d4ed8;font-size:17px">'+num(r.amount)+' ฿</span>'],
-      ['ชำระโดย',esc(r.method||'-')],r.note?['หมายเหตุ',esc(r.note)]:null])],
+      ['ชำระโดย',esc(r.method||'-')],r.note?['หมายเหตุ',esc(r.note)]:null]),
+      attachPanel(r,'รูปภาพและไฟล์แนบ','เช่น สลิปโอนเงิน ใบวางบิล หรือใบส่งของที่ลูกค้าเซ็นรับแล้ว')],
     actions:[
       [svg('edit','ic s')+'แก้ไข','gh',()=>openForm('แก้ไข '+r.no,rcFields(),r,o=>{Object.assign(r,o);save();render();toast('บันทึกแล้ว');openRc(r);})],
       [svg('print','ic s')+'พิมพ์','gh',()=>doPrint()],
@@ -5256,7 +5265,7 @@ function employeeEdit(u){
       toast(isNew?'เพิ่มพนักงานแล้ว — แจ้งเบอร์ให้เขาเข้าเว็บตั้ง PIN':'บันทึกแล้ว');
       employeePage();
     }catch(e){toast(/duplicate|unique/i.test(e.message)?'เบอร์นี้มีในทะเบียนแล้ว':e.message);}
-  },{okLabel:isNew?'เพิ่มพนักงาน':'บันทึก',
+  },{allowRO:true,okLabel:isNew?'เพิ่มพนักงาน':'บันทึก',
      extra:isNew?null:{label:'ลบออกจากทะเบียน',cls:'dg',fn:()=>{
        askConfirm('ลบพนักงาน','ลบ "'+(u.name||fmtPhone(u.phone))+'" ออกจากทะเบียน? เขาจะเข้าระบบไม่ได้อีก','ลบ',
          async()=>{try{await sbFetch('employees?id=eq.'+u.id,{method:'DELETE',headers:sbHeaders()});
