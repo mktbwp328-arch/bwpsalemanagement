@@ -588,11 +588,21 @@ function offerCompress(bytes){
     'ตอนนี้ข้อมูลของคุณ '+Math.round(bytes/1024/1024*10)/10+' MB ซึ่งใกล้ขีดจำกัด 4.5 MB '
     +'ระบบบีบอัดรูปทั้งหมดให้เล็กลงได้โดยยังอ่านออกเหมือนเดิม',
     'บีบอัดให้เลย',async()=>{
-      toast('กำลังบีบอัดรูป…');
-      const r=await compressAllImages();
-      if(!r.n){toast('รูปทั้งหมดเล็กที่สุดแล้ว — ลองลบรูปที่ไม่ใช้ออกบ้าง');return;}
+      const before=blobBytes();
+      let total=0;
+      /* ไล่บีบอัดหลายรอบ แต่ละรอบเข้มขึ้น จนข้อมูลลงมาต่ำกว่า 3.5 MB */
+      for(const cap of [220*1024,140*1024,90*1024,60*1024,40*1024]){
+        toast('กำลังบีบอัดรูป… ('+Math.round(blobBytes()/1024/1024*10)/10+' MB)');
+        const r=await compressAllImages(cap);
+        total+=r.n;
+        if(blobBytes()<3.5*1024*1024)break;
+      }
+      const after=blobBytes();
+      if(!total){toast('รูปทั้งหมดเล็กที่สุดแล้ว — ต้องลบรูปที่ไม่ใช้ออกบ้าง');return;}
       save(true);render();
-      toast('บีบอัด '+r.n+' รูป ลดขนาดลง '+r.kb+' KB แล้ว');
+      const mb=n=>Math.round(n/1024/1024*10)/10;
+      toast('บีบอัด '+total+' รูปแล้ว · '+mb(before)+' MB → '+mb(after)+' MB'
+        +(after>4*1024*1024?' — ยังใหญ่อยู่ ควรลบรูปที่ไม่ใช้ออก':''));
     });
 }
 let lastSyncErr='',syncErrShown=false,retryTimer=null;
@@ -787,12 +797,13 @@ function shrinkImage(img,maxSide,quality){
   g.drawImage(img,0,0,w,h);
   return c.toDataURL('image/jpeg',quality);
 }
-function fitImage(img){
-  const steps=[[1400,.72],[1200,.68],[1000,.62],[850,.56],[700,.5]];
+function fitImage(img,maxBytes){
+  const cap=maxBytes||IMG_MAX_BYTES;
+  const steps=[[1400,.72],[1200,.68],[1000,.62],[850,.56],[700,.5],[600,.45],[500,.4]];
   let out='';
   for(const [side,q] of steps){
     out=shrinkImage(img,side,q);
-    if(out.length*0.75<=IMG_MAX_BYTES)return out;   /* base64 ยาวกว่าไบต์จริงราว 4/3 */
+    if(out.length*0.75<=cap)return out;   /* base64 ยาวกว่าไบต์จริงราว 4/3 */
   }
   return out;
 }
@@ -805,15 +816,16 @@ function readImage(file){
     fr.readAsDataURL(file);});
 }
 /* บีบอัดรูปที่เก็บไว้แล้วให้เล็กลง (ใช้ตอนข้อมูลใหญ่เกินจะขึ้นคลาวด์) */
-function recompress(dataUrl){
+function recompress(dataUrl,maxBytes){
   return new Promise(res=>{
     if(!/^data:image\/(png|jpe?g|webp)/i.test(dataUrl||''))return res(null);
     const img=new Image();
-    img.onload=()=>{const out=fitImage(img);res(out&&out.length<dataUrl.length?out:null);};
+    img.onload=()=>{const out=fitImage(img,maxBytes);res(out&&out.length<dataUrl.length?out:null);};
     img.onerror=()=>res(null);img.src=dataUrl;
   });
 }
-async function compressAllImages(){
+function blobBytes(){const m=Object.assign({},DB);delete m.products;try{return JSON.stringify(m).length;}catch(e){return 0;}}
+async function compressAllImages(maxBytes){
   const lists=[];
   (DB.customers||[]).forEach(c=>{lists.push(c.photos);if(c.logo)lists.push([{data:c.logo,_c:c}]);});
   (DB.pos||[]).forEach(p=>lists.push(p.images));
@@ -823,7 +835,7 @@ async function compressAllImages(){
   for(const arr of lists){
     for(const im of (arr||[])){
       if(!im||!im.data)continue;
-      const out=await recompress(im.data);
+      const out=await recompress(im.data,maxBytes);
       if(out){saved+=im.data.length-out.length;
         if(im._c)im._c.logo=out;else im.data=out;
         n++;}
@@ -5402,6 +5414,7 @@ function userMenu(){
       ${isManager()?'<button class="btn gh blk" id="emp">ข้อมูลพนักงาน</button>':''}
       ${ro?'<button class="btn blk" id="mine">กลับไปข้อมูลของฉัน</button>':''}
       ${ro?'':`<button class="btn gh blk" id="msig">ลายเซ็นของฉัน ${mySig()?'(ตั้งไว้แล้ว)':'— ยังไม่ได้ตั้ง'}</button>`}
+      ${ro?'':`<button class="btn gh blk" id="zip">บีบอัดรูปให้เล็กลง · ตอนนี้ ${Math.round(blobBytes()/1024/1024*10)/10} MB</button>`}
       <button class="btn gh blk" id="sync">บันทึกขึ้นคลาวด์เดี๋ยวนี้</button>
       <button class="btn dg blk" id="out">ออกจากระบบ</button>
     </div></div>`);
@@ -5415,6 +5428,7 @@ function userMenu(){
     setSync('saving');await cloudSave();
     toast(syncState==='offline'?'บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง':'บันทึกขึ้นคลาวด์แล้ว');};
   if(m.querySelector('#msig'))m.querySelector('#msig').onclick=()=>{close();mySigManager();};
+  if(m.querySelector('#zip'))m.querySelector('#zip').onclick=()=>{close();compressAsked=false;offerCompress(blobBytes());};
   m.querySelector('#out').onclick=()=>{close();logout();};
   ov.append(m);$('#layer').append(ov);
 }
