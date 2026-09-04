@@ -2527,8 +2527,15 @@ async function productsFile(){
 }
 const prodTableMissing=e=>/relation .*products|does not exist|schema cache/i.test(String(e&&e.message||e));
 
-async function productsPull(){
+const PRODPULL_KEY='bwp_prodpull_v1';
+/* ดึงคลังสินค้ากลาง — ถ้าเพิ่งดึงไปไม่นานและมีข้อมูลอยู่แล้ว ข้ามไปเลยเพื่อให้เปิดเว็บเร็ว
+   (กดปุ่ม "โหลดใหม่" ในหน้าข้อมูลสินค้าเพื่อบังคับดึงใหม่ได้ทุกเมื่อ) */
+async function productsPull(force){
   if(!authed())return false;
+  if(!force&&allProducts().length){
+    let last=0;try{last=+localStorage.getItem(PRODPULL_KEY)||0;}catch(e){}
+    if(Date.now()-last<6*3600000){PRODSYNC.at=new Date(last).toISOString();PRODSYNC.src='cloud';return false;}
+  }
   PRODSYNC.busy=true;PRODSYNC.err=null;
   try{
     const out=[];let from=0;
@@ -2552,6 +2559,7 @@ async function productsPull(){
       PRODSYNC.pending=DB.products.length;
     }
     PRODSYNC.at=new Date().toISOString();
+    try{localStorage.setItem(PRODPULL_KEY,String(Date.now()));}catch(e){}
     try{localStorage.setItem(localKey(),JSON.stringify(DB));}catch(e){}
     return true;
   }catch(e){
@@ -3454,25 +3462,42 @@ const poGross=p=>poTotal(p)*1.07;
    ใบเสร็จอ้างอิงได้ทั้งเลขที่ PO และเลขที่ใบเสนอราคา (ช่อง ref)
    ลูกค้าที่ซื้อโดยไม่มี PO จึงเข้ายอดขายได้ทันทีเมื่อออกใบเสร็จอ้างอิงใบเสนอราคา */
 const rcRef=r=>r.poRef||'';
-const liveRc=()=>DB.receipts.filter(r=>r.status!=='ยกเลิก');
+/* ทำดัชนีใบเสร็จไว้ครั้งเดียวต่อการเปลี่ยนข้อมูล เพื่อไม่ต้องไล่ทั้งกองซ้ำ ๆ
+   (ตอนข้อมูลเยอะ ๆ ช่วยให้หน้าแรกเปิดเร็วขึ้นมาก) */
+let _rcv=-1,_rci=null;
+function rcIndex(){
+  if(_rci&&_rcv===dirtySince&&_rci.n===DB.receipts.length)return _rci;
+  const live=DB.receipts.filter(r=>r.status!=='ยกเลิก');
+  const byRef=new Set(),byItem=new Set();
+  live.forEach(r=>{const k=rcRef(r);if(k){byRef.add(k);if(r.poItemId)byItem.add(k+'|'+r.poItemId);}});
+  _rci={live,byRef,byItem,n:DB.receipts.length};_rcv=dirtySince;
+  return _rci;
+}
+const liveRc=()=>rcIndex().live;
 /* ใบเสร็จออกตามรายการสินค้าใน PO — PO 1 ใบมีหลายรายการ ก็ออกได้หลายใบ
    (ลูกค้ามักขอแบ่งส่งทีละรายการ) */
 const itemGross=it=>(+it.qty||0)*(+it.price||0)*1.07;
 function itemHasReceipt(po,it){
   if(!it||!it.id)return false;
-  return liveRc().some(r=>rcRef(r)===po.no&&r.poItemId===it.id);
+  return rcIndex().byItem.has(po.no+'|'+it.id);
 }
 function poItemsLeft(po){return (po.items||[]).filter(it=>!itemHasReceipt(po,it));}
 function poHasReceipt(po){
   const items=po.items||[];
   /* PO ที่ยังไม่ได้ใส่รายการสินค้า ใช้เกณฑ์เดิมคือมีใบเสร็จอ้างอิงเลขที่ PO นี้ */
-  if(!items.length)return liveRc().some(r=>rcRef(r)===po.no);
-  if(items.some(it=>!it.id))return liveRc().some(r=>rcRef(r)===po.no);
+  if(!items.length)return rcIndex().byRef.has(po.no);
+  if(items.some(it=>!it.id))return rcIndex().byRef.has(po.no);
   return poItemsLeft(po).length===0;
 }
+let _qv=-1,_qmap=null;
 function quoteHasReceipt(q){
-  const pos=DB.pos.filter(p=>p.quoteRef===q.no).map(p=>p.no);
-  return liveRc().some(r=>rcRef(r)===q.no||pos.includes(rcRef(r)));
+  if(!_qmap||_qv!==dirtySince){          /* จับคู่ใบเสนอราคา -> PO ไว้ล่วงหน้า */
+    _qmap={};DB.pos.forEach(p=>{if(p.quoteRef)(_qmap[p.quoteRef]=_qmap[p.quoteRef]||[]).push(p.no);});
+    _qv=dirtySince;
+  }
+  const idx=rcIndex();
+  if(idx.byRef.has(q.no))return true;
+  return (_qmap[q.no]||[]).some(no=>idx.byRef.has(no));
 }
 /* งานที่ปิดการขายแล้วแต่ยังไม่ได้ออกใบเสร็จ — ยังไม่นับเป็นยอดขาย */
 function pending(){
@@ -4071,7 +4096,7 @@ function pgProducts(v){
   header('ข้อมูลสินค้า',['คลังรหัสสินค้าของบริษัท']);
   if(!readOnly())actionBtn('อัปเดตจากไฟล์ Excel','up',importProducts);
   actionBtn('โหลดใหม่','up',async()=>{render();
-    if(await productsPull())toast('อัปเดตคลังสินค้าแล้ว · '+allProducts().length+' รหัส');
+    if(await productsPull(true))toast('อัปเดตคลังสินค้าแล้ว · '+allProducts().length+' รหัส');
     render();},'btn gh');
   actionBtn('ดาวน์โหลดเทมเพลต','dl',()=>{
     downloadXLSX('เทมเพลตนำเข้าสินค้า.xlsx',[PRODUCT_FIELDS.map(f=>f.label),
@@ -4092,7 +4117,7 @@ function pgProducts(v){
       <div style="margin-top:4px">ใช้งานได้ปกติทุกคนอยู่แล้ว · ถ้าอยากให้แก้ไข/เพิ่มรหัสแล้วเก็บถาวรบนคลาวด์ ให้กดปุ่มด้านล่างครั้งเดียว</div></div>`);
     const b=el(`<button class="btn gh" style="margin:0 0 14px">บันทึก ${PRODSYNC.pending} รหัสเข้าคลังกลางบนคลาวด์</button>`);
     b.onclick=async()=>{b.disabled=true;b.textContent='กำลังบันทึก…';
-      try{await productsPush(allProducts());await productsPull();render();
+      try{await productsPush(allProducts());await productsPull(true);render();
         toast('บันทึกเข้าคลังกลางแล้ว');}
       catch(e){b.disabled=false;b.textContent='ลองใหม่';
         toast(prodTableMissing(e)?'ยังไม่ได้ติดตั้งคลังสินค้ากลาง — ให้ผู้ดูแลรันไฟล์ supabase-setup-6.sql ก่อน':e.message);}};
@@ -4125,13 +4150,13 @@ function pgProducts(v){
       openForm('แก้ไข '+p.code,productFields(),p,async d=>{
         try{await sbFetch('products?id=eq.'+encodeURIComponent(p.id),{method:'PATCH',
             headers:Object.assign(sbHeaders(),{Prefer:'return=minimal'}),body:JSON.stringify(prodToRow(d))});
-          await productsPull();render();toast('บันทึกแล้ว — อัปเดตให้ทุกคนเหมือนกัน');}
+          await productsPull(true);render();toast('บันทึกแล้ว — อัปเดตให้ทุกคนเหมือนกัน');}
         catch(e){toast(e.message);}},
         {extra:{label:'ลบรหัสนี้',cls:'gh dg',fn:()=>askConfirm('ลบรหัสสินค้า',
           'ลบ '+p.code+' ออกจากคลังกลาง? ทุกคนจะไม่เห็นรหัสนี้อีก','ลบรหัส',async()=>{
             try{await sbFetch('products?id=eq.'+encodeURIComponent(p.id),{method:'DELETE',
                 headers:Object.assign(sbHeaders(),{Prefer:'return=minimal'})});
-              await productsPull();render();toast('ลบรหัส '+p.code+' แล้ว');}
+              await productsPull(true);render();toast('ลบรหัส '+p.code+' แล้ว');}
             catch(e){toast(e.message);}})}});},
     footer:list.length>300?el(`<div class="pad tiny">แสดง 300 รหัสแรก จากทั้งหมด ${list.length} — ใช้ช่องค้นหาด้านบนเพื่อหารหัสที่ต้องการ</div>`):null,
     empty:emptyState('ไม่พบรหัสที่ค้นหา','ลองพิมพ์รหัสหรือชื่อสินค้าบางส่วน')}));
@@ -4214,7 +4239,7 @@ function importProducts(){
       go.disabled=true;go.textContent='กำลังส่งขึ้นคลังกลาง '+fresh.length+' รหัส…';
       try{
         await productsPush(fresh);
-        await productsPull();
+        await productsPull(true);
         close();render();
         toast('นำเข้า '+fresh.length+' รหัสเข้าคลังกลางแล้ว — ทุกคนเห็นเหมือนกัน'
           +(dup?' · ข้ามที่ซ้ำ '+dup:'')+(skipped?' · ข้ามแถวว่าง '+skipped:''));
