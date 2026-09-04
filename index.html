@@ -1619,7 +1619,6 @@ const validLogin=u=>isPhone(u)||/^[a-zA-Z0-9._-]{3,32}$/.test(String(u||'').trim
 /* บัญชีผู้ดูแลระบบ: พิมพ์ชื่อนี้แล้วเข้าได้เลย ไม่ต้องใส่ PIN
    (รหัสด้านล่างเป็นค่าคงที่ของระบบ ต้องตั้งให้ตรงกันในบัญชี Supabase) */
 const ADMIN_USER='bwpsaleadmin';
-const ADMIN_PASS='bwp-sale-admin-2569-open-7f3ac91d';
 const isAdminUser=v=>String(v||'').trim().toLowerCase()===ADMIN_USER;
 const AUTH={token:null,refresh:null,user:null,profile:null,viewing:null};
 const authed=()=>!!AUTH.token;
@@ -5637,7 +5636,7 @@ function loginScreen(msg){
   const uEl=w.querySelector('#lgEmail');
   const syncMode=()=>{
     const adm=isAdminUser(uEl.value);
-    w.querySelector('#lgPinWrap').style.display=adm?'none':'flex';
+    w.querySelector('#lgPinWrap').style.display='flex';   /* ผู้ดูแลก็ต้องใส่ PIN */
     w.querySelector('#lgGo').textContent=adm?'เข้าสู่ระบบผู้ดูแล':'เข้าสู่ระบบ';
   };
   uEl.addEventListener('input',syncMode);
@@ -5656,14 +5655,13 @@ function loginScreen(msg){
     const pass=w.querySelector('#lgPass').value;
     const adm=isAdminUser(user);
     if(!user){err('กรุณากรอกเบอร์โทรศัพท์');return;}
-    if(!adm){
-      if(!isPhone(user)){err('เบอร์โทรไม่ถูกต้อง เช่น 081-234-5678');return;}
-      if(!/^\d{6}$/.test(pass)){err('PIN ต้องเป็นตัวเลข 6 หลัก');return;}
-    }
+    if(!adm&&!isPhone(user)){err('เบอร์โทรไม่ถูกต้อง เช่น 081-234-5678');return;}
+    if(!/^\d{6}$/.test(pass)){err('PIN ต้องเป็นตัวเลข 6 หลัก');return;}
     b.disabled=true;b.textContent='กำลังเข้าระบบ…';err('');
     try{
       if(adm){
-        await signIn(ADMIN_USER,ADMIN_PASS);
+        try{await signIn(ADMIN_USER,pass);}
+        catch(e1){throw new Error('PIN ผู้ดูแลไม่ถูกต้อง');}
       }else{
         try{
           await signIn(user,pass);                       // มี PIN อยู่แล้ว
