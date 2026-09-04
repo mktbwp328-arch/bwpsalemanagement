@@ -606,6 +606,26 @@ function offerCompress(bytes){
     });
 }
 let lastSyncErr='',syncErrShown=false,retryTimer=null;
+/* ย้ายรูปเดิมขึ้นที่เก็บไฟล์ พร้อมแสดงความคืบหน้า */
+function moveToStorage(){
+  const pend=allAttachments().filter(j=>j.data&&/^data:/.test(j.data)).length;
+  if(!pend){toast('รูปทั้งหมดอยู่บนที่เก็บไฟล์แล้ว · ข้อมูลตอนนี้ '+Math.round(blobBytes()/1024/1024*10)/10+' MB');return;}
+  askConfirm('ย้ายรูปขึ้นที่เก็บไฟล์',
+    'มีไฟล์ที่ยังฝังอยู่ในข้อมูล '+pend+' ไฟล์ (ข้อมูลรวม '+Math.round(blobBytes()/1024/1024*10)/10+' MB)\n\n'
+    +'ระบบจะย้ายขึ้นที่เก็บไฟล์บนคลาวด์ให้ ข้อมูลหลักจะเหลือแค่ที่อยู่ไฟล์ ทำให้เว็บเบาและเร็วขึ้นมาก\n'
+    +'รูปยังดูได้เหมือนเดิม และแนบรูปใหม่ได้ไม่จำกัด',
+    'ย้ายเลย',async()=>{
+      const before=blobBytes();
+      toast('กำลังย้าย 0/'+pend+' …');
+      const r=await migrateToStorage((d,t)=>{if(d%3===0||d===t)toast('กำลังย้าย '+d+'/'+t+' …');});
+      if(storageOK===false){
+        toast('ยังไม่ได้ติดตั้งที่เก็บไฟล์ — ให้ผู้ดูแลรันไฟล์ supabase-setup-9.sql ใน Supabase ก่อน');return;}
+      save(true);render();
+      const mb=n=>Math.round(n/1024/1024*10)/10;
+      toast('ย้าย '+r.done+' ไฟล์ขึ้นคลาวด์แล้ว · '+mb(before)+' MB → '+mb(blobBytes())+' MB'
+        +(r.failed?' · ไม่สำเร็จ '+r.failed+' ไฟล์':''));
+    });
+}
 async function cloudSave(tries){
   if(readOnly())return;
   if(!authed()&&AUTH.refresh&&await refreshSession()){}   /* ต่ออายุเซสชันให้เองก่อน */
@@ -849,13 +869,27 @@ function readAny(file){
     if(file.size>3*1024*1024){toast('ไฟล์ใหญ่เกิน 3 MB — เก็บเฉพาะชื่อไฟล์');res({name:file.name,type:'file',size:file.size,data:null,date:today()});return;}
     const fr=new FileReader();fr.onload=()=>res({name:file.name,type:'file',size:file.size,data:fr.result,date:today()});fr.readAsDataURL(file);});
 }
+/* ส่งไฟล์ที่เพิ่งเลือกขึ้นที่เก็บไฟล์ ถ้าส่งไม่ได้ก็เก็บฝังในข้อมูลแบบเดิมไปก่อน */
+async function toStorage(rec){
+  if(!rec||!rec.data||storageOK===false||!authed())return rec;
+  try{
+    const blob=b64ToBlob(rec.data);
+    if(!blob)return rec;
+    const ext=(String(blob.type).split('/')[1]||'bin').replace('jpeg','jpg').split('+')[0];
+    rec.path=await stUpload(blob,ext);
+    rec.bytes=blob.size;delete rec.data;
+  }catch(e){}
+  return rec;
+}
 async function addUploads(files,imgArr,fileArr){
   let n=0;
   for(const f of files){
     const r=await readAny(f);if(!r)continue;
-    (r.type==='image'?imgArr:fileArr).push(Object.assign({id:uid()},r));n++;
+    const rec=await toStorage(Object.assign({id:uid()},r));   /* ส่งขึ้นที่เก็บไฟล์ก่อน */
+    (r.type==='image'?imgArr:fileArr).push(rec);n++;
   }
-  save();render();if(n)toast('อัปโหลด '+n+' ไฟล์เรียบร้อย');
+  save(true);render();
+  if(n)toast('อัปโหลด '+n+' ไฟล์เรียบร้อย');
 }
 function dropZone(hint,onFiles){
   const z=el(`<div class="drop">
@@ -872,10 +906,11 @@ function thumbGrid(arr){
   const w=el('<div class="thumbs"></div>');
   if(!arr.length)return el('<div class="tiny">ยังไม่มีรูปภาพ</div>');
   arr.forEach((im,i)=>{
-    const t=el(`<div class="thumb"><img src="${imgSrc(im.data)}" alt="${esc(im.name)}"><div class="nm">${esc(im.name)}</div><button class="x" title="ลบรูป">✕</button></div>`);
-    t.querySelector('img').onclick=()=>lightbox(im.data);
-    t.querySelector('.x').onclick=e=>{e.stopPropagation();const g=arr.splice(i,1)[0];save();render();
-      toast('ลบรูปแล้ว',()=>{arr.splice(i,0,g);save();render();});};
+    const t=el(`<div class="thumb"><img alt="${esc(im.name)}"><div class="nm">${esc(im.name)}</div><button class="x" title="ลบรูป">✕</button></div>`);
+    paintImg(t.querySelector('img'),im);
+    t.querySelector('img').onclick=()=>openAttachment(im);
+    t.querySelector('.x').onclick=e=>{e.stopPropagation();const g=arr.splice(i,1)[0];save(true);render();
+      toast('ลบรูปแล้ว',()=>{arr.splice(i,0,g);save(true);render();});};
     w.append(t);});
   return w;
 }
@@ -888,17 +923,34 @@ function fileList(arr){
     const r=el(`<div class="filerow">
       <div class="ftag" style="background:${pdf?'#fee2e2':'#dbeafe'};color:${pdf?'#b91c1c':'#1d4ed8'}">${esc(ext||'FILE')}</div>
       <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.name)}</div>
-        <div class="tiny">${fmtDate(f.date)} · ${(f.size/1048576).toFixed(1)} MB</div></div>
+        <div class="tiny">${fmtDate(f.date)} · ${((f.bytes||f.size||0)/1048576).toFixed(1)} MB${f.path?' · เก็บบนคลาวด์':''}</div></div>
       <a class="dl" style="color:#5b6b83" title="ดาวน์โหลด">${svg('dl')}</a>
       <button class="btn gh sm rm">ลบ</button></div>`);
     const a=r.querySelector('.dl');
-    if(f.data){a.href=f.data;a.download=f.name;}else{a.style.opacity=.3;}
-    r.querySelector('.rm').onclick=()=>{const g=arr.splice(i,1)[0];save();render();
-      toast('ลบไฟล์แล้ว',()=>{arr.splice(i,0,g);save();render();});};
+    if(f.data){a.href=f.data;a.download=f.name;}
+    else if(f.path){a.href='javascript:void 0';a.onclick=e=>{e.preventDefault();openAttachment(f);};}
+    else{a.style.opacity=.3;}
+    r.querySelector('.rm').onclick=()=>{const g=arr.splice(i,1)[0];save(true);render();
+      toast('ลบไฟล์แล้ว',()=>{arr.splice(i,0,g);save(true);render();});};
     w.append(r);});
   return w;
 }
 function lightbox(src){const b=el(`<div class="lightbox"><img src="${imgSrc(src)}"></div>`);b.onclick=()=>b.remove();$('#layer').append(b);}
+/* เปิดดูไฟล์แนบ รองรับทั้งไฟล์ที่ฝังในข้อมูลและที่เก็บบนคลาวด์ */
+async function openAttachment(it){
+  if(!it)return;
+  if(it.data){
+    if(it.type==='image')return lightbox(it.data);
+    const a=document.createElement('a');a.href=it.data;a.download=it.name||'file';a.click();return;
+  }
+  if(!it.path)return toast('ไฟล์นี้ไม่มีข้อมูลแนบ');
+  try{
+    const u=await stSign(it.path);
+    if(it.type==='image'){const b=el('<div class="lightbox"><img></div>');
+      b.querySelector('img').src=u;b.onclick=()=>b.remove();$('#layer').append(b);return;}
+    window.open(u,'_blank','noopener');
+  }catch(e){toast(e.message);}
+}
 
 /* ================= หัวกระดาษบริษัท + ใบเสนอราคาแบบพิมพ์ ================= */
 const COMPANY={
@@ -2755,6 +2807,85 @@ function poReadReport(r,got,ff,ctl){
   ov.append(m);$('#layer').append(ov);
 }
 
+/* ================= ที่เก็บไฟล์บนคลาวด์ (Supabase Storage) =================
+   เก็บรูปเป็นไฟล์จริง ข้อมูลหลักเก็บแค่ที่อยู่ไฟล์ ทำให้ข้อมูลเล็กและเปิดเว็บเร็ว */
+const BUCKET='attachments';
+const TRANSPARENT_PX='data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+let storageOK=null;                 /* null=ยังไม่รู้, true=ใช้ได้, false=ยังไม่ได้ติดตั้ง */
+const signCache={};                 /* path -> {url,exp} */
+const stUrl=p=>sbCfg().url.replace(/\/$/,'')+'/storage/v1'+p;
+const stHead=extra=>{const c=sbCfg();
+  return Object.assign({apikey:c.key,Authorization:'Bearer '+(AUTH.token||c.key)},extra||{});};
+function b64ToBlob(dataUrl){
+  const m=/^data:([^;]+);base64,(.*)$/.exec(dataUrl||'');
+  if(!m)return null;
+  const bin=atob(m[2]),u8=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);
+  return new Blob([u8],{type:m[1]});
+}
+async function stUpload(blob,ext){
+  const path=dataOwner()+'/'+uid()+uid()+'.'+(ext||'jpg');
+  const r=await fetch(stUrl('/object/'+BUCKET+'/'+path),{method:'POST',
+    headers:stHead({'Content-Type':blob.type||'application/octet-stream','x-upsert':'true'}),body:blob});
+  if(!r.ok){
+    const t=await r.text().catch(()=>'');
+    if(/bucket not found|not found/i.test(t)){storageOK=false;
+      throw new Error('ยังไม่ได้ติดตั้งที่เก็บไฟล์ — ให้ผู้ดูแลรัน supabase-setup-9.sql');}
+    throw new Error(t||('อัปโหลดไม่สำเร็จ ('+r.status+')'));
+  }
+  storageOK=true;
+  return path;
+}
+async function stSign(path){
+  const hit=signCache[path];
+  if(hit&&hit.exp>Date.now()+60000)return hit.url;
+  const r=await fetch(stUrl('/object/sign/'+BUCKET+'/'+path),{method:'POST',
+    headers:stHead({'Content-Type':'application/json'}),body:JSON.stringify({expiresIn:3600})});
+  if(!r.ok)throw new Error('เปิดไฟล์ไม่ได้ ('+r.status+')');
+  const j=await r.json();
+  const url=stUrl(String(j.signedURL||j.signedUrl||'').replace(/^\/storage\/v1/,''));
+  signCache[path]={url,exp:Date.now()+3500*1000};
+  return url;
+}
+async function stDelete(path){
+  try{await fetch(stUrl('/object/'+BUCKET+'/'+path),{method:'DELETE',headers:stHead()});}catch(e){}
+}
+/* ใส่รูปลงแท็ก img — ถ้าเป็นไฟล์บนคลาวด์จะขอลิงก์ชั่วคราวให้เอง */
+function paintImg(node,item){
+  if(!node||!item)return node;
+  if(item.data){node.src=imgSrc(item.data);return node;}
+  if(!item.path)return node;
+  node.src=TRANSPARENT_PX;
+  stSign(item.path).then(u=>{node.src=u;}).catch(()=>{node.alt='เปิดรูปไม่ได้';});
+  return node;
+}
+/* ย้ายรูปที่ฝังอยู่ในข้อมูลขึ้นที่เก็บไฟล์ ทำครั้งเดียวต่อบัญชี */
+function allAttachments(){
+  const out=[];
+  const add=a=>(a||[]).forEach(x=>{if(x)out.push(x);});
+  (DB.customers||[]).forEach(c=>{add(c.photos);add(c.files);});
+  (DB.pos||[]).forEach(p=>{add(p.images);add(p.files);});
+  (DB.receipts||[]).forEach(r=>{add(r.photos);add(r.files);});
+  (DB.docs||[]).forEach(d=>{add(d.photos);add(d.files);});
+  return out;
+}
+async function migrateToStorage(onProgress){
+  const todo=allAttachments().filter(j=>j.data&&/^data:/.test(j.data));
+  let done=0,failed=0;
+  for(const j of todo){
+    try{
+      const blob=b64ToBlob(j.data);
+      if(!blob){failed++;continue;}
+      const ext=(String(blob.type).split('/')[1]||'bin').replace('jpeg','jpg').split('+')[0];
+      j.path=await stUpload(blob,ext);
+      j.bytes=blob.size;delete j.data;
+      done++;
+    }catch(e){failed++;if(storageOK===false)break;}
+    if(onProgress)onProgress(done,todo.length);
+  }
+  return {done,failed,total:todo.length};
+}
+
 /* ================= form ================= */
 /* เงื่อนไขการชำระเงินที่ใช้บ่อย + ที่เคยพิมพ์เองไว้ใน PO */
 const PAY_BASE=['เงินสด','เครดิต 30 วัน','เครดิต 45 วัน','เครดิต 60 วัน','เครดิต 90 วัน','โอนก่อนส่งของ','เก็บเงินปลายทาง'];
@@ -2906,8 +3037,9 @@ function openForm(title,fields,values,onSubmit,opts){
         if(imgs.length){
           const g=el('<div class="thumbs"></div>');
           imgs.forEach((im,i)=>{
-            const t=el(`<div class="thumb"><img src="${imgSrc(im.data)}" alt="${esc(im.name)}"><div class="nm">${esc(im.name)}</div><button type="button" class="x" title="เอาออก">✕</button></div>`);
-            t.querySelector('img').onclick=()=>lightbox(im.data);
+            const t=el(`<div class="thumb"><img alt="${esc(im.name)}"><div class="nm">${esc(im.name)}</div><button type="button" class="x" title="เอาออก">✕</button></div>`);
+            paintImg(t.querySelector('img'),im);
+            t.querySelector('img').onclick=()=>openAttachment(im);
             t.querySelector('.x').onclick=e=>{e.stopPropagation();imgs.splice(i,1);paint();};
             g.append(t);});
           prev.append(g);}
@@ -2921,7 +3053,8 @@ function openForm(title,fields,values,onSubmit,opts){
       w.append(dropZone(f.hint||'JPG, PNG, PDF · รูปจะถูกย่อขนาดอัตโนมัติ',async fs=>{
         let n=0;
         for(const file of fs){const r=await readAny(file);if(!r)continue;
-          (r.type==='image'?imgs:fls).push(Object.assign({id:uid()},r));n++;}
+          const rec=await toStorage(Object.assign({id:uid()},r));
+          (r.type==='image'?imgs:fls).push(rec);n++;}
         if(n)toast('แนบ '+n+' ไฟล์แล้ว — กดบันทึกเพื่อเก็บเข้าระบบ');
         paint();
         /* ไฟล์ PO เป็น PDF ข้อความ ให้ลองอ่านแล้วกรอกให้เลย */
@@ -5414,7 +5547,8 @@ function userMenu(){
       ${isManager()?'<button class="btn gh blk" id="emp">ข้อมูลพนักงาน</button>':''}
       ${ro?'<button class="btn blk" id="mine">กลับไปข้อมูลของฉัน</button>':''}
       ${ro?'':`<button class="btn gh blk" id="msig">ลายเซ็นของฉัน ${mySig()?'(ตั้งไว้แล้ว)':'— ยังไม่ได้ตั้ง'}</button>`}
-      ${ro?'':`<button class="btn gh blk" id="zip">บีบอัดรูปให้เล็กลง · ตอนนี้ ${Math.round(blobBytes()/1024/1024*10)/10} MB</button>`}
+      ${ro?'':`<button class="btn gh blk" id="tostore">ย้ายรูปขึ้นที่เก็บไฟล์ · ตอนนี้ ${Math.round(blobBytes()/1024/1024*10)/10} MB</button>`}
+      ${ro?'':`<button class="btn gh blk" id="zip">บีบอัดรูปให้เล็กลง</button>`}
       <button class="btn gh blk" id="sync">บันทึกขึ้นคลาวด์เดี๋ยวนี้</button>
       <button class="btn dg blk" id="out">ออกจากระบบ</button>
     </div></div>`);
@@ -5429,6 +5563,7 @@ function userMenu(){
     toast(syncState==='offline'?'บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง':'บันทึกขึ้นคลาวด์แล้ว');};
   if(m.querySelector('#msig'))m.querySelector('#msig').onclick=()=>{close();mySigManager();};
   if(m.querySelector('#zip'))m.querySelector('#zip').onclick=()=>{close();compressAsked=false;offerCompress(blobBytes());};
+  if(m.querySelector('#tostore'))m.querySelector('#tostore').onclick=()=>{close();moveToStorage();};
   m.querySelector('#out').onclick=()=>{close();logout();};
   ov.append(m);$('#layer').append(ov);
 }
