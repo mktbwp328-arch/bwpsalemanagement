@@ -591,7 +591,7 @@ function offerCompress(bytes){
       const before=blobBytes();
       let total=0;
       /* ไล่บีบอัดหลายรอบ แต่ละรอบเข้มขึ้น จนข้อมูลลงมาต่ำกว่า 3.5 MB */
-      for(const cap of [220*1024,140*1024,90*1024,60*1024,40*1024]){
+      for(const cap of [200*1024,140*1024,90*1024,60*1024,40*1024]){
         toast('กำลังบีบอัดรูป… ('+Math.round(blobBytes()/1024/1024*10)/10+' MB)');
         const r=await compressAllImages(cap);
         total+=r.n;
@@ -807,7 +807,7 @@ function askConfirm(title,msg,okLabel,fn){
 function pickFiles(accept,multiple,cb){const i=document.createElement('input');i.type='file';i.accept=accept;i.multiple=!!multiple;i.onchange=()=>cb([...i.files]);i.click();}
 /* ย่อรูปให้เล็กพอที่จะเก็บขึ้นคลาวด์ได้ แต่ยังอ่านตัวหนังสือในเอกสารออก
    ลดขนาดและคุณภาพทีละขั้นจนไฟล์ไม่เกินราว 220 KB ต่อรูป */
-const IMG_MAX_BYTES=220*1024;
+const IMG_MAX_BYTES=200*1024;   /* ไฟล์รูปที่เก็บ ต้องไม่เกิน 200 KB ต่อรูป */
 function shrinkImage(img,maxSide,quality){
   let w=img.width||img.naturalWidth,h=img.height||img.naturalHeight;
   if(w>maxSide||h>maxSide){const s=maxSide/Math.max(w,h);w=Math.round(w*s);h=Math.round(h*s);}
@@ -865,20 +865,34 @@ async function compressAllImages(maxBytes){
 }
 function readAny(file){
   if(file.type.startsWith('image/'))return readImage(file);
-  return new Promise(res=>{
-    if(file.size>3*1024*1024){toast('ไฟล์ใหญ่เกิน 3 MB — เก็บเฉพาะชื่อไฟล์');res({name:file.name,type:'file',size:file.size,data:null,date:today()});return;}
-    const fr=new FileReader();fr.onload=()=>res({name:file.name,type:'file',size:file.size,data:fr.result,date:today()});fr.readAsDataURL(file);});
+  /* ไฟล์อื่น (PDF/Word/Excel) ไม่ต้องแปลงเป็นตัวหนังสือ ส่งขึ้นที่เก็บไฟล์ตรง ๆ */
+  return Promise.resolve({name:file.name,type:'file',size:file.size,data:null,date:today(),_file:file});
 }
 /* ส่งไฟล์ที่เพิ่งเลือกขึ้นที่เก็บไฟล์ ถ้าส่งไม่ได้ก็เก็บฝังในข้อมูลแบบเดิมไปก่อน */
+function fileToDataUrl(f){
+  return new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.onerror=()=>res(null);fr.readAsDataURL(f);});
+}
 async function toStorage(rec){
-  if(!rec||!rec.data||storageOK===false||!authed())return rec;
-  try{
-    const blob=b64ToBlob(rec.data);
-    if(!blob)return rec;
-    const ext=(String(blob.type).split('/')[1]||'bin').replace('jpeg','jpg').split('+')[0];
-    rec.path=await stUpload(blob,ext);
-    rec.bytes=blob.size;delete rec.data;
-  }catch(e){}
+  if(!rec)return rec;
+  const raw=rec._file;
+  if(authed()&&storageOK!==false){
+    try{
+      const blob=raw||b64ToBlob(rec.data);
+      if(blob){
+        const nameExt=(rec.name||'').split('.').pop();
+        const ext=((String(blob.type).split('/')[1]||nameExt||'bin')+'').replace('jpeg','jpg').split('+')[0].slice(0,8);
+        rec.path=await stUpload(blob,ext);
+        rec.bytes=blob.size;delete rec.data;delete rec._file;
+        return rec;
+      }
+    }catch(e){}
+  }
+  /* ส่งขึ้นคลาวด์ไม่ได้ — เก็บฝังในข้อมูลแทน (จำกัด 3 MB เหมือนเดิม) */
+  if(raw){
+    delete rec._file;
+    if(raw.size>3*1024*1024){toast('ไฟล์ใหญ่เกิน 3 MB และยังส่งขึ้นคลาวด์ไม่ได้ — เก็บเฉพาะชื่อไฟล์');return rec;}
+    rec.data=await fileToDataUrl(raw);
+  }
   return rec;
 }
 async function addUploads(files,imgArr,fileArr){
