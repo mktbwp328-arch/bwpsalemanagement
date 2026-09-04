@@ -438,6 +438,7 @@ a{color:var(--blue);text-decoration:none}
     <div style="margin-top:auto;padding:18px 12px 0;display:flex;flex-direction:column;gap:8px">
       <button class="btn sm blk" onclick="pasteCodeModal()" style="background:#1b3f86;border-color:#2a55a8">✍ เซ็นอนุมัติเอกสาร</button>
       <button class="btn gh sm blk admin-only" id="dbBtn" onclick="sbSettings()">ตั้งค่าฐานข้อมูล</button>
+      <button class="btn gh sm blk" id="demoBtn" style="display:none" onclick="seedDemo()">สร้างข้อมูลตัวอย่าง</button>
       <button class="btn dg sm blk admin-only" id="clearBtn" onclick="clearAllData()">ล้างข้อมูลทั้งหมด</button>
     </div>
   </aside>
@@ -600,6 +601,85 @@ function seed(){
   /* เริ่มต้นเป็นระบบเปล่า ไม่มีข้อมูลตัวอย่าง — ผู้ใช้ใหม่กรอกของจริงได้เลย */
   return {customers:[],docs:[],pos:[],receipts:[],products:[],logo:null,cert:null,
           company:Object.assign({},COMPANY)};
+}
+/* ---------- ข้อมูลตัวอย่างสำหรับบัญชีผู้ดูแล (ไว้ลองใช้งาน/สอนงาน) ----------
+   สร้างได้เฉพาะบัญชี bwpsaleadmin เท่านั้น ไม่ไปโผล่ในข้อมูลของพนักงานขาย */
+const isDemoAccount=()=>!!(AUTH.profile&&isAdminUser(toUsername(AUTH.profile.email)));
+function seedDemo(){
+  if(!isDemoAccount()){toast('สร้างข้อมูลตัวอย่างได้เฉพาะบัญชีผู้ดูแลระบบ');return;}
+  if(readOnly()){toast('กำลังดูข้อมูลของคนอื่นอยู่ — กลับไปข้อมูลของฉันก่อน');return;}
+  askConfirm('สร้างข้อมูลตัวอย่าง',
+    'เพิ่มลูกค้าตัวอย่าง 5 ราย พร้อมใบเสนอราคา PO และใบเสร็จที่เชื่อมกัน เพื่อลองใช้งานระบบ (ข้อมูลเดิมไม่หาย)',
+    'สร้างเลย',()=>{
+      const d=(n)=>{const x=new Date();x.setDate(x.getDate()-n);return x.toISOString().slice(0,10);};
+      const cat=allProducts();
+      const pick=i=>{const p=cat[i%Math.max(cat.length,1)];
+        return p?{code:p.code,name:prodName(p)||p.code}:{code:'01SHX-XXX00'+(i+1),name:'PE Shrink Film 50 cm x 45 mc'};};
+      const CS=[
+        {name:'บริษัท ตัวอย่าง ไทยเบฟ แพ็คกิ้ง จำกัด',biz:'โรงงานผลิตเครื่องดื่ม',contact:'คุณสมชาย ใจดี',pos:'ฝ่ายจัดซื้อ',
+         phone:'02-317-5470',status:'ปิดการขาย',ship:'คลังบางนา กม.19',days:22},
+        {name:'บริษัท ตัวอย่าง ซีเจเค อินดัสทรี จำกัด',biz:'โรงงานอุตสาหกรรม',contact:'คุณวิภาส อินทร์เพ็ง',pos:'ผู้จัดการโรงงาน',
+         phone:'063-856-1026',status:'รอ PO',ship:'ราชบุรี',days:15},
+        {name:'บริษัท ตัวอย่าง นิปปอน สตีล จำกัด',biz:'เหล็กและโลหะ',contact:'คุณสมหญิง รักดี',pos:'จัดซื้อ',
+         phone:'038-210-455',status:'ส่งใบเสนอราคา',ship:'ระยอง',days:9},
+        {name:'หจก. ตัวอย่าง รุ่งเรืองพลาสติก',biz:'ค้าส่งบรรจุภัณฑ์',contact:'คุณอนุชา ตั้งใจ',pos:'เจ้าของกิจการ',
+         phone:'081-234-5678',status:'ส่งตัวอย่าง',ship:'สมุทรปราการ',days:5},
+        {name:'บริษัท ตัวอย่าง กรีนฟู้ด แพ็ค จำกัด',biz:'อาหารแปรรูป',contact:'คุณปวีณา สุขใจ',pos:'ฝ่ายผลิต',
+         phone:'02-988-1122',status:'กำลังติดต่อ',ship:'ปทุมธานี',days:2}
+      ];
+      const me=meName()||'ผู้ดูแลระบบ';
+      let nq=0,np=0,nr=0;
+      CS.forEach((s,i)=>{
+        const c={id:uid(),name:s.name,status:s.status,channel:['โทรศัพท์','LINE','Email','ออกพบลูกค้า','เว็บไซต์'][i],
+          date:d(s.days),contact:s.contact,contactPos:s.pos,phone:s.phone,
+          email:'contact'+(i+1)+'@example.co.th',address:'เลขที่ '+(100+i*7)+' นิคมอุตสาหกรรม '+s.ship,
+          shipTo:s.ship,taxId:'01055'+String(40000+i*137).padStart(8,'0'),biz:s.biz,website:'',
+          creditTerm:i%2?'30 วัน':'เงินสด',creditLimit:i%2?500000:0,owner:me,note:'ข้อมูลตัวอย่างสำหรับทดลองใช้งาน',
+          logo:null,photos:[],files:[],
+          timeline:[{date:d(s.days),title:'รับการติดต่อผ่าน '+['โทรศัพท์','LINE','Email','ออกพบลูกค้า','เว็บไซต์'][i],note:'',by:me}]};
+        DB.customers.unshift(c);
+
+        const pr=pick(i),qty=[1200,800,500,300,150][i],price=[61,72,58,95,110][i];
+        const amount=qty*price;
+        if(i<4){   /* 4 รายมีใบเสนอราคา */
+          const q={id:uid(),type:'quotation',no:'QUO-'+(new Date().getFullYear()+543)+'-90'+(i+1),
+            customer:c.name,contact:s.pos,date:d(s.days-1),payment:i%2?'เครดิต 30 วัน':'เงินสด',
+            validDays:7,salesperson:me,status:i<3?'อนุมัติแล้ว':'ส่งแล้ว',amount:amount,
+            items:[{code:pr.code,name:pr.name,qty:qty,unit:'ม้วน',price:price}],
+            notes:DEFAULT_NOTES,sigs:{},note:'ข้อมูลตัวอย่าง'};
+          DB.docs.unshift(q);nq++;
+          c.timeline.push({date:q.date,title:'นำส่งใบเสนอราคา '+q.no,note:'',by:me});
+
+          if(i<3){  /* 3 รายมี PO */
+            const items=[{id:uid(),code:pr.code,name:pr.name,qty:qty,unit:'ม้วน',price:price,due:d(s.days-6)}];
+            if(i===0){const p2=pick(i+3);
+              items.push({id:uid(),code:p2.code,name:p2.name,qty:400,unit:'ม้วน',price:88,due:d(s.days-12)});}
+            const po={id:uid(),no:nextPoNo(),custPoNo:'PO-EX-'+(1001+i),customer:c.name,
+              status:i===0?'ส่งมอบแล้ว':i===1?'กำลังผลิต':'อนุมัติแล้ว',date:d(s.days-2),
+              payment:q.payment,quoteRef:q.no,sampleRef:'',ship:s.ship,owner:me,
+              items:items,images:[],files:[]};
+            DB.pos.unshift(po);np++;
+            c.timeline.push({date:po.date,title:'ได้รับ PO '+po.custPoNo,note:'',by:me});
+
+            if(i<2){ /* 2 รายออกใบเสร็จแล้ว */
+              const it=items[0];
+              const rc={id:uid(),no:'RC-'+(new Date().getFullYear()+543)+'-90'+(i+1),
+                invNo:'IV-'+(2569000+i),customer:c.name,date:d(s.days-4),
+                creditDays:i%2?'30':'',dueDate:'',soNo:'',salesman:me,poRef:po.no,poItemId:it.id,
+                shipTo:s.ship,phone:s.phone,
+                items:[{code:it.code,name:it.name,qty:it.qty,unit:it.unit,price:it.price}],
+                status:i===0?'ชำระแล้ว':'รอชำระ',method:'เงินโอน',
+                amount:Math.round(it.qty*it.price*1.07*100)/100,note:'ข้อมูลตัวอย่าง',
+                photos:[],files:[],sigs:{}};
+              DB.receipts.unshift(rc);nr++;
+              c.timeline.push({date:rc.date,title:'ออกใบเสร็จ '+rc.no,note:'',by:me});
+            }
+          }
+        }
+      });
+      save(true);go('dashboard');
+      toast('สร้างข้อมูลตัวอย่างแล้ว — ลูกค้า 5 · ใบเสนอราคา '+nq+' · PO '+np+' · ใบเสร็จ '+nr);
+    });
 }
 /* ล้างข้อมูลงานขายทั้งหมด แต่เก็บหัวกระดาษ โลโก้ และการตั้งค่าไว้ */
 function clearAllData(){
@@ -2935,6 +3015,8 @@ function render(){
   mk.style.cursor='default';
   /* ปุ่มที่อันตราย ให้เห็นเฉพาะผู้ดูแล กันพนักงานกดผิด */
   document.querySelectorAll('.admin-only').forEach(b=>{b.style.display=isManager()?'':'none';});
+  /* ปุ่มสร้างข้อมูลตัวอย่าง เห็นเฉพาะบัญชี bwpsaleadmin */
+  const demo=$('#demoBtn');if(demo)demo.style.display=isDemoAccount()?'':'none';
 
   const v=$('#view');v.innerHTML='';$('#topActions').innerHTML='';
   if(S.page==='team'&&!isManager())S.page='dashboard';
