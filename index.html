@@ -541,6 +541,7 @@ const KEY='bwp_sales_v1';
 let DB=null;
 let booted=false;
 /* ---------- ซิงก์ข้อมูลขึ้นคลาวด์ (สำรองในเครื่องด้วย) ---------- */
+let dirtySince=0;
 let syncState='idle';      /* idle | saving | saved | offline | readonly */
 let syncTimer=null,syncPending=false;
 const localKey=()=>KEY+(AUTH.user?'_'+AUTH.user.id:'');
@@ -555,7 +556,7 @@ function save(now){
   /* โหมดดูข้อมูลของคนอื่น: ห้ามเขียนทับข้อมูลตัวเองในเครื่อง และไม่ส่งขึ้นคลาวด์
      (ของเดิมเขียนลงเครื่อง ทำให้ดูเหมือนบันทึกได้ แต่พอรีเฟรชแล้วหาย) */
   if(booted&&readOnly()){setSync('readonly');return;}
-  DB._t=Date.now();                       /* ใช้เทียบว่าข้อมูลในเครื่องใหม่กว่าบนคลาวด์ไหม */
+  DB._t=Date.now();dirtySince=DB._t;                       /* ใช้เทียบว่าข้อมูลในเครื่องใหม่กว่าบนคลาวด์ไหม */
   try{localStorage.setItem(localKey(),JSON.stringify(DB));}
   catch(e){if(booted)toast('พื้นที่ในเครื่องเต็ม — ข้อมูลยังบันทึกขึ้นคลาวด์ตามปกติ');}
   if(!booted)return;
@@ -565,6 +566,22 @@ function save(now){
   if(now)cloudSave();                    /* งานสำคัญ ส่งขึ้นคลาวด์ทันที ไม่รอหน่วงเวลา */
   else syncTimer=setTimeout(cloudSave,1500);
 }
+/* ข้อมูลใหญ่จนใกล้ขีดจำกัด — เสนอบีบอัดรูปให้ในคลิกเดียว (ถามครั้งเดียวต่อการเปิดเว็บ) */
+let compressAsked=false;
+function offerCompress(bytes){
+  if(compressAsked||readOnly())return;
+  compressAsked=true;
+  askConfirm('รูปเยอะจนข้อมูลใหญ่เกินไป',
+    'ตอนนี้ข้อมูลของคุณ '+Math.round(bytes/1024/1024*10)/10+' MB ซึ่งใกล้ขีดจำกัด 4.5 MB '
+    +'ระบบบีบอัดรูปทั้งหมดให้เล็กลงได้โดยยังอ่านออกเหมือนเดิม',
+    'บีบอัดให้เลย',async()=>{
+      toast('กำลังบีบอัดรูป…');
+      const r=await compressAllImages();
+      if(!r.n){toast('รูปทั้งหมดเล็กที่สุดแล้ว — ลองลบรูปที่ไม่ใช้ออกบ้าง');return;}
+      save(true);render();
+      toast('บีบอัด '+r.n+' รูป ลดขนาดลง '+r.kb+' KB แล้ว');
+    });
+}
 async function cloudSave(){
   if(!authed()||readOnly())return;
   syncPending=false;
@@ -572,7 +589,7 @@ async function cloudSave(){
     /* คลังรหัสสินค้าเก็บในตารางกลาง ไม่ต้องใส่มากับข้อมูลส่วนตัวของแต่ละคน */
     const mine=Object.assign({},DB);delete mine.products;
     const body=JSON.stringify({user_id:AUTH.user.id,data:mine,updated_at:new Date().toISOString()});
-    if(body.length>4.5*1024*1024)toast('ข้อมูลใหญ่เกิน 4.5 MB แล้ว — ควรลบรูปเก่าที่ไม่ใช้ออก');
+    if(body.length>4*1024*1024)offerCompress(body.length);
     await sbFetch('user_data?on_conflict=user_id',{method:'POST',
       headers:Object.assign(sbHeaders(),{Prefer:'resolution=merge-duplicates,return=minimal'}),body});
     setSync('saved');setTimeout(()=>{if(syncState==='saved'&&!syncPending)setSync('idle');},2500);
@@ -714,15 +731,61 @@ function askConfirm(title,msg,okLabel,fn){
 
 /* ================= files ================= */
 function pickFiles(accept,multiple,cb){const i=document.createElement('input');i.type='file';i.accept=accept;i.multiple=!!multiple;i.onchange=()=>cb([...i.files]);i.click();}
+/* ย่อรูปให้เล็กพอที่จะเก็บขึ้นคลาวด์ได้ แต่ยังอ่านตัวหนังสือในเอกสารออก
+   ลดขนาดและคุณภาพทีละขั้นจนไฟล์ไม่เกินราว 220 KB ต่อรูป */
+const IMG_MAX_BYTES=220*1024;
+function shrinkImage(img,maxSide,quality){
+  let w=img.width||img.naturalWidth,h=img.height||img.naturalHeight;
+  if(w>maxSide||h>maxSide){const s=maxSide/Math.max(w,h);w=Math.round(w*s);h=Math.round(h*s);}
+  const c=document.createElement('canvas');c.width=w;c.height=h;
+  const g=c.getContext('2d');
+  g.fillStyle='#fff';g.fillRect(0,0,w,h);      /* พื้นขาว กันภาพโปร่งใสกลายเป็นดำ */
+  g.drawImage(img,0,0,w,h);
+  return c.toDataURL('image/jpeg',quality);
+}
+function fitImage(img){
+  const steps=[[1400,.72],[1200,.68],[1000,.62],[850,.56],[700,.5]];
+  let out='';
+  for(const [side,q] of steps){
+    out=shrinkImage(img,side,q);
+    if(out.length*0.75<=IMG_MAX_BYTES)return out;   /* base64 ยาวกว่าไบต์จริงราว 4/3 */
+  }
+  return out;
+}
 function readImage(file){
   return new Promise(res=>{const fr=new FileReader();
     fr.onload=()=>{const img=new Image();
-      img.onload=()=>{const max=1000;let{width:w,height:h}=img;
-        if(w>max||h>max){const s=max/Math.max(w,h);w=Math.round(w*s);h=Math.round(h*s);}
-        const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);
-        res({name:file.name,type:'image',size:file.size,data:c.toDataURL('image/jpeg',.82),date:today()});};
+      img.onload=()=>res({name:file.name,type:'image',size:file.size,
+        data:fitImage(img),date:today()});
       img.onerror=()=>res(null);img.src=fr.result;};
     fr.readAsDataURL(file);});
+}
+/* บีบอัดรูปที่เก็บไว้แล้วให้เล็กลง (ใช้ตอนข้อมูลใหญ่เกินจะขึ้นคลาวด์) */
+function recompress(dataUrl){
+  return new Promise(res=>{
+    if(!/^data:image\/(png|jpe?g|webp)/i.test(dataUrl||''))return res(null);
+    const img=new Image();
+    img.onload=()=>{const out=fitImage(img);res(out&&out.length<dataUrl.length?out:null);};
+    img.onerror=()=>res(null);img.src=dataUrl;
+  });
+}
+async function compressAllImages(){
+  const lists=[];
+  (DB.customers||[]).forEach(c=>{lists.push(c.photos);if(c.logo)lists.push([{data:c.logo,_c:c}]);});
+  (DB.pos||[]).forEach(p=>lists.push(p.images));
+  (DB.receipts||[]).forEach(r=>lists.push(r.photos));
+  (DB.docs||[]).forEach(d=>lists.push(d.photos));
+  let n=0,saved=0;
+  for(const arr of lists){
+    for(const im of (arr||[])){
+      if(!im||!im.data)continue;
+      const out=await recompress(im.data);
+      if(out){saved+=im.data.length-out.length;
+        if(im._c)im._c.logo=out;else im.data=out;
+        n++;}
+    }
+  }
+  return {n,kb:Math.round(saved/1024)};
 }
 function readAny(file){
   if(file.type.startsWith('image/'))return readImage(file);
@@ -2198,14 +2261,22 @@ const PRODSYNC={at:null,err:null,busy:false,pending:0,src:''};
 /* รายชื่อสินค้าที่มากับตัวเว็บ — แปลงมาจากไฟล์ Excel ของบริษัทไว้แล้ว
    ใช้เป็นค่าตั้งต้นเมื่อคลังกลางยังว่าง จะได้เลือกรหัสได้ทันทีโดยไม่ต้องกรอกอะไร */
 let prodFileCache=null;
+const PRODFILE_KEY='bwp_prodfile_v1';
 async function productsFile(){
   if(prodFileCache)return prodFileCache;
+  /* เก็บสำเนาไว้ในเครื่อง 7 วัน จะได้ไม่ต้องโหลดไฟล์ใหม่ทุกครั้งที่เปิดเว็บ */
   try{
-    const r=await fetch('products.json',{cache:'no-cache'});
+    const c=JSON.parse(localStorage.getItem(PRODFILE_KEY)||'null');
+    if(c&&c.at&&Date.now()-c.at<7*86400000&&Array.isArray(c.list)&&c.list.length)
+      return (prodFileCache=c.list);
+  }catch(e){}
+  try{
+    const r=await fetch('products.json');
     if(!r.ok)throw 0;
     const j=await r.json();
     prodFileCache=Array.isArray(j)?j.map(p=>Object.assign({code:'',code2:'',name:'',width:'',
       dimUnit:'',thick:'',mat:'',coreKg:'',customer:'',note:''},p)):[];
+    try{localStorage.setItem(PRODFILE_KEY,JSON.stringify({at:Date.now(),list:prodFileCache}));}catch(e){}
   }catch(e){prodFileCache=[];}
   return prodFileCache;
 }
@@ -5572,11 +5643,37 @@ function migrate(){
     if(!d.items.length&&d.amount)d.items=[{name:'สินค้าตามรายละเอียดที่เสนอ',qty:1,unit:'รายการ',price:d.amount}];
   });
 }
+function paintUser(){
+  const nm=(AUTH.profile&&AUTH.profile.name)||toUsername(AUTH.user.email);
+  $('#userName').textContent=nm;
+  $('#userRole').textContent=isManager()?'ผู้จัดการ':'พนักงานขาย';
+  $('#userAv').textContent=initials(nm);
+}
 async function startApp(){
   try{await loadProfile();}catch(e){}
+  const local=load();
+  /* แสดงข้อมูลในเครื่องก่อนเลย ไม่ต้องรอคลาวด์ — เปิดเว็บแล้วใช้งานได้ทันที
+     แล้วค่อยสลับเป็นข้อมูลจากคลาวด์ให้ทีหลังถ้าใหม่กว่าและยังไม่ได้แก้อะไร */
+  let quick=false;
+  if(local&&local.customers){
+    DB=local;migrate();loadView();booted=true;paintUser();render();
+    quick=true;dirtySince=0;
+  }
   let row=null,cloud=null,failed=false;
   try{row=await cloudRow(AUTH.user.id);cloud=row&&row.data;}catch(e){failed=true;}
-  const local=load();
+  if(quick&&!failed&&cloud&&cloud.customers){
+    const lT=(+local._t)||0,cT=row.updated_at?Date.parse(row.updated_at):0;
+    if(cT>lT+2000&&!dirtySince){       /* คลาวด์ใหม่กว่า และยังไม่ได้แก้อะไรในหน้านี้ */
+      DB=cloud;migrate();render();
+    }else if(lT>cT+2000){
+      save(true);toast('พบงานที่ยังไม่ได้ขึ้นคลาวด์ในเครื่องนี้ — อัปโหลดให้แล้ว');
+    }
+    productsPull().then(ok=>{if(ok)render();});
+    sbPing();return;
+  }
+  if(quick&&failed){setSync('offline');
+    toast('เชื่อมคลาวด์ไม่ได้ — ใช้ข้อมูลในเครื่องไปก่อน แล้วจะบันทึกให้เมื่อกลับมาออนไลน์');
+    productsPull().then(ok=>{if(ok)render();});sbPing();return;}
   /* ถ้าข้อมูลในเครื่องใหม่กว่าบนคลาวด์ (เช่นปิดเว็บก่อนอัปโหลดเสร็จ) ให้ใช้ของในเครื่อง
      แล้วอัปขึ้นคลาวด์ให้ ไม่งั้นงานที่เพิ่งบันทึกจะหายตอนรีเฟรช */
   const localT=(local&&+local._t)||0;
@@ -5588,11 +5685,7 @@ async function startApp(){
   else DB=seed();
   migrate();
   loadView();booted=true;
-  const nm=(AUTH.profile&&AUTH.profile.name)||toUsername(AUTH.user.email);
-  $('#userName').textContent=nm;
-  $('#userRole').textContent=isManager()?'ผู้จัดการ':'พนักงานขาย';
-  $('#userAv').textContent=initials(nm);
-  render();
+  paintUser();render();
   if(failed){setSync('offline');toast('เชื่อมคลาวด์ไม่ได้ — ใช้ข้อมูลในเครื่องไปก่อน แล้วจะบันทึกให้เมื่อกลับมาออนไลน์');}
   else if(!cloud){save(true);}   /* ผู้ใช้ใหม่: อัปข้อมูลเริ่มต้นขึ้นคลาวด์ */
   else if(restored){save(true);toast('พบงานที่ยังไม่ได้ขึ้นคลาวด์ในเครื่องนี้ — อัปโหลดให้แล้ว');}
