@@ -863,10 +863,123 @@ async function compressAllImages(maxBytes){
   }
   return {n,kb:Math.round(saved/1024)};
 }
-function readAny(file){
+/* ---------- บีบไฟล์ PDF ที่เป็นรูปสแกน ----------
+   ดึงรูปในแต่ละหน้าออกมา ย่อ แล้วประกอบเป็น PDF ใหม่
+   ถ้าเป็น PDF ตัวหนังสือ (ย่อไม่ได้โดยไม่เสียความคมชัด) จะคืนค่าว่าง แล้วใช้ไฟล์เดิม */
+function pdfJpegs(u8){
+  let s='';for(let i=0;i<u8.length;i+=8192)s+=String.fromCharCode.apply(null,u8.subarray(i,i+8192));
+  const out=[];
+  const re=/\/Subtype\s*\/Image([\s\S]{0,600}?)stream\r?\n/g;
+  let m;
+  while(m=re.exec(s)){
+    const hdr=m[1];
+    if(!/\/DCTDecode/.test(hdr))continue;                 /* เอาเฉพาะรูป JPEG ในไฟล์ */
+    if(/\/SMask|\/Mask/.test(hdr))continue;
+    const w=+((hdr.match(/\/Width\s+(\d+)/)||[])[1]||0);
+    const h=+((hdr.match(/\/Height\s+(\d+)/)||[])[1]||0);
+    if(!w||!h)continue;
+    const start=m.index+m[0].length;
+    const end=s.indexOf('endstream',start);
+    if(end<0)continue;
+    let stop=end;
+    while(stop>start&&(s.charCodeAt(stop-1)===10||s.charCodeAt(stop-1)===13))stop--;
+    out.push({w,h,bytes:u8.subarray(start,stop)});
+  }
+  return out;
+}
+function jpegToCanvasBlob(bytes,maxSide,quality){
+  return new Promise(res=>{
+    const url=URL.createObjectURL(new Blob([bytes],{type:'image/jpeg'}));
+    const img=new Image();
+    img.onload=()=>{
+      let w=img.naturalWidth,h=img.naturalHeight;
+      if(w>maxSide||h>maxSide){const sc=maxSide/Math.max(w,h);w=Math.round(w*sc);h=Math.round(h*sc);}
+      const c=document.createElement('canvas');c.width=w;c.height=h;
+      const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,w,h);g.drawImage(img,0,0,w,h);
+      URL.revokeObjectURL(url);
+      c.toBlob(b=>res(b?{blob:b,w:w,h:h}:null),'image/jpeg',quality);
+    };
+    img.onerror=()=>{URL.revokeObjectURL(url);res(null);};
+    img.src=url;
+  });
+}
+/* ประกอบ PDF ใหม่จากรูปหน้าละ 1 รูป */
+async function buildPdf(pages){
+  const enc=new TextEncoder();
+  const parts=[];let len=0;
+  const push=x=>{const b=typeof x==='string'?enc.encode(x):x;parts.push(b);len+=b.length;return b;};
+  const offs=[0];
+  push('%PDF-1.4\n');
+  const nPages=pages.length;
+  const objCount=2+nPages*3;
+  const kids=[];
+  for(let i=0;i<nPages;i++)kids.push((3+i*3)+' 0 R');
+  offs[1]=len;push('1 0 obj\n<</Type/Catalog/Pages 2 0 R>>\nendobj\n');
+  offs[2]=len;push('2 0 obj\n<</Type/Pages/Kids['+kids.join(' ')+']/Count '+nPages+'>>\nendobj\n');
+  for(let i=0;i<nPages;i++){
+    const p=pages[i],n=3+i*3;
+    /* ขนาดหน้าเป็น A4 กว้าง 595 pt สูงตามสัดส่วนรูป */
+    const pw=595,ph=Math.round(595*p.h/p.w);
+    offs[n]=len;
+    push(n+' 0 obj\n<</Type/Page/Parent 2 0 R/MediaBox[0 0 '+pw+' '+ph+']'
+      +'/Resources<</XObject<</Im0 '+(n+2)+' 0 R>>/ProcSet[/PDF/ImageC]>>'
+      +'/Contents '+(n+1)+' 0 R>>\nendobj\n');
+    const content='q '+pw+' 0 0 '+ph+' 0 0 cm /Im0 Do Q\n';
+    offs[n+1]=len;
+    push((n+1)+' 0 obj\n<</Length '+content.length+'>>\nstream\n'+content+'endstream\nendobj\n');
+    const bytes=new Uint8Array(await p.blob.arrayBuffer());
+    offs[n+2]=len;
+    push((n+2)+' 0 obj\n<</Type/XObject/Subtype/Image/Width '+p.w+'/Height '+p.h
+      +'/ColorSpace/DeviceRGB/BitsPerComponent 8/Filter/DCTDecode/Length '+bytes.length+'>>\nstream\n');
+    push(bytes);push('\nendstream\nendobj\n');
+  }
+  const xref=len;
+  let x='xref\n0 '+(objCount+1)+'\n0000000000 65535 f \n';
+  for(let i=1;i<=objCount;i++)x+=String(offs[i]||0).padStart(10,'0')+' 00000 n \n';
+  x+='trailer\n<</Size '+(objCount+1)+'/Root 1 0 R>>\nstartxref\n'+xref+'\n%%EOF\n';
+  push(x);
+  const out=new Uint8Array(len);let o=0;
+  parts.forEach(b=>{out.set(b,o);o+=b.length;});
+  return new Blob([out],{type:'application/pdf'});
+}
+async function shrinkPdf(file,capBytes){
+  const cap=capBytes||200*1024;
+  if(file.size<=cap)return null;
+  let u8;
+  try{u8=new Uint8Array(await file.arrayBuffer());}catch(e){return null;}
+  const imgs=pdfJpegs(u8);
+  if(!imgs.length||imgs.length>30)return null;
+  const imgBytes=imgs.reduce((a,b)=>a+b.bytes.length,0);
+  if(imgBytes<file.size*0.5)return null;      /* ไม่ใช่ไฟล์สแกน — ปล่อยไว้เหมือนเดิม */
+  const per=Math.max(30*1024,Math.floor(cap/imgs.length)-2048);
+  for(const [side,q] of [[1700,.7],[1500,.62],[1300,.55],[1100,.48],[900,.42],[750,.36]]){
+    const pages=[];
+    for(const im of imgs){
+      const r=await jpegToCanvasBlob(im.bytes,side,q);
+      if(!r)return null;
+      pages.push({blob:r.blob,w:r.w,h:r.h});
+    }
+    if(pages.every(p=>p.blob.size<=per)||side===750){
+      const out=await buildPdf(pages);
+      return out.size<file.size?out:null;
+    }
+  }
+  return null;
+}
+async function readAny(file){
   if(file.type.startsWith('image/'))return readImage(file);
-  /* ไฟล์อื่น (PDF/Word/Excel) ไม่ต้องแปลงเป็นตัวหนังสือ ส่งขึ้นที่เก็บไฟล์ตรง ๆ */
-  return Promise.resolve({name:file.name,type:'file',size:file.size,data:null,date:today(),_file:file});
+  let f=file;
+  /* PDF ที่เป็นรูปสแกน: บีบให้ไม่เกิน 200 KB ก่อนเก็บ */
+  if(/pdf$/i.test(file.type)||/\.pdf$/i.test(file.name||'')){
+    try{
+      const small=await shrinkPdf(file,IMG_MAX_BYTES);
+      if(small){
+        toast('บีบไฟล์ PDF จาก '+(file.size/1048576).toFixed(1)+' MB เหลือ '+(small.size/1024).toFixed(0)+' KB');
+        f=new File([small],file.name,{type:'application/pdf'});
+      }
+    }catch(e){}
+  }
+  return {name:file.name,type:'file',size:f.size,data:null,date:today(),_file:f};
 }
 /* ส่งไฟล์ที่เพิ่งเลือกขึ้นที่เก็บไฟล์ ถ้าส่งไม่ได้ก็เก็บฝังในข้อมูลแบบเดิมไปก่อน */
 function fileToDataUrl(f){
