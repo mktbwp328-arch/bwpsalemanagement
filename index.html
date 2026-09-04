@@ -550,16 +550,19 @@ function paintSync(e){
   e.innerHTML=m[1]?`<span style="width:8px;height:8px;border-radius:50%;background:${m[0]};display:inline-block"></span>
     <span style="font-size:12px;color:var(--mut)">${esc(m[1])}</span>`:'';
 }
-function save(){
+function save(now){
   /* โหมดดูข้อมูลของคนอื่น: ห้ามเขียนทับข้อมูลตัวเองในเครื่อง และไม่ส่งขึ้นคลาวด์
      (ของเดิมเขียนลงเครื่อง ทำให้ดูเหมือนบันทึกได้ แต่พอรีเฟรชแล้วหาย) */
   if(booted&&readOnly()){setSync('readonly');return;}
+  DB._t=Date.now();                       /* ใช้เทียบว่าข้อมูลในเครื่องใหม่กว่าบนคลาวด์ไหม */
   try{localStorage.setItem(localKey(),JSON.stringify(DB));}
   catch(e){if(booted)toast('พื้นที่ในเครื่องเต็ม — ข้อมูลยังบันทึกขึ้นคลาวด์ตามปกติ');}
   if(!booted)return;
   if(!authed())return;
   syncPending=true;setSync('saving');
-  clearTimeout(syncTimer);syncTimer=setTimeout(cloudSave,1500);
+  clearTimeout(syncTimer);
+  if(now)cloudSave();                    /* งานสำคัญ ส่งขึ้นคลาวด์ทันที ไม่รอหน่วงเวลา */
+  else syncTimer=setTimeout(cloudSave,1500);
 }
 async function cloudSave(){
   if(!authed()||readOnly())return;
@@ -574,9 +577,21 @@ async function cloudSave(){
     setSync('saved');setTimeout(()=>{if(syncState==='saved'&&!syncPending)setSync('idle');},2500);
   }catch(e){setSync('offline');}
 }
+/* ปิดแท็บ / สลับไปแอปอื่น: ถ้ายังมีงานค้างไม่ได้อัปโหลด ให้รีบส่งทันที */
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='hidden'&&syncPending&&authed()&&!readOnly()){
+    clearTimeout(syncTimer);cloudSave();
+  }
+});
+window.addEventListener('pagehide',()=>{
+  if(syncPending&&authed()&&!readOnly()){clearTimeout(syncTimer);cloudSave();}
+});
 async function cloudLoad(userId){
+  const r=await cloudRow(userId);return r?r.data:null;
+}
+async function cloudRow(userId){
   const rows=await sbGet('user_data?select=data,updated_at&user_id=eq.'+userId);
-  return rows&&rows[0]?rows[0].data:null;
+  return rows&&rows[0]?rows[0]:null;
 }
 function load(){try{const r=localStorage.getItem(localKey())||localStorage.getItem(KEY);
   if(r)return JSON.parse(r);}catch(e){}return null;}
@@ -3031,7 +3046,7 @@ function issueReceipt(pre){
   openForm('ออกใบเสร็จรับเงิน',rcFields(),Object.assign({
     no:'RC-'+(new Date().getFullYear()+543)+'-'+String(DB.receipts.length+67).padStart(4,'0'),
     date:today(),status:'รอชำระ'},pre),d=>{
-    const r=Object.assign({id:uid()},d);DB.receipts.unshift(r);save();
+    const r=Object.assign({id:uid(),photos:[],files:[]},d);DB.receipts.unshift(r);save(true);
     go('receipts',{rcFilter:'ทั้งหมด',rcQ:'',rcMonth:null});toast('ออกใบเสร็จแล้ว — ยอดเข้าแดชบอร์ดทันที');openRc(r);});
 }
 
@@ -4201,7 +4216,7 @@ function pgDocuments(v){
     if(doc.type==='credit'){ensureCredit(doc);doc.amount=doc.approvedAmount||0;}
     if(doc.type==='sample'||doc.type==='requirement'){ensureByType(doc);doc.amount=doc.amount||0;}
     const signed=autoSignSales(doc);      /* เติมลายเซ็นฝ่ายขายที่จำไว้ให้เลย */
-    DB.docs.unshift(doc);save();render();
+    DB.docs.unshift(doc);save(true);render();
     toast(signed?'สร้างเอกสารแล้ว — เซ็นชื่อฝ่ายขายให้อัตโนมัติ':'สร้างเอกสารแล้ว');
     openDocSmart(doc);},
     isQ?{wide:true,sub:'กรอกข้อมูลตามลำดับ 1 → 4 แล้วกดสร้าง',okLabel:'สร้างใบเสนอราคา'}
@@ -4647,7 +4662,7 @@ function pgPO(v){
         images:at.images||[],files:at.files||[]},d);
       if(!p.no)p.no=nextPoNo();
       ensureCustomer(p.customer);   /* ลูกค้าใหม่ที่พิมพ์เอง เพิ่มเข้าระบบให้เลย */
-      DB.pos.unshift(p);save();go('po',{poOpen:p.id});
+      DB.pos.unshift(p);save(true);go('po',{poOpen:p.id});
       toast('สร้าง PO แล้ว'+((at.images||[]).length+(at.files||[]).length?' พร้อมไฟล์แนบ':''));},
     {wide:true,okLabel:'สร้าง PO'}));
 
@@ -4918,7 +4933,7 @@ function pgProfiles(v){
     actionBtn('เพิ่มลูกค้าใหม่','plus',()=>openForm('เพิ่มลูกค้าใหม่',customerFields(),{},d=>{
       const n=Object.assign({id:uid(),logo:null,photos:[],files:[],
         timeline:[{date:d.date||today(),title:'รับการติดต่อผ่าน '+d.channel,note:'',by:d.owner}]},d);
-      DB.customers.unshift(n);save();go('profiles',{profSel:n.id,profTab:'info'});toast('เพิ่มลูกค้าแล้ว');}));
+      DB.customers.unshift(n);save(true);go('profiles',{profSel:n.id,profTab:'info'});toast('เพิ่มลูกค้าแล้ว');}));
     actionBtn('นำเข้า Excel','up',importCustomers,'btn gh');
     if(DB.customers.length)actionBtn('ส่งออก','dl',exportCustomers,'btn gh');
     v.append(hint('คลิกที่ลูกค้าเพื่อดูข้อมูลเต็ม อัปโหลดโลโก้ รูปภาพ และเอกสารของลูกค้ารายนั้น'));
@@ -5472,11 +5487,17 @@ function migrate(){
 }
 async function startApp(){
   try{await loadProfile();}catch(e){}
-  let cloud=null,failed=false;
-  try{cloud=await cloudLoad(AUTH.user.id);}catch(e){failed=true;}
+  let row=null,cloud=null,failed=false;
+  try{row=await cloudRow(AUTH.user.id);cloud=row&&row.data;}catch(e){failed=true;}
   const local=load();
-  if(cloud&&cloud.customers)DB=cloud;
-  else if(local&&local.customers)DB=local;
+  /* ถ้าข้อมูลในเครื่องใหม่กว่าบนคลาวด์ (เช่นปิดเว็บก่อนอัปโหลดเสร็จ) ให้ใช้ของในเครื่อง
+     แล้วอัปขึ้นคลาวด์ให้ ไม่งั้นงานที่เพิ่งบันทึกจะหายตอนรีเฟรช */
+  const localT=(local&&+local._t)||0;
+  const cloudT=(row&&row.updated_at)?Date.parse(row.updated_at):0;
+  const localNewer=!!(local&&local.customers&&localT&&localT>cloudT+2000);
+  let restored=false;
+  if(cloud&&cloud.customers&&!localNewer)DB=cloud;
+  else if(local&&local.customers){DB=local;restored=!!(cloud&&localNewer);}
   else DB=seed();
   migrate();
   loadView();booted=true;
@@ -5486,7 +5507,8 @@ async function startApp(){
   $('#userAv').textContent=initials(nm);
   render();
   if(failed){setSync('offline');toast('เชื่อมคลาวด์ไม่ได้ — ใช้ข้อมูลในเครื่องไปก่อน แล้วจะบันทึกให้เมื่อกลับมาออนไลน์');}
-  else if(!cloud){save();}   /* ผู้ใช้ใหม่: อัปข้อมูลเริ่มต้นขึ้นคลาวด์ */
+  else if(!cloud){save(true);}   /* ผู้ใช้ใหม่: อัปข้อมูลเริ่มต้นขึ้นคลาวด์ */
+  else if(restored){save(true);toast('พบงานที่ยังไม่ได้ขึ้นคลาวด์ในเครื่องนี้ — อัปโหลดให้แล้ว');}
   /* ดึงคลังรหัสสินค้ากลาง — ใช้ร่วมกันทุกคน ไม่ขึ้นกับข้อมูลส่วนตัว */
   productsPull().then(ok=>{if(ok)render();});
   sbPing();
