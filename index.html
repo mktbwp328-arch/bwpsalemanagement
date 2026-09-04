@@ -5679,8 +5679,6 @@ function userMenu(){
       ${isManager()?'<button class="btn gh blk" id="emp">ข้อมูลพนักงาน</button>':''}
       ${ro?'<button class="btn blk" id="mine">กลับไปข้อมูลของฉัน</button>':''}
       ${ro?'':`<button class="btn gh blk" id="msig">ลายเซ็นของฉัน ${mySig()?'(ตั้งไว้แล้ว)':'— ยังไม่ได้ตั้ง'}</button>`}
-      ${ro?'':`<button class="btn gh blk" id="tostore">จัดเก็บรูปให้เล็กลง · ตอนนี้ ${mbTxt(blobBytes())}</button>`}
-      <button class="btn gh blk" id="sync">บันทึกขึ้นคลาวด์เดี๋ยวนี้</button>
       <button class="btn dg blk" id="out">ออกจากระบบ</button>
     </div></div>`);
   const close=()=>ov.remove();
@@ -5688,15 +5686,7 @@ function userMenu(){
   if(m.querySelector('#team'))m.querySelector('#team').onclick=()=>{close();teamPicker();};
   if(m.querySelector('#emp'))m.querySelector('#emp').onclick=()=>{close();employeePage();};
   if(m.querySelector('#mine'))m.querySelector('#mine').onclick=()=>{close();viewUser(AUTH.user.id,'ฉัน',true);};
-  m.querySelector('#sync').onclick=async()=>{close();
-    if(readOnly()){toast('โหมดดูอย่างเดียว ไม่มีอะไรต้องบันทึก');return;}
-    setSync('saving');await cloudSave();
-    toast(syncState==='offline'?'บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง':'บันทึกขึ้นคลาวด์แล้ว');};
   if(m.querySelector('#msig'))m.querySelector('#msig').onclick=()=>{close();mySigManager();};
-  if(m.querySelector('#tostore'))m.querySelector('#tostore').onclick=()=>{close();
-    const pend=allAttachments().filter(j=>j.data&&/^data:/.test(j.data)).length;
-    if(!pend){toast('รูปทั้งหมดจัดเก็บเรียบร้อยแล้ว · ข้อมูลตอนนี้ '+mbTxt(blobBytes()));return;}
-    autoTidyDone=false;autoTidy();};
   m.querySelector('#out').onclick=()=>{close();logout();};
   ov.append(m);$('#layer').append(ov);
 }
