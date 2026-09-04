@@ -606,26 +606,31 @@ function offerCompress(bytes){
     });
 }
 let lastSyncErr='',syncErrShown=false,retryTimer=null;
-/* ย้ายรูปเดิมขึ้นที่เก็บไฟล์ พร้อมแสดงความคืบหน้า */
-function moveToStorage(){
-  const pend=allAttachments().filter(j=>j.data&&/^data:/.test(j.data)).length;
-  if(!pend){toast('รูปทั้งหมดอยู่บนที่เก็บไฟล์แล้ว · ข้อมูลตอนนี้ '+Math.round(blobBytes()/1024/1024*10)/10+' MB');return;}
-  askConfirm('ย้ายรูปขึ้นที่เก็บไฟล์',
-    'มีไฟล์ที่ยังฝังอยู่ในข้อมูล '+pend+' ไฟล์ (ข้อมูลรวม '+Math.round(blobBytes()/1024/1024*10)/10+' MB)\n\n'
-    +'ระบบจะย้ายขึ้นที่เก็บไฟล์บนคลาวด์ให้ ข้อมูลหลักจะเหลือแค่ที่อยู่ไฟล์ ทำให้เว็บเบาและเร็วขึ้นมาก\n'
-    +'รูปยังดูได้เหมือนเดิม และแนบรูปใหม่ได้ไม่จำกัด',
-    'ย้ายเลย',async()=>{
-      const before=blobBytes();
-      toast('กำลังย้าย 0/'+pend+' …');
-      const r=await migrateToStorage((d,t)=>{if(d%3===0||d===t)toast('กำลังย้าย '+d+'/'+t+' …');});
-      if(storageOK===false){
-        toast('ยังไม่ได้ติดตั้งที่เก็บไฟล์ — ให้ผู้ดูแลรันไฟล์ supabase-setup-9.sql ใน Supabase ก่อน');return;}
+/* ---------- จัดบ้านให้อัตโนมัติ ----------
+   เปิดเว็บแล้วถ้ายังมีรูปฝังอยู่ในข้อมูล จะบีบให้เล็กก่อน แล้วย้ายขึ้นที่เก็บไฟล์เอง
+   ทำเงียบ ๆ เบื้องหลัง ผู้ใช้ไม่ต้องกดอะไร */
+let autoTidyDone=false;
+async function autoTidy(){
+  if(autoTidyDone||!authed()||readOnly()||storageOK===false)return;
+  const pend=allAttachments().filter(j=>j.data&&/^data:/.test(j.data));
+  if(!pend.length)return;
+  autoTidyDone=true;
+  const before=blobBytes();
+  toast('กำลังจัดเก็บรูป '+pend.length+' ไฟล์ให้เล็กลง…');
+  try{
+    await compressAllImages(IMG_MAX_BYTES);          /* 1) บีบรูปให้ไม่เกิน 200 KB */
+    const r=await migrateToStorage((d,t)=>{           /* 2) ย้ายขึ้นที่เก็บไฟล์ */
+      if(d===1||d%5===0||d===t)toast('กำลังย้ายรูปขึ้นคลาวด์ '+d+'/'+t+' …');});
+    if(storageOK===false){                            /* ยังไม่ได้ติดตั้ง Storage: บีบอย่างเดียวพอ */
       save(true);render();
-      const mb=n=>Math.round(n/1024/1024*10)/10;
-      toast('ย้าย '+r.done+' ไฟล์ขึ้นคลาวด์แล้ว · '+mb(before)+' MB → '+mb(blobBytes())+' MB'
-        +(r.failed?' · ไม่สำเร็จ '+r.failed+' ไฟล์':''));
-    });
+      toast('บีบรูปให้เล็กลงแล้ว · '+mbTxt(before)+' → '+mbTxt(blobBytes()));
+      return;
+    }
+    save(true);render();
+    if(r.done)toast('จัดเก็บรูปเรียบร้อย · '+mbTxt(before)+' → '+mbTxt(blobBytes()));
+  }catch(e){autoTidyDone=false;}
 }
+const mbTxt=n=>(Math.round(n/1024/1024*10)/10)+' MB';
 async function cloudSave(tries){
   if(readOnly())return;
   if(!authed()&&AUTH.refresh&&await refreshSession()){}   /* ต่ออายุเซสชันให้เองก่อน */
@@ -5674,8 +5679,7 @@ function userMenu(){
       ${isManager()?'<button class="btn gh blk" id="emp">ข้อมูลพนักงาน</button>':''}
       ${ro?'<button class="btn blk" id="mine">กลับไปข้อมูลของฉัน</button>':''}
       ${ro?'':`<button class="btn gh blk" id="msig">ลายเซ็นของฉัน ${mySig()?'(ตั้งไว้แล้ว)':'— ยังไม่ได้ตั้ง'}</button>`}
-      ${ro?'':`<button class="btn gh blk" id="tostore">ย้ายรูปขึ้นที่เก็บไฟล์ · ตอนนี้ ${Math.round(blobBytes()/1024/1024*10)/10} MB</button>`}
-      ${ro?'':`<button class="btn gh blk" id="zip">บีบอัดรูปให้เล็กลง</button>`}
+      ${ro?'':`<button class="btn gh blk" id="tostore">จัดเก็บรูปให้เล็กลง · ตอนนี้ ${mbTxt(blobBytes())}</button>`}
       <button class="btn gh blk" id="sync">บันทึกขึ้นคลาวด์เดี๋ยวนี้</button>
       <button class="btn dg blk" id="out">ออกจากระบบ</button>
     </div></div>`);
@@ -5689,8 +5693,10 @@ function userMenu(){
     setSync('saving');await cloudSave();
     toast(syncState==='offline'?'บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง':'บันทึกขึ้นคลาวด์แล้ว');};
   if(m.querySelector('#msig'))m.querySelector('#msig').onclick=()=>{close();mySigManager();};
-  if(m.querySelector('#zip'))m.querySelector('#zip').onclick=()=>{close();compressAsked=false;offerCompress(blobBytes());};
-  if(m.querySelector('#tostore'))m.querySelector('#tostore').onclick=()=>{close();moveToStorage();};
+  if(m.querySelector('#tostore'))m.querySelector('#tostore').onclick=()=>{close();
+    const pend=allAttachments().filter(j=>j.data&&/^data:/.test(j.data)).length;
+    if(!pend){toast('รูปทั้งหมดจัดเก็บเรียบร้อยแล้ว · ข้อมูลตอนนี้ '+mbTxt(blobBytes()));return;}
+    autoTidyDone=false;autoTidy();};
   m.querySelector('#out').onclick=()=>{close();logout();};
   ov.append(m);$('#layer').append(ov);
 }
@@ -5949,6 +5955,7 @@ async function viewUser(id,name,mine){
     migrate();
     S.page='dashboard';S.docOpen=S.poOpen=S.rcOpen=S.profSel=null;
     setSync(readOnly()?'readonly':viewingOther()?'editing':'idle');render();
+    autoTidyDone=false;setTimeout(autoTidy,2000);
     toast(mine?'กลับมาที่ข้อมูลของคุณแล้ว':'กำลังดูข้อมูลของ '+name+' (แก้ไขไม่ได้)');
   }catch(e){toast(e.message);}
 }
@@ -6002,7 +6009,7 @@ async function startApp(){
       save(true);toast('พบงานที่ยังไม่ได้ขึ้นคลาวด์ในเครื่องนี้ — อัปโหลดให้แล้ว');
     }
     productsPull().then(ok=>{if(ok)render();});
-    sbPing();return;
+    sbPing();setTimeout(autoTidy,2500);return;
   }
   if(quick&&failed){setSync('offline');
     toast('เชื่อมคลาวด์ไม่ได้ — ใช้ข้อมูลในเครื่องไปก่อน แล้วจะบันทึกให้เมื่อกลับมาออนไลน์');
@@ -6025,6 +6032,7 @@ async function startApp(){
   /* ดึงคลังรหัสสินค้ากลาง — ใช้ร่วมกันทุกคน ไม่ขึ้นกับข้อมูลส่วนตัว */
   productsPull().then(ok=>{if(ok)render();});
   sbPing();
+  setTimeout(autoTidy,2500);   /* จัดเก็บรูปให้เองเบื้องหลัง */
 }
 async function boot(){
   /* ลิงก์เซ็นเอกสาร: เปิดได้เลยไม่ต้องล็อกอิน */
