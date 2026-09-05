@@ -4764,6 +4764,32 @@ function pgDocuments(v){
 }
 /* ---- หน้ารายละเอียดใบขอเครดิต (พิมพ์ 2 หน้า + เซ็น 4 ลายเซ็น) ---- */
 /* การ์ดลายเซ็น ใช้ร่วมกันทุกเอกสาร */
+/* ปุ่มลบลายเซ็น เพื่อขอให้เซ็นใหม่ (เซ็นผิดคน ลายเซ็นเบลอ หรือแก้เอกสารแล้ว) */
+function sigRemoveBtn(d,k,label,s){
+  const rm=el('<button class="btn gh sm" style="color:#b91c1c;border-color:#fbcaca">ลบลายเซ็น</button>');
+  rm.onclick=()=>askConfirm('ลบลายเซ็น — '+label,
+    'ลบลายเซ็นของ "'+(s.name||label)+'" ออก เพื่อส่งลิงก์ให้เซ็นใหม่?\n\n'
+    +'ลายเซ็นเดิมจะหายถาวร แต่ลิงก์เดิมยังใช้ได้ ไม่ต้องสร้างใหม่',
+    'ลบและขอเซ็นใหม่',async()=>{
+      const keep=d.sigs[k];
+      delete d.sigs[k];
+      if(d.status==='อนุมัติแล้ว'||d.status==='ยกเลิก')d.status='รออนุมัติ';
+      save(true);render();
+      if(!d.sigDocId||!sbOn()){toast('ลบลายเซ็นแล้ว');return;}
+      try{
+        const res=await sbRpc('remove_doc_signature',{p_id:d.sigDocId,p_role:k});
+        if(res)applyCreditSigs(d.no,res.sigs,res.status,true,d.type);
+        save(true);render();
+        toast('ลบลายเซ็นแล้ว — ส่งลิงก์ให้ '+label+' เซ็นใหม่ได้เลย');
+      }catch(e){
+        d.sigs[k]=keep;save(true);render();      /* ลบบนคลาวด์ไม่สำเร็จ คืนค่าเดิม */
+        toast(/could not find|schema cache|does not exist|ยังไม่ได้ติดตั้ง/i.test(e.message)
+          ? 'ยังไม่ได้ติดตั้งส่วนนี้ — ให้ผู้ดูแลรันไฟล์ supabase-setup-10.sql ก่อน'
+          : e.message);
+      }
+    });
+  return rm;
+}
 function signCard(d,onSigned){
   /* เอกสารของตัวเอง ถ้าช่องฝ่ายขายยังว่างและมีลายเซ็นประจำตัวอยู่ ให้เซ็นให้เลย */
   if(autoSignSales(d)){save();if(onSigned)onSigned();}
@@ -4779,6 +4805,7 @@ function signCard(d,onSigned){
       <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">${esc(label)}</div>
       <div class="tiny">${done?esc(s.name||'')+' · '+fmtDate(s.date):'ยังไม่ได้เซ็น'}</div>
       ${done?`<img src="${imgSrc(s.img)}" style="max-height:40px;margin-top:7px;display:block">`:''}</div></div>`);
+    if(done&&!readOnly())row.append(sigRemoveBtn(d,k,label,s));
     if(!done){
       const b=el('<button class="btn gh sm">เซ็นที่เครื่องนี้</button>');
       b.onclick=()=>signModal('เซ็น — '+label,d.no,
@@ -4906,6 +4933,7 @@ function creditDetail(v,d){
       <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">${esc(label)}</div>
       <div class="tiny">${done?esc(s.name||'')+' · '+fmtDate(s.date):'ยังไม่ได้เซ็น'}</div>
       ${done?`<img src="${imgSrc(s.img)}" style="max-height:40px;margin-top:7px;display:block">`:''}</div></div>`);
+    if(done&&!readOnly())row.append(sigRemoveBtn(d,k,label,s));
     if(!done){
       const b=el('<button class="btn gh sm">เซ็นที่เครื่องนี้</button>');
       b.onclick=()=>signModal('เซ็นอนุมัติ — '+label,'ใบขอเครดิต '+d.no,'',s2=>{
