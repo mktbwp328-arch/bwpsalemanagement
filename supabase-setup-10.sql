@@ -30,9 +30,19 @@ begin
   return jsonb_build_object('status','pending','sigs',v_sigs);
 end $$;
 
+-- Postgres ให้สิทธิ์ EXECUTE กับ PUBLIC อัตโนมัติตอนสร้างฟังก์ชัน
+-- ต้องถอนจาก PUBLIC ก่อน ไม่งั้นผู้ที่เปิดจากลิงก์เซ็น (anon) ก็ลบลายเซ็นได้
+revoke all on function public.remove_doc_signature(uuid,text) from public;
 revoke all on function public.remove_doc_signature(uuid,text) from anon;
 grant execute on function public.remove_doc_signature(uuid,text) to authenticated;
 
--- ตรวจผล — ต้องเห็นชื่อฟังก์ชัน 1 บรรทัด
-select proname as "ฟังก์ชันที่เพิ่มแล้ว"
-  from pg_proc where proname = 'remove_doc_signature';
+-- ตรวจผล — ต้องเห็นชื่อฟังก์ชัน และสิทธิ์ต้องมีแค่ authenticated
+select p.proname as "ฟังก์ชัน",
+       coalesce(array_to_string(p.proacl,' , '),'(ยังไม่ได้กำหนดสิทธิ์)') as "สิทธิ์"
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+ where n.nspname = 'public' and p.proname = 'remove_doc_signature';
+
+-- ต้องได้ false ทั้งคู่ = คนนอกและผู้เปิดลิงก์เซ็น เรียกฟังก์ชันนี้ไม่ได้
+select has_function_privilege('anon',     'public.remove_doc_signature(uuid,text)','EXECUTE') as "anon เรียกได้",
+       has_function_privilege('public',   'public.remove_doc_signature(uuid,text)','EXECUTE') as "public เรียกได้";
