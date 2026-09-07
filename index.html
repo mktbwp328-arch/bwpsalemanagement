@@ -1804,6 +1804,15 @@ function autoSignSales(doc){
 }
 /* ใบขอตัวอย่าง: เติมลายเซ็นฝ่ายวิจัยที่บันทึกไว้ให้อัตโนมัติ เหมือนฝ่ายขาย
    ส่วนผลการพิจารณาและข้อเสนอแนะ รอฝ่ายวิจัยกรอกผ่านลิงก์ */
+/* จำลายเซ็นประจำตำแหน่งไว้ใช้กับเอกสารใบต่อไป (ทำให้เอง ไม่ต้องกดปุ่ม) */
+function saveRoleSig(k,sig){
+  if(!sig||!sig.img||readOnly())return;
+  DB.roleSigs=DB.roleSigs||{};
+  const old=DB.roleSigs[k];
+  if(old&&old.img===sig.img)return;
+  DB.roleSigs[k]={img:sig.img,name:sig.name||(old&&old.name)||'',savedAt:today()};
+  save();
+}
 function autoSignRd(doc){
   if(!doc||doc.type!=='sample'||readOnly())return false;
   const r=DB.roleSigs&&DB.roleSigs.rd;
@@ -2216,6 +2225,7 @@ function applyCreditSigs(no,sigs,status,silent,type){
   /* รวมกับลายเซ็นที่เซ็นไว้ในเครื่อง ไม่ให้ของที่ยังไม่ทันขึ้นคลาวด์หายไป */
   d.sigs=Object.assign({},d.sigs||{},sigs||{});
   /* ใบขอตัวอย่าง: ดึงผลการพิจารณา/ข้อเสนอแนะที่ฝ่ายวิจัยกรอกมากับลายเซ็น */
+  if(d.type==='sample'&&d.sigs.rd&&d.sigs.rd.img)saveRoleSig('rd',d.sigs.rd);
   if(d.type==='sample'&&d.sigs.rd&&d.sigs.rd.note){
     try{const o=JSON.parse(d.sigs.rd.note);
       if(o&&typeof o==='object'){
@@ -4793,26 +4803,6 @@ function pgDocuments(v){
 }
 /* ---- หน้ารายละเอียดใบขอเครดิต (พิมพ์ 2 หน้า + เซ็น 4 ลายเซ็น) ---- */
 /* การ์ดลายเซ็น ใช้ร่วมกันทุกเอกสาร */
-/* ล็อกลายเซ็นประจำตำแหน่งไว้ใช้ตลอด — ครั้งต่อไปส่งลิงก์ให้กรอกแค่รายละเอียด */
-function sigLockBtn(d,k,label,s){
-  const on=!!(DB.roleSigs&&DB.roleSigs[k]&&DB.roleSigs[k].img);
-  const b=el('<button class="btn gh sm">'+(on?'🔒 ใช้อัตโนมัติอยู่':'ใช้ลายเซ็นนี้อัตโนมัติ')+'</button>');
-  b.onclick=()=>{
-    DB.roleSigs=DB.roleSigs||{};
-    if(on){
-      askConfirm('เลิกใช้อัตโนมัติ','เอาลายเซ็นของ '+label+' ที่บันทึกไว้ออก? ครั้งต่อไปจะต้องเซ็นใหม่ทุกครั้ง','เลิกใช้',
-        ()=>{delete DB.roleSigs[k];save(true);render();toast('ยกเลิกล็อกลายเซ็นแล้ว');});
-      return;
-    }
-    askConfirm('ใช้ลายเซ็นนี้อัตโนมัติ — '+label,
-      'ใบขอตัวอย่างที่สร้างต่อจากนี้ จะขึ้นลายเซ็นของ "'+(s.name||label)+'" ให้เองทันที\n\n'
-      +'ลิงก์ที่ส่งไปจะเหลือแค่ให้กรอกผลการพิจารณาและข้อเสนอแนะ ไม่ต้องเซ็นใหม่',
-      'ใช้เลย',()=>{
-        DB.roleSigs[k]={img:s.img,name:s.name||'',savedAt:today()};
-        save(true);render();toast('ล็อกลายเซ็น '+label+' ไว้แล้ว');});
-  };
-  return b;
-}
 /* ปุ่มลบลายเซ็น เพื่อขอให้เซ็นใหม่ (เซ็นผิดคน ลายเซ็นเบลอ หรือแก้เอกสารแล้ว) */
 function sigRemoveBtn(d,k,label,s){
   const rm=el('<button class="btn gh sm" style="color:#b91c1c;border-color:#fbcaca">ลบลายเซ็น</button>');
@@ -4854,16 +4844,14 @@ function signCard(d,onSigned){
       <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">${esc(label)}</div>
       <div class="tiny">${done?esc(s.name||'')+' · '+fmtDate(s.date):'ยังไม่ได้เซ็น'}</div>
       ${done?`<img src="${imgSrc(s.img)}" style="max-height:40px;margin-top:7px;display:block">`:''}</div></div>`);
-    if(done&&!readOnly()){
-      if(d.type==='sample'&&k==='rd')row.append(sigLockBtn(d,k,label,s));
-      row.append(sigRemoveBtn(d,k,label,s));
-    }
+    if(done&&!readOnly())row.append(sigRemoveBtn(d,k,label,s));
     if(!done){
       const b=el('<button class="btn gh sm">เซ็นที่เครื่องนี้</button>');
       b.onclick=()=>signModal('เซ็น — '+label,d.no,
         k==='sales'?((mySig()&&mySig().name)||(AUTH.profile&&AUTH.profile.name)||''):'',s2=>{
         d.sigs=d.sigs||{};d.sigs[k]=s2;
         if(k==='sales')saveMySig(s2);        /* จำลายเซ็นฝ่ายขายไว้ใช้ครั้งต่อไป */
+        if(d.type==='sample'&&k==='rd')saveRoleSig('rd',s2);   /* และของฝ่ายวิจัย */
         if(onSigned)onSigned();
         save();render();toast('บันทึกลายเซ็น '+label+' แล้ว');
         pushLocalSig(d,k,s2);});
