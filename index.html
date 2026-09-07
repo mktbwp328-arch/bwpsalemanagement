@@ -3468,7 +3468,24 @@ function openForm(title,fields,values,onSubmit,opts){
         <label>${esc(f.label)}${f.req?' <span class="rq">*</span>':''}</label>
         <input name="${f.key}" autocomplete="off" placeholder="${esc(f.ph||'เลือกจากรายการ หรือพิมพ์เอง')}" value="${esc(values[f.key]??f.def??'')}">
         ${f.hint?`<div class="fh">${esc(f.hint)}</div>`:''}</div>`);
-      listCombo(w.querySelector('input'),f.options||[]);
+      const inp=w.querySelector('input');
+      listCombo(inp,f.options||[]);
+      /* เลือกลูกค้าแล้วดึงข้อมูลจากทะเบียนลูกค้ามาเติมให้ ไม่ต้องพิมพ์ซ้ำ */
+      if(f.fill){
+        const apply=()=>{
+          const c=(DB.customers||[]).find(x=>x.name===inp.value.trim());
+          if(!c)return;
+          let n=0;
+          Object.keys(f.fill).forEach(dst=>{
+            const el2=ff.querySelector('[name="'+dst+'"]');
+            const val=c[f.fill[dst]];
+            if(el2&&val&&!String(el2.value||'').trim()){el2.value=val;n++;}
+          });
+          if(n)toast('ดึงข้อมูลลูกค้ามาให้ '+n+' ช่อง');
+        };
+        inp.addEventListener('change',apply);
+        setTimeout(apply,60);
+      }
       ff.append(w);return;
     }
     if(f.type==='product'){
@@ -4844,7 +4861,11 @@ function creditFields(){return [
   {group:'ข้อมูลบริษัทลูกค้า',sub:'ข้อ 1 ในแบบฟอร์ม'},
   {key:'no',label:'เลขที่เอกสาร',req:true,def:nextNo('CRD')},
   {key:'date',label:'วันที่',type:'date',def:today()},
-  {key:'customer',label:'ชื่อบริษัท / ห้างหุ้นส่วน / ร้าน',type:'select',options:DB.customers.map(c=>c.name),req:true,full:true},
+  {key:'customer',label:'ชื่อบริษัท / ห้างหุ้นส่วน / ร้าน',req:true,full:true,type:'combo',
+   options:()=>DB.customers.map(c=>c.name),ph:'พิมพ์ชื่อลูกค้า หรือเลือกจากรายการ',
+   fill:{bizType:'biz',taxAddress:'address',tel:'phone',email:'email',taxId:'taxId',
+         shipAddress:'shipTo',shipTel:'phone'},
+   hint:'เลือกลูกค้าแล้ว ระบบจะดึงที่อยู่ เบอร์โทร อีเมล และเลขผู้เสียภาษี มาให้อัตโนมัติ'},
   {key:'bizType',label:'ประกอบธุรกิจประเภท'},
   {key:'custType',label:'ประเภทลูกค้า',type:'radio',options:['ใช้เอง','ผู้ขาย (นำไปจำหน่าย)']},
   {key:'taxAddress',label:'ที่อยู่ (สำหรับเปิดใบกำกับภาษี)',type:'textarea',full:true,
