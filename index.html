@@ -1355,17 +1355,17 @@ function requirementSheet(d){
         <div>วัน/เดือน/ปี <span class="ul">${fmtShort(d.date)}</span></div></div>
     </div>
     <div style="padding:6px 0 0">
-      <div class="ln">เรียน &nbsp; ฝ่ายผลิตส่วนงานเป่า / ฝ่ายวางแผน / ฝ่ายควบคุมคุณภาพ / ฝ่ายคลังสินค้า / ฝ่ายขนส่ง</div>
-      <div class="ln">ชื่อลูกค้า ${dots(d.customer,330)} Matcode ${dots(d.matcode,140)}</div>
-      <div class="ln">ขนาดผลิตภัณฑ์ ${dots(d.size,230)} เกรด ${bx(d.grade==='A','A')} &nbsp; ${bx(d.grade==='B','B')}</div>
-      <div class="ln">ประเภทงาน ${dots(d.workType,520)}</div>
+      <div class="ln">เรียน ${dots(d.attn,640)}</div>
+      <div class="ln">ชื่อลูกค้า ${dots(d.customer,330)} Matcode ${dots(d.matcode,160)}</div>
+      <div class="ln">ขนาดผลิตภัณฑ์ ${dots(d.size,215)} ความหนา (±) ${dots(d.thick,150)} mic</div>
+      <div class="ln">ประเภทงาน ${dots(d.workType,235)} เกรด ${bx(d.grade==='A','A')} &nbsp;&nbsp; ${bx(d.grade==='AB'||d.grade==='B','AB')}</div>
       <div class="ln">น้ำหนักต่อม้วน ${dots(d.weightPerRoll,190)} KG &nbsp; แกน ${bx(d.core==='PVC','PVC')} &nbsp; ${bx(d.core==='แกนกระดาษ','แกนกระดาษ')} ${dots(d.coreThick,60)} มิล</div>
       <div class="ln">ความยาวต่อม้วน ${dots(d.lengthPerRoll,180)} เมตร &nbsp; จำนวน ${dots(d.qty,140)} ใบ / มัด</div>
       <div class="ln">รอยต่อ ${dots(d.joins,200)} รอย &nbsp; ${bx(d.joinMark.includes('ติดเทปแดง'),'ติดเทปแดง')} &nbsp; ${bx(d.joinMark.includes('ติดจำนวนรอยต่อ'),'ติดจำนวนรอยต่อ')}</div>
-      <div class="ln">ใบปะหน้า ${bx(d.coverSheet==='ใบปะหน้าสั้น','ใบปะหน้าสั้น')} &nbsp; ${bx(d.coverSheet==='ใบปะหน้ายาว','ใบปะหน้ายาว')} &nbsp; ${bx(d.coverSheet==='อื่นๆ','อื่นๆ')}</div>
-      <div class="ln">พาเลท ${bx(d.pallet==='พาเลทไม้','พาเลทไม้')} &nbsp; ${bx(d.pallet==='LOSCAM','LOSCAM')} &nbsp; ${bx(d.pallet==='พาเลทพลาสติก','พาเลทพลาสติก')} &nbsp; จำนวน ${dots(d.perPallet,110)} ม้วน/พาเลท</div>
+      <div class="ln">การบรรจุพาเลท ${bx(d.palletSpec==='ระบุ','ระบุ')} &nbsp; ${bx(d.palletSpec==='ไม่ระบุ','ไม่ระบุ')} &nbsp;&nbsp; จำนวน ${dots(d.perPallet,110)} ม้วน/พาเลท</div>
+      <div class="ln" style="padding-left:96px">${bx(d.pallet==='พาเลทไม้','พาเลทไม้')} &nbsp; ${bx(d.pallet==='LOSCAM','LOSCAM')} &nbsp; ${bx(d.pallet==='พาเลทพลาสติก','พาเลทพลาสติก')}</div>
       <div class="ln">รายละเอียดเพิ่มเติม</div>
-      ${[0,1,2,3].map(i=>`<div class="ln">${dots((d.detail||'').split('\n')[i]||'',700)}</div>`).join('')}
+      ${[0,1,2,3,4].map(i=>`<div class="ln">${dots((d.detail||'').split('\n')[i]||'',700)}</div>`).join('')}
       <div style="text-align:right;margin-top:14px">จึงเรียนมาเพื่อทราบและโปรดดำเนินการ</div>
       <div style="text-align:right">ขอแสดงความนับถือ</div>
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:6px">
@@ -4735,11 +4735,13 @@ function requirementFields(){return [
   {key:'date',label:'วัน/เดือน/ปี',type:'date',def:today()},
   {key:'status',label:'สถานะ',type:'select',options:Object.keys(DOC_ST),def:'ร่าง'},
   {group:'ข้อมูลสินค้า'},
-  {key:'customer',label:'ชื่อลูกค้า',type:'select',options:DB.customers.map(c=>c.name),req:true},
+  {key:'attn',label:'เรียน',full:true,def:'ฝ่ายผลิตส่วนงานเป่า / ฝ่ายวางแผน / ฝ่ายควบคุมคุณภาพ / ฝ่ายคลังสินค้า / ฝ่ายขนส่ง'},
+  {key:'customer',label:'ชื่อลูกค้า',req:true,type:'combo',options:()=>DB.customers.map(c=>c.name),ph:'พิมพ์ชื่อลูกค้า หรือเลือกจากรายการ'},
   {key:'matcode',label:'Matcode'},
   {key:'size',label:'ขนาดผลิตภัณฑ์'},
-  {key:'grade',label:'เกรด',type:'radio',options:['A','B']},
-  {key:'workType',label:'ประเภทงาน',full:true},
+  {key:'thick',label:'ความหนา ± (mic)'},
+  {key:'workType',label:'ประเภทงาน'},
+  {key:'grade',label:'เกรด',type:'radio',options:['A','AB']},
   {key:'weightPerRoll',label:'น้ำหนักต่อม้วน (KG)'},
   {key:'core',label:'แกน',type:'radio',options:['PVC','แกนกระดาษ']},
   {key:'coreThick',label:'ความหนาแกน (มิล)'},
@@ -4748,8 +4750,8 @@ function requirementFields(){return [
   {group:'ข้อกำหนดการผลิตและบรรจุ'},
   {key:'joins',label:'รอยต่อ (รอย)'},
   {key:'joinMark',label:'การทำเครื่องหมายรอยต่อ',type:'checks',options:['ติดเทปแดง','ติดจำนวนรอยต่อ']},
-  {key:'coverSheet',label:'ใบปะหน้า',type:'radio',full:true,options:['ใบปะหน้าสั้น','ใบปะหน้ายาว','อื่นๆ']},
-  {key:'pallet',label:'พาเลท',type:'radio',options:['พาเลทไม้','LOSCAM','พาเลทพลาสติก']},
+  {key:'palletSpec',label:'การบรรจุพาเลท',type:'radio',options:['ระบุ','ไม่ระบุ']},
+  {key:'pallet',label:'ชนิดพาเลท',type:'radio',full:true,options:['พาเลทไม้','LOSCAM','พาเลทพลาสติก']},
   {key:'perPallet',label:'จำนวน (ม้วน/พาเลท)'},
   {key:'detail',label:'รายละเอียดเพิ่มเติม',type:'textarea',full:true},
   {key:'salesName',label:'ชื่อเจ้าหน้าที่ฝ่ายขาย',full:true,def:'นางสาววราลักษณ์ บุตะกุล'},
