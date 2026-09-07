@@ -2191,7 +2191,7 @@ function creditSignView(row,id,role){
   $('#layer').append(ov);
 
   const finish=async ok=>{
-    const img=ok?pad.data():null;
+    const img=ok?(locked?locked.img:(pad&&pad.data())):null;
     if(ok&&!img){toast('ยังไม่ได้เซ็น — กรุณาเซ็นชื่อในกรอบก่อน');return;}
     const rd=isRD?rdData():null;
     if(ok&&isRD&&!rd.canMake){toast('กรุณาเลือกก่อนว่าสามารถจัดทำผลิตภัณฑ์ได้หรือไม่');return;}
@@ -2215,7 +2215,7 @@ function creditSignView(row,id,role){
         role:roleName(role,type),
         line3:title+' '+d.no+' · '+d.customer+(rd&&rd.canMake?' · '+rd.canMake:'')});
       applyCreditSigs(d.no,res.sigs,st,true,type);
-    }catch(e){bOk.disabled=bNo.disabled=false;bOk.textContent='บันทึกลายเซ็น';toast(e.message);}
+    }catch(e){bOk.disabled=bNo.disabled=false;bOk.textContent=locked?'บันทึกและส่งกลับ':'บันทึกลายเซ็น';toast(e.message);}
   };
   bOk.onclick=()=>finish(true);
   bNo.onclick=()=>askConfirm('ไม่อนุมัติ','บันทึกว่าไม่อนุมัติใบขอเครดิตนี้?','ยืนยัน',()=>finish(false));
