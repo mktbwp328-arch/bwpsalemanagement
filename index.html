@@ -2136,7 +2136,11 @@ async function shareCustomerCredit(d){
       <div class="field"><label>ลิงก์สำหรับลูกค้า</label>
         <textarea rows="2" readonly id="lk" style="font-size:11.5px">${esc(link)}</textarea></div>
       <button class="btn gh sm" id="cp" style="margin-top:8px;width:150px">คัดลอกลิงก์</button>
-      <div style="font-size:14px;font-weight:600;margin:16px 0 8px">สถานะการเซ็นของลูกค้า</div>
+      <div style="font-size:14px;font-weight:600;margin:16px 0 8px">ข้อ 2 การซื้อสินค้า</div>
+      <div class="tiny" style="margin-bottom:6px">${(d.products&&d.products.length)||d.qtyKg||d.qtyRoll||d.qtyPcs
+        ? '✓ ได้ข้อมูลจากลูกค้าแล้ว — '+((d.products||[]).join(', ')||'ยังไม่เลือกประเภทสินค้า')
+        : 'ยังไม่ได้รับข้อมูลจากลูกค้า'}</div>
+      <div style="font-size:14px;font-weight:600;margin:16px 0 8px">ข้อ 3 สถานะการเซ็นของลูกค้า</div>
       <div class="list" id="st"></div></div>
     <footer><button class="btn gh" id="rf">ตรวจสอบล่าสุด</button><div style="flex:1"></div>
       <button class="btn" id="dn">เสร็จสิ้น</button></footer></div>`);
@@ -2172,9 +2176,32 @@ function customerSignView(row,id){
   ov.append(el(`<div style="max-width:210mm;margin:0 auto 18px;background:#fff;border-radius:14px;padding:18px 20px">
     <div style="font-size:19px;font-weight:700">ใบขอเครดิต ${esc(d.no)}</div>
     <div class="mut">${esc(d.customer)}</div>
-    <div style="margin-top:10px;font-size:15px">กรุณากรอกชื่อและเซ็นชื่อในข้อ 3 <b style="color:var(--blue-d)">รายชื่อบุคคลที่ติดต่อกับบริษัท</b></div>
-    <div class="tiny" style="margin-top:6px">ตำแหน่งไหนไม่มี เว้นว่างไว้ได้ · เซ็นด้วยเมาส์ ปากกา หรือนิ้วก็ได้</div></div>`));
+    <div style="margin-top:10px;font-size:15px">กรุณากรอก <b style="color:var(--blue-d)">ข้อ 2 การซื้อสินค้า</b> และ <b style="color:var(--blue-d)">ข้อ 3 รายชื่อบุคคลที่ติดต่อกับบริษัท</b></div>
+    <div class="tiny" style="margin-top:6px">ช่องไหนไม่มีข้อมูล เว้นว่างไว้ได้ · เซ็นด้วยเมาส์ ปากกา หรือนิ้วก็ได้ · เปิดลิงก์นี้ซ้ำเพื่อกรอกเพิ่มได้</div></div>`));
   sheets.forEach(s=>ov.append(s));
+
+  /* ข้อ 2) การซื้อสินค้า — ลูกค้ากรอกเอง */
+  const KINDS=['Shrink Film','Shrink Printed','Shrink Hood','Stretch Film'];
+  const info=(row.sigs||{}).custInfo;
+  let pre={};
+  if(info&&info.note){try{pre=JSON.parse(info.note)||{};}catch(e){}}
+  const cur=k=>(pre[k]!==undefined&&pre[k]!==null&&pre[k]!=='')?pre[k]:d[k];
+  const kindOn=o=>((cur('products')||[]).indexOf(o)>=0);
+  const box2=el('<div style="max-width:210mm;margin:18px auto 0;background:#fff;border-radius:14px;padding:20px">'
+    +'<div class="h3">ข้อ 2) การซื้อสินค้า</div>'
+    +'<div class="field" style="margin-bottom:14px"><label>ประเภทสินค้าที่สนใจ</label>'
+    +'<div class="optrow" id="kinds">'
+    +KINDS.map(o=>'<button type="button" class="opt '+(kindOn(o)?'on':'')+'" data-v="'+esc(o)+'">'
+        +'<span class="bx">'+(kindOn(o)?'✓':'')+'</span>'+esc(o)+'</button>').join('')
+    +'</div></div>'
+    +'<div class="grid g3" style="gap:12px">'
+    +'<div class="field"><label>ยอดสั่งซื้อต่อเดือน (กก.)</label><input id="qKg" type="number" inputmode="decimal" value="'+esc(cur('qtyKg')||'')+'"></div>'
+    +'<div class="field"><label>ยอดสั่งซื้อต่อเดือน (ม้วน)</label><input id="qRoll" type="number" inputmode="decimal" value="'+esc(cur('qtyRoll')||'')+'"></div>'
+    +'<div class="field"><label>ยอดสั่งซื้อต่อเดือน (ใบ)</label><input id="qPcs" type="number" inputmode="decimal" value="'+esc(cur('qtyPcs')||'')+'"></div>'
+    +'</div></div>');
+  box2.querySelectorAll('.opt').forEach(bt=>{bt.onclick=()=>{
+    const on=bt.classList.toggle('on');bt.querySelector('.bx').textContent=on?'✓':'';};});
+  ov.append(box2);
 
   const contacts=(d.contacts&&d.contacts.length?d.contacts:CONTACT_ROLES.map(r=>({role:r,name:'',pos:''})));
   const box=el(`<div style="max-width:210mm;margin:18px auto 0;background:#fff;border-radius:14px;padding:20px">
@@ -2221,16 +2248,28 @@ function customerSignView(row,id){
       jobs.push({i,name,img,pos:posEl?posEl.value.trim():''});
     });
     if(jobs.length&&jobs[0]===null)return;
-    if(!jobs.length){toast('ยังไม่ได้กรอกและเซ็นชื่อ');return;}
+    const sec2={products:[...box2.querySelectorAll('.opt.on')].map(x=>x.dataset.v),
+      qtyKg:+box2.querySelector('#qKg').value||0,
+      qtyRoll:+box2.querySelector('#qRoll').value||0,
+      qtyPcs:+box2.querySelector('#qPcs').value||0};
+    const hasSec2=sec2.products.length||sec2.qtyKg||sec2.qtyRoll||sec2.qtyPcs;
+    if(!jobs.length&&!hasSec2){toast('ยังไม่ได้กรอกข้อมูล');return;}
     bOk.disabled=true;bOk.textContent='กำลังบันทึก…';
     try{
       for(const j of jobs){
         await sbRpc('add_doc_signature',{p_id:id,p_role:CUST_ROLE_KEY(j.i),p_name:j.name,
           p_sig:j.img,p_ok:true,p_note:j.pos||null,p_roles_required:rolesOf('credit').map(r=>r[0])});
       }
+      /* ข้อ 2 เก็บเป็นข้อมูลแนบ ไม่นับเป็นลายเซ็น */
+      if(hasSec2){
+        let key='custInfo',n=2;
+        while((row.sigs||{})[key])key='custInfo'+(n++);
+        await sbRpc('add_doc_signature',{p_id:id,p_role:key,p_name:'ข้อมูลจากลูกค้า',
+          p_sig:null,p_ok:true,p_note:JSON.stringify(sec2),p_roles_required:rolesOf('credit').map(r=>r[0])});
+      }
       const now=new Date();
       signResultScreen({tone:'ok',title:'เซ็นเรียบร้อยแล้ว',
-        sub:'ส่งกลับให้ฝ่ายขายเรียบร้อย · เซ็นแล้ว '+jobs.length+' ท่าน',
+        sub:'ส่งกลับให้ฝ่ายขายเรียบร้อย'+(jobs.length?' · เซ็นแล้ว '+jobs.length+' ท่าน':''),
         time:hhmm(now),dateText:thaiFullDate(now),
         name:jobs.map(j=>j.name).join(' · '),role:'ผู้ติดต่อฝั่งลูกค้า',
         line3:'ใบขอเครดิต '+d.no+' · '+d.customer});
@@ -2374,6 +2413,18 @@ function applyCreditSigs(no,sigs,status,silent,type){
   /* รวมกับลายเซ็นที่เซ็นไว้ในเครื่อง ไม่ให้ของที่ยังไม่ทันขึ้นคลาวด์หายไป */
   d.sigs=Object.assign({},d.sigs||{},sigs||{});
   /* ใบขอตัวอย่าง: ดึงผลการพิจารณา/ข้อเสนอแนะที่ฝ่ายวิจัยกรอกมากับลายเซ็น */
+  /* ใบขอเครดิต: ข้อมูลข้อ 2 ที่ลูกค้ากรอกผ่านลิงก์ */
+  const ciKey=Object.keys(d.sigs||{}).filter(k=>/^custInfo/.test(k))
+    .sort((a,b)=>(+(a.replace('custInfo','')||1))-(+(b.replace('custInfo','')||1))).pop();
+  if((d.type||'credit')==='credit'&&ciKey&&d.sigs[ciKey].note){
+    try{const o=JSON.parse(d.sigs[ciKey].note);
+      if(o&&typeof o==='object'){
+        if(o.products&&o.products.length)d.products=o.products;
+        if(o.qtyKg)d.qtyKg=o.qtyKg;
+        if(o.qtyRoll)d.qtyRoll=o.qtyRoll;
+        if(o.qtyPcs)d.qtyPcs=o.qtyPcs;}
+    }catch(e){}
+  }
   /* ใบขอเครดิต: ลายเซ็นฝั่งลูกค้า (ข้อ 3) กลับเข้าไปอยู่ในรายชื่อผู้ติดต่อ */
   if((d.type||'credit')==='credit'&&d.contacts){
     d.contacts.forEach((c,i)=>{
@@ -4804,13 +4855,13 @@ function creditFields(){return [
   {key:'branch',label:'สาขาเลขที่'},
   {key:'shipAddress',label:'ที่อยู่ (สำหรับจัดส่งสินค้า)',type:'textarea',full:true},
   {key:'shipTel',label:'Tel (จัดส่ง)'},{key:'shipFax',label:'Fax (จัดส่ง)'},
-  {group:'การซื้อสินค้า',sub:'ข้อ 2'},
+  {group:'การซื้อสินค้า',sub:'ข้อ 2 — ส่งลิงก์ให้ลูกค้ากรอกเองได้'},
   {key:'products',label:'ประเภทสินค้า',type:'checks',full:true,
     options:['Shrink Film','Shrink Printed','Shrink Hood','Stretch Film']},
   {key:'qtyKg',label:'ยอดสั่งซื้อต่อเดือน (กก.)',type:'number'},
   {key:'qtyRoll',label:'ยอดสั่งซื้อต่อเดือน (ม้วน)',type:'number'},
   {key:'qtyPcs',label:'ยอดสั่งซื้อต่อเดือน (ใบ)',type:'number'},
-  {group:'รายชื่อบุคคลที่ติดต่อกับบริษัท',sub:'ข้อ 3'},
+  {group:'รายชื่อบุคคลที่ติดต่อกับบริษัท',sub:'ข้อ 3 — ส่งลิงก์ให้ลูกค้ากรอกและเซ็นเองได้'},
   {key:'contacts',label:'ผู้ติดต่อ (ส่งลิงก์ให้ลูกค้าเซ็นบนจอได้ หรือเซ็นบนกระดาษก็ได้)',type:'people',rolesDefault:CONTACT_ROLES},
   {group:'เอกสารเกี่ยวกับบริษัท',sub:'ข้อ 4 — ติ๊กรายการที่ลูกค้าส่งมาครบแล้ว'},
   {key:'docs5',label:'เอกสารที่ได้รับ (ต้องเซ็นรับรองและประทับตราทุกรายการ)',type:'checks',full:true,options:CREDIT_DOCS},
