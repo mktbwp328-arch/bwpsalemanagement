@@ -2113,6 +2113,15 @@ function creditSignView(row,id,role){
   loadPrintFonts();
   const type=row.doc_type||'credit',roles=rolesOf(type);
   const d=ensureByType(Object.assign({},row.payload,{type,sigs:row.sigs||{}}));
+  /* ใบขอตัวอย่าง: ดึงผลการพิจารณา/ข้อเสนอแนะที่ฝ่ายวิจัยส่งมา มาแสดงบนเอกสารด้วย
+     (ข้อมูลในลิงก์ถูกบันทึกไว้ตั้งแต่ตอนสร้าง จึงยังไม่มีของที่กรอกทีหลัง) */
+  if(type==='sample'&&d.sigs&&d.sigs.rd&&d.sigs.rd.note){
+    try{const o=JSON.parse(d.sigs.rd.note);
+      if(o&&typeof o==='object'){
+        if(o.canMake)d.canMake=o.canMake;
+        if(o.suggestion)d.suggestion=o.suggestion;}
+    }catch(e){}
+  }
   const saveCo=DB.company,saveLogo=DB.logo;
   if(d.company)DB.company=d.company;if(d.logo)DB.logo=d.logo;
   const cust=DB.customers.find(c=>c.name===d.customer);
