@@ -4842,7 +4842,12 @@ function sigRemoveBtn(d,k,label,s){
 }
 function signCard(d,onSigned){
   /* เอกสารของตัวเอง ถ้าช่องฝ่ายขายยังว่างและมีลายเซ็นประจำตัวอยู่ ให้เซ็นให้เลย */
-  if(autoSignSales(d)|autoSignRd(d)){save();if(onSigned)onSigned();}
+  const _as=autoSignSales(d),_ar=autoSignRd(d);
+  if(_as|_ar){save();if(onSigned)onSigned();}
+  /* ลายเซ็นฝ่ายขายที่เติมให้อัตโนมัติ ต้องส่งขึ้นคลาวด์ด้วย
+     ไม่งั้นผู้บริหารที่เปิดจากลิงก์จะเห็นช่องฝ่ายขายว่าง
+     (ยกเว้นฝ่ายวิจัย ต้องปล่อยให้เขากดส่งเองพร้อมผลการพิจารณา) */
+  if(d.sigDocId&&d.sigs&&d.sigs.sales)pushLocalSig(d,'sales',d.sigs.sales);
   const roles=rolesOf(d.type),n=Object.keys(d.sigs||{}).length;
   const sg=el(`<div class="card pad"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px">
     <div class="h3" style="margin:0">ลายเซ็นอนุมัติ</div>
