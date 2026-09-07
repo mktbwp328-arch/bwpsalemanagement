@@ -1228,8 +1228,8 @@ function creditSheets(d){
     <div class="ln">ยอดสั่งซื้อต่อเดือนโดยประมาณ ${dots(d.qtyKg?num0(d.qtyKg):'',150)} กก. / ${dots(d.qtyRoll?num0(d.qtyRoll):'',130)} ม้วน / ${dots(d.qtyPcs?num0(d.qtyPcs):'',110)} ใบ</div>
 
     <div class="hd">3) รายชื่อบุคคลที่ติดต่อกับบริษัท</div>
-    ${d.contacts.map((c,i)=>`<div class="ln" style="padding-left:16px">${i+1}. <span style="display:inline-block;width:150px">${esc(c.role==='อื่น ๆ (โปรดระบุตำแหน่ง)'?(c.pos||'อื่น ๆ'):c.role)}</span>
-      ชื่อ ${dots(c.name,210)} ลายเซ็นต์ <span class="dt" style="width:150px;position:relative">${c.sig?`<img src="${imgSrc(c.sig)}" style="position:absolute;left:50%;bottom:1px;transform:translateX(-50%);max-height:9mm;max-width:96%">`:''}</span></div>`).join('')}
+    ${d.contacts.map((c,i)=>`<div class="ln" style="padding-left:16px;overflow:visible;position:relative">${i+1}. <span style="display:inline-block;width:150px">${esc(c.role==='อื่น ๆ (โปรดระบุตำแหน่ง)'?(c.pos||'อื่น ๆ'):c.role)}</span>
+      ชื่อ ${dots(c.name,210)} ลายเซ็นต์ <span class="dt" style="width:150px;height:7mm;line-height:7mm;vertical-align:bottom">${c.sig?`<img src="${imgSrc(c.sig)}" style="max-height:6.5mm;max-width:96%;vertical-align:bottom">`:''}</span></div>`).join('')}
 
     <div class="hd">4) เอกสารเกี่ยวกับบริษัท (กรุณาเซ็นชื่อรับรองและประทับตราในเอกสารทุกรายการ)</div>
     ${CREDIT_DOCS.map((t,i)=>`<div class="ln" style="padding-left:28px">${chk(d.docs5.includes(t))} ${i+1}. ${esc(t)}</div>`).join('')}
