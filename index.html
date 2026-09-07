@@ -1744,6 +1744,19 @@ function signaturePad(){
     if(img)ctx.putImageData(img,0,0);
   }
   setTimeout(fit,30);
+  /* ปรับขนาดกระดานใหม่ทุกครั้งที่ขนาดจริงเปลี่ยน — กันกรณีคำนวณตอนหน้ายังจัดวางไม่เสร็จ
+     แล้วได้กระดานกว้าง 1 พิกเซล ทำให้เซ็นไม่ติด */
+  if(window.ResizeObserver){
+    let lastW=0,lastH=0;
+    const ro=new ResizeObserver(()=>{
+      const r=cv.getBoundingClientRect();
+      if(r.width<2)return;
+      if(Math.abs(r.width-lastW)<1&&Math.abs(r.height-lastH)<1)return;
+      lastW=r.width;lastH=r.height;fit();
+    });
+    ro.observe(cv);
+  }
+  window.addEventListener('resize',()=>{const r=cv.getBoundingClientRect();if(r.width>=2)fit();});
   const pos=e=>{const r=cv.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};};
   cv.addEventListener('pointerdown',e=>{e.preventDefault();try{cv.setPointerCapture(e.pointerId);}catch(_){}
     drawing=true;dirty=true;ph.style.display='none';last=pos(e);
