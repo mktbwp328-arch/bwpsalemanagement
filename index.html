@@ -1229,7 +1229,7 @@ function creditSheets(d){
 
     <div class="hd">3) รายชื่อบุคคลที่ติดต่อกับบริษัท</div>
     ${d.contacts.map((c,i)=>`<div class="ln" style="padding-left:16px">${i+1}. <span style="display:inline-block;width:150px">${esc(c.role==='อื่น ๆ (โปรดระบุตำแหน่ง)'?(c.pos||'อื่น ๆ'):c.role)}</span>
-      ชื่อ ${dots(c.name,210)} ลายเซ็นต์ ${dots('',150)}</div>`).join('')}
+      ชื่อ ${dots(c.name,210)} ลายเซ็นต์ <span class="dt" style="width:150px;position:relative">${c.sig?`<img src="${imgSrc(c.sig)}" style="position:absolute;left:50%;bottom:1px;transform:translateX(-50%);max-height:9mm;max-width:96%">`:''}</span></div>`).join('')}
 
     <div class="hd">4) เอกสารเกี่ยวกับบริษัท (กรุณาเซ็นชื่อรับรองและประทับตราในเอกสารทุกรายการ)</div>
     ${CREDIT_DOCS.map((t,i)=>`<div class="ln" style="padding-left:28px">${chk(d.docs5.includes(t))} ${i+1}. ${esc(t)}</div>`).join('')}
@@ -2108,6 +2108,135 @@ function signResultScreen(o){
   document.querySelectorAll('.prevov,.ov').forEach(x=>x.remove());
   $('#layer').append(sc);
 }
+/* ---------- ลูกค้าเซ็นข้อ 3 ของใบขอเครดิต (ลิงก์เดียว กรอกได้ทั้ง 5 คน) ---------- */
+const CUST_ROLE_KEY=i=>'cust'+i;
+/* ฝ่ายขายกดส่งลิงก์ให้ลูกค้า */
+async function shareCustomerCredit(d){
+  ensureByType(d);
+  if(!sbOn()||sbReady===false){toast('ต้องเชื่อมฐานข้อมูลก่อน — รันไฟล์ supabase-setup-2.sql ใน Supabase');return;}
+  const cust=DB.customers.find(c=>c.name===d.customer)||{};
+  const payload=Object.assign({},d,{_cust:{address:cust.address,phone:cust.phone,email:cust.email,taxId:cust.taxId},
+    company:DB.company,logo:DB.logo});
+  payload._attachN=(d.photos||[]).length+(d.files||[]).length;
+  delete payload.photos;delete payload.files;
+  try{
+    if(!d.sigDocId){
+      const id=await sbRpc('create_doc_signature',{p_payload:payload,p_doc_no:d.no,p_doc_type:d.type||'credit',p_customer:d.customer});
+      d.sigDocId=typeof id==='string'?id:(id&&id.id)||id;save(true);
+    }
+  }catch(e){toast(e.message);return;}
+  const link=baseUrl()+'#cc='+d.sigDocId;
+  const ov=el('<div class="ov"></div>');
+  const m=el(`<div class="modal" style="max-width:640px"><header><div><b>ส่งลิงก์ให้ลูกค้าเซ็น</b>
+      <div class="tiny" style="margin-top:2px">${esc(d.no)} · ${esc(d.customer)} — ข้อ 3 รายชื่อบุคคลที่ติดต่อกับบริษัท</div></div>
+      <button class="close">✕</button></header>
+    <div class="mb">
+      <div class="hint" style="margin-bottom:14px">ส่งลิงก์นี้ให้ลูกค้าทางไลน์หรืออีเมล เปิดบนมือถือ iPad หรือคอมก็ได้
+        ลูกค้ากรอกชื่อและเซ็นได้ครบทั้ง 5 ตำแหน่งในหน้าเดียว ช่องไหนไม่มีก็เว้นไว้ได้</div>
+      <div class="field"><label>ลิงก์สำหรับลูกค้า</label>
+        <textarea rows="2" readonly id="lk" style="font-size:11.5px">${esc(link)}</textarea></div>
+      <button class="btn gh sm" id="cp" style="margin-top:8px;width:150px">คัดลอกลิงก์</button>
+      <div style="font-size:14px;font-weight:600;margin:16px 0 8px">สถานะการเซ็นของลูกค้า</div>
+      <div class="list" id="st"></div></div>
+    <footer><button class="btn gh" id="rf">ตรวจสอบล่าสุด</button><div style="flex:1"></div>
+      <button class="btn" id="dn">เสร็จสิ้น</button></footer></div>`);
+  const st=m.querySelector('#st');
+  (d.contacts||[]).forEach((c,i)=>{
+    const done=!!(c.sig);
+    st.append(el(`<div class="lrow" style="cursor:default">
+      <div class="lav" ${done?'style="background:#dcfce7;color:#15803d"':''}>${done?'✓':i+1}</div>
+      <div class="lmain"><div class="lt">${esc(c.role==='อื่น ๆ (โปรดระบุตำแหน่ง)'?(c.pos||'อื่น ๆ'):c.role)}</div>
+        <div class="lm">${done?esc(c.name||'')+' · เซ็นแล้ว '+fmtDate(c.sigDate||d.date):(c.name?esc(c.name)+' · ยังไม่ได้เซ็น':'ยังไม่มีข้อมูล')}</div></div></div>`));
+  });
+  m.querySelector('#cp').onclick=()=>{const t=m.querySelector('#lk');t.select();
+    (navigator.clipboard?navigator.clipboard.writeText(t.value).catch(()=>document.execCommand('copy'))
+      :Promise.resolve(document.execCommand('copy'))).then(()=>toast('คัดลอกลิงก์แล้ว'));};
+  m.querySelector('#rf').onclick=async()=>{await checkCredit(d,true);ov.remove();shareCustomerCredit(d);};
+  m.querySelector('.close').onclick=()=>ov.remove();
+  m.querySelector('#dn').onclick=()=>ov.remove();
+  ov.append(m);$('#layer').append(ov);
+}
+/* หน้าที่ลูกค้าเปิดจากลิงก์ */
+function customerSignView(row,id){
+  loadPrintFonts();
+  const d=ensureByType(Object.assign({},row.payload,{type:'credit',sigs:row.sigs||{}}));
+  const saveCo=DB.company,saveLogo=DB.logo;
+  if(d.company)DB.company=d.company;if(d.logo)DB.logo=d.logo;
+  const cust=DB.customers.find(c=>c.name===d.customer);
+  const tmp=!cust&&d._cust?(DB.customers.push(Object.assign({id:'__tmp',name:d.customer,timeline:[],photos:[],files:[]},d._cust)),true):false;
+  const sheets=sheetsFor(d);
+  if(tmp)DB.customers=DB.customers.filter(c=>c.id!=='__tmp');
+  DB.company=saveCo;DB.logo=saveLogo;
+
+  const ov=el('<div class="prevov"></div>');
+  ov.append(el(`<div style="max-width:210mm;margin:0 auto 18px;background:#fff;border-radius:14px;padding:18px 20px">
+    <div style="font-size:19px;font-weight:700">ใบขอเครดิต ${esc(d.no)}</div>
+    <div class="mut">${esc(d.customer)}</div>
+    <div style="margin-top:10px;font-size:15px">กรุณากรอกชื่อและเซ็นชื่อในข้อ 3 <b style="color:var(--blue-d)">รายชื่อบุคคลที่ติดต่อกับบริษัท</b></div>
+    <div class="tiny" style="margin-top:6px">ตำแหน่งไหนไม่มี เว้นว่างไว้ได้ · เซ็นด้วยเมาส์ ปากกา หรือนิ้วก็ได้</div></div>`));
+  sheets.forEach(s=>ov.append(s));
+
+  const contacts=(d.contacts&&d.contacts.length?d.contacts:CONTACT_ROLES.map(r=>({role:r,name:'',pos:''})));
+  const box=el(`<div style="max-width:210mm;margin:18px auto 0;background:#fff;border-radius:14px;padding:20px">
+    <div class="h3">ข้อ 3) รายชื่อบุคคลที่ติดต่อกับบริษัท</div></div>`);
+  const pads=[];
+  contacts.forEach((c,i)=>{
+    const cur=(row.sigs||{})[CUST_ROLE_KEY(i)];
+    const label=c.role==='อื่น ๆ (โปรดระบุตำแหน่ง)'?'อื่น ๆ':c.role;
+    const w=el(`<div style="border:1px solid var(--bd2);border-radius:12px;padding:14px;margin-top:14px">
+      <div style="font-size:14.5px;font-weight:600;margin-bottom:10px">${i+1}. ${esc(label)}</div>
+      <div class="grid g2" style="gap:12px">
+        <div class="field"><label>ชื่อ-นามสกุล</label><input class="cn" value="${esc((cur&&cur.name)||c.name||'')}"></div>
+        ${c.role==='อื่น ๆ (โปรดระบุตำแหน่ง)'?`<div class="field"><label>ระบุตำแหน่ง</label><input class="cp" value="${esc(c.pos||'')}"></div>`:'<div></div>'}
+      </div></div>`);
+    if(cur&&cur.img){
+      w.append(el(`<div style="border:1px solid var(--bd);border-radius:10px;padding:10px;text-align:center;background:#f8fafc">
+        <img src="${imgSrc(cur.img)}" style="max-height:60px">
+        <div class="tiny" style="margin-top:6px;color:#15803d">เซ็นแล้ว — ส่งใหม่จะไม่ทับของเดิม</div></div>`));
+      pads.push({done:true,el:w});
+    }else{
+      const p=signaturePad();
+      w.append(p.el);
+      const clr=el('<button class="btn gh sm" style="margin-top:8px">ล้างลายเซ็น</button>');
+      clr.onclick=()=>p.clear();
+      w.append(clr);
+      pads.push({pad:p,el:w,done:false});
+    }
+    box.append(w);
+  });
+  const bar=el('<div style="display:flex;gap:10px;margin-top:18px"></div>');
+  const bOk=el('<button class="btn" style="flex:1">บันทึกและส่งกลับ</button>');
+  bar.append(bOk);box.append(bar);ov.append(box);
+  $('#layer').append(ov);
+
+  bOk.onclick=async()=>{
+    const jobs=[];
+    pads.forEach((p,i)=>{
+      if(p.done)return;
+      const name=p.el.querySelector('.cn').value.trim();
+      const img=p.pad.data();
+      if(!name&&!img)return;
+      if(!img){toast('ตำแหน่งที่ '+(i+1)+' กรอกชื่อแล้ว กรุณาเซ็นชื่อด้วย');jobs.length=0;jobs.push(null);return;}
+      const posEl=p.el.querySelector('.cp');
+      jobs.push({i,name,img,pos:posEl?posEl.value.trim():''});
+    });
+    if(jobs.length&&jobs[0]===null)return;
+    if(!jobs.length){toast('ยังไม่ได้กรอกและเซ็นชื่อ');return;}
+    bOk.disabled=true;bOk.textContent='กำลังบันทึก…';
+    try{
+      for(const j of jobs){
+        await sbRpc('add_doc_signature',{p_id:id,p_role:CUST_ROLE_KEY(j.i),p_name:j.name,
+          p_sig:j.img,p_ok:true,p_note:j.pos||null,p_roles_required:rolesOf('credit').map(r=>r[0])});
+      }
+      const now=new Date();
+      signResultScreen({tone:'ok',title:'เซ็นเรียบร้อยแล้ว',
+        sub:'ส่งกลับให้ฝ่ายขายเรียบร้อย · เซ็นแล้ว '+jobs.length+' ท่าน',
+        time:hhmm(now),dateText:thaiFullDate(now),
+        name:jobs.map(j=>j.name).join(' · '),role:'ผู้ติดต่อฝั่งลูกค้า',
+        line3:'ใบขอเครดิต '+d.no+' · '+d.customer});
+    }catch(e){bOk.disabled=false;bOk.textContent='บันทึกและส่งกลับ';toast(e.message);}
+  };
+}
 /* หน้าจอผู้เซ็น (เปิดจากลิงก์) */
 function creditSignView(row,id,role){
   loadPrintFonts();
@@ -2245,6 +2374,14 @@ function applyCreditSigs(no,sigs,status,silent,type){
   /* รวมกับลายเซ็นที่เซ็นไว้ในเครื่อง ไม่ให้ของที่ยังไม่ทันขึ้นคลาวด์หายไป */
   d.sigs=Object.assign({},d.sigs||{},sigs||{});
   /* ใบขอตัวอย่าง: ดึงผลการพิจารณา/ข้อเสนอแนะที่ฝ่ายวิจัยกรอกมากับลายเซ็น */
+  /* ใบขอเครดิต: ลายเซ็นฝั่งลูกค้า (ข้อ 3) กลับเข้าไปอยู่ในรายชื่อผู้ติดต่อ */
+  if((d.type||'credit')==='credit'&&d.contacts){
+    d.contacts.forEach((c,i)=>{
+      const s=d.sigs['cust'+i];
+      if(s&&s.img){c.sig=s.img;c.name=s.name||c.name;c.sigDate=s.date;
+        if(s.note&&c.role==='อื่น ๆ (โปรดระบุตำแหน่ง)')c.pos=s.note;}
+    });
+  }
   if(d.type==='sample'&&d.sigs.rd&&d.sigs.rd.img)saveRoleSig('rd',d.sigs.rd);
   if(d.type==='sample'&&d.sigs.rd&&d.sigs.rd.note){
     try{const o=JSON.parse(d.sigs.rd.note);
@@ -2308,8 +2445,9 @@ async function handleHash(){
   const h=location.hash||'';
   const ms=h.match(/^#s=([0-9a-fA-F-]{36})&r=([a-zA-Z]+)$/);
   const mo=h.match(/^#a=([0-9a-fA-F-]{36})$/);
+  const mc=h.match(/^#cc=([0-9a-fA-F-]{36})$/);   /* ลิงก์ให้ลูกค้าเซ็นข้อ 3 */
   const m1=h.match(/^#approve=(.+)$/),m2=h.match(/^#signed=(.+)$/);
-  if(!ms&&!mo&&!m1&&!m2)return false;
+  if(!ms&&!mo&&!mc&&!m1&&!m2)return false;
   history.replaceState(null,'',baseUrl());
   if(ms){
     const [,id,role]=ms;
@@ -2321,6 +2459,16 @@ async function handleHash(){
       if(!row){toast('ไม่พบเอกสารนี้ หรือลิงก์หมดอายุแล้ว');return false;}
       if(row.status==='rejected'){toast('เอกสารนี้ถูกปฏิเสธไปแล้ว');return false;}
       creditSignView(row,id,role);return true;
+    }catch(e){toast(e.message);return false;}
+  }
+  if(mc){
+    const id=mc[1];
+    toast('กำลังโหลดเอกสาร…');
+    try{
+      const rows=await sbRpc('get_doc_signature',{p_id:id});
+      const row=Array.isArray(rows)?rows[0]:rows;
+      if(!row){toast('ไม่พบเอกสารนี้ หรือลิงก์หมดอายุแล้ว');return false;}
+      customerSignView(row,id);return true;
     }catch(e){toast(e.message);return false;}
   }
   if(mo){
@@ -4663,7 +4811,7 @@ function creditFields(){return [
   {key:'qtyRoll',label:'ยอดสั่งซื้อต่อเดือน (ม้วน)',type:'number'},
   {key:'qtyPcs',label:'ยอดสั่งซื้อต่อเดือน (ใบ)',type:'number'},
   {group:'รายชื่อบุคคลที่ติดต่อกับบริษัท',sub:'ข้อ 3'},
-  {key:'contacts',label:'ผู้ติดต่อ (ลายเซ็นให้เซ็นบนกระดาษที่พิมพ์ออกมา)',type:'people',rolesDefault:CONTACT_ROLES},
+  {key:'contacts',label:'ผู้ติดต่อ (ส่งลิงก์ให้ลูกค้าเซ็นบนจอได้ หรือเซ็นบนกระดาษก็ได้)',type:'people',rolesDefault:CONTACT_ROLES},
   {group:'เอกสารเกี่ยวกับบริษัท',sub:'ข้อ 4 — ติ๊กรายการที่ลูกค้าส่งมาครบแล้ว'},
   {key:'docs5',label:'เอกสารที่ได้รับ (ต้องเซ็นรับรองและประทับตราทุกรายการ)',type:'checks',full:true,options:CREDIT_DOCS},
   {group:'เงื่อนไขการชำระเงิน',sub:'ข้อ 5'},
@@ -4952,6 +5100,7 @@ function creditDetail(v,d){
   backBtn('กลับ',()=>go('documents',{docOpen:null}));
   actionBtn('แก้ไขข้อมูล','edit',()=>openForm('แก้ไข '+d.no,creditFields(),d,o=>{
     Object.assign(d,o);save();render();toast('บันทึกแล้ว');},{wide:true,okLabel:'บันทึกการแก้ไข'}),'btn gh');
+  actionBtn('ส่งลิงก์ให้ลูกค้าเซ็น','doc',()=>shareCustomerCredit(d),'btn gh');
   actionBtn('ดูตัวอย่าง / พิมพ์','print',()=>printCredit(d));
 
   const cust=DB.customers.find(c=>c.name===d.customer)||{};
