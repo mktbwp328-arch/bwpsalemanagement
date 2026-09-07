@@ -1802,6 +1802,17 @@ function autoSignSales(doc){
   }
   return true;
 }
+/* ใบขอตัวอย่าง: เติมลายเซ็นฝ่ายวิจัยที่บันทึกไว้ให้อัตโนมัติ เหมือนฝ่ายขาย
+   ส่วนผลการพิจารณาและข้อเสนอแนะ รอฝ่ายวิจัยกรอกผ่านลิงก์ */
+function autoSignRd(doc){
+  if(!doc||doc.type!=='sample'||readOnly())return false;
+  const r=DB.roleSigs&&DB.roleSigs.rd;
+  if(!r||!r.img)return false;
+  doc.sigs=doc.sigs||{};
+  if(doc.sigs.rd)return false;
+  doc.sigs.rd={img:r.img,name:r.name||'',date:today()};
+  return true;
+}
 function signModal(title,role,defName,onSave){
   const ov=el('<div class="ov"></div>');
   const m=el(`<div class="modal" style="max-width:640px"><header><div><b>${esc(title)}</b>
@@ -1990,7 +2001,10 @@ async function shareCredit(d){
   const ov=el('<div class="ov"></div>');
   /* เซ็นแล้วให้เห็นรูปลายเซ็นเลย จะได้รู้ว่าใครเซ็นแล้วบ้างโดยไม่ต้องเปิดเอกสาร */
   const links=roles.map(([k,label],i)=>{
-    const s=d.sigs[k],done=!!(s&&s.img);
+    const s=d.sigs[k];
+    /* ฝ่ายวิจัยของใบขอตัวอย่าง: ถือว่ายังไม่เสร็จจนกว่าจะกรอกผลการพิจารณามา */
+    const needRd=(d.type==='sample'&&k==='rd'&&!String(d.canMake||'').trim());
+    const done=!!(s&&s.img)&&!needRd;
     return `<div style="display:flex;gap:12px;align-items:flex-start;padding:13px 0;border-bottom:1px solid var(--bd2)">
       <div style="width:26px;height:26px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;
         font-size:12px;font-weight:700;background:${done?'#dcfce7':'#eef2f8'};color:${done?'#15803d':'#94a3b8'}">${done?'✓':i+1}</div>
@@ -1999,7 +2013,7 @@ async function shareCredit(d){
         ${done
           ? `<div class="tiny" style="color:#15803d">เซ็นแล้ว · ${esc(s.name||'')} · ${fmtDate(s.date)}</div>
              <img src="${imgSrc(s.img)}" style="max-height:42px;margin-top:7px;display:block">`
-          : `<div class="tiny">ยังไม่ได้เซ็น — ส่งลิงก์นี้ให้ท่านนี้</div>
+          : `<div class="tiny">${needRd&&s&&s.img?'ลายเซ็นพร้อมแล้ว — ส่งลิงก์ให้กรอกผลการพิจารณาและข้อเสนอแนะ':'ยังไม่ได้เซ็น — ส่งลิงก์นี้ให้ท่านนี้'}</div>
              <textarea rows="2" readonly data-k="${k}" style="font-size:11.5px;margin-top:6px">${esc(baseUrl()+'#s='+d.sigDocId+'&r='+k)}</textarea>
              <button class="btn gh sm cp" data-k="${k}" style="margin-top:6px;width:150px">คัดลอกลิงก์</button>`}
       </div></div>`;}).join('');
@@ -2135,7 +2149,8 @@ function creditSignView(row,id,role){
   const rdData=()=>({canMake:(box.querySelector('#can .opt.on')||{dataset:{}}).dataset.v||'',
     suggestion:(box.querySelector('#sg')||{value:''}).value.trim()});
   /* ลายเซ็นที่ฝ่ายขายล็อกไว้ให้ตำแหน่งนี้ — ไม่ต้องเซ็นใหม่ กรอกแค่รายละเอียด */
-  const locked=(d._roleSigs&&d._roleSigs[role]&&d._roleSigs[role].img)?d._roleSigs[role]:null;
+  const locked=(d._roleSigs&&d._roleSigs[role]&&d._roleSigs[role].img)?d._roleSigs[role]
+    :((row.payload&&row.payload.sigs&&row.payload.sigs[role]&&row.payload.sigs[role].img)?row.payload.sigs[role]:null);
   let pad=null;
   if(locked){
     box.append(el(`<div class="field" style="margin-bottom:6px"><label>ลายเซ็นที่บันทึกไว้</label>
@@ -4740,6 +4755,7 @@ function pgDocuments(v){
     if(doc.type==='credit'){ensureCredit(doc);doc.amount=doc.approvedAmount||0;}
     if(doc.type==='sample'||doc.type==='requirement'){ensureByType(doc);doc.amount=doc.amount||0;}
     const signed=autoSignSales(doc);      /* เติมลายเซ็นฝ่ายขายที่จำไว้ให้เลย */
+    autoSignRd(doc);                      /* และลายเซ็นฝ่ายวิจัยที่บันทึกไว้ */
     DB.docs.unshift(doc);save(true);render();
     toast(signed?'สร้างเอกสารแล้ว — เซ็นชื่อฝ่ายขายให้อัตโนมัติ':'สร้างเอกสารแล้ว');
     openDocSmart(doc);},
@@ -4780,18 +4796,18 @@ function pgDocuments(v){
 /* ล็อกลายเซ็นประจำตำแหน่งไว้ใช้ตลอด — ครั้งต่อไปส่งลิงก์ให้กรอกแค่รายละเอียด */
 function sigLockBtn(d,k,label,s){
   const on=!!(DB.roleSigs&&DB.roleSigs[k]&&DB.roleSigs[k].img);
-  const b=el('<button class="btn gh sm">'+(on?'🔒 ล็อกไว้แล้ว':'ล็อกลายเซ็นนี้')+'</button>');
+  const b=el('<button class="btn gh sm">'+(on?'🔒 ใช้อัตโนมัติอยู่':'ใช้ลายเซ็นนี้อัตโนมัติ')+'</button>');
   b.onclick=()=>{
     DB.roleSigs=DB.roleSigs||{};
     if(on){
-      askConfirm('ยกเลิกล็อกลายเซ็น','เอาลายเซ็นของ '+label+' ที่ล็อกไว้ออก? ครั้งต่อไปจะต้องเซ็นใหม่ทุกครั้ง','ยกเลิกล็อก',
+      askConfirm('เลิกใช้อัตโนมัติ','เอาลายเซ็นของ '+label+' ที่บันทึกไว้ออก? ครั้งต่อไปจะต้องเซ็นใหม่ทุกครั้ง','เลิกใช้',
         ()=>{delete DB.roleSigs[k];save(true);render();toast('ยกเลิกล็อกลายเซ็นแล้ว');});
       return;
     }
-    askConfirm('ล็อกลายเซ็น — '+label,
-      'ใช้ลายเซ็นของ "'+(s.name||label)+'" นี้กับเอกสารทุกใบต่อจากนี้\n\n'
-      +'เวลาส่งลิงก์ ผู้เซ็นจะไม่ต้องเซ็นใหม่ กรอกแค่รายละเอียดแล้วกดส่งกลับ',
-      'ล็อกไว้เลย',()=>{
+    askConfirm('ใช้ลายเซ็นนี้อัตโนมัติ — '+label,
+      'ใบขอตัวอย่างที่สร้างต่อจากนี้ จะขึ้นลายเซ็นของ "'+(s.name||label)+'" ให้เองทันที\n\n'
+      +'ลิงก์ที่ส่งไปจะเหลือแค่ให้กรอกผลการพิจารณาและข้อเสนอแนะ ไม่ต้องเซ็นใหม่',
+      'ใช้เลย',()=>{
         DB.roleSigs[k]={img:s.img,name:s.name||'',savedAt:today()};
         save(true);render();toast('ล็อกลายเซ็น '+label+' ไว้แล้ว');});
   };
@@ -4825,7 +4841,7 @@ function sigRemoveBtn(d,k,label,s){
 }
 function signCard(d,onSigned){
   /* เอกสารของตัวเอง ถ้าช่องฝ่ายขายยังว่างและมีลายเซ็นประจำตัวอยู่ ให้เซ็นให้เลย */
-  if(autoSignSales(d)){save();if(onSigned)onSigned();}
+  if(autoSignSales(d)|autoSignRd(d)){save();if(onSigned)onSigned();}
   const roles=rolesOf(d.type),n=Object.keys(d.sigs||{}).length;
   const sg=el(`<div class="card pad"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px">
     <div class="h3" style="margin:0">ลายเซ็นอนุมัติ</div>
