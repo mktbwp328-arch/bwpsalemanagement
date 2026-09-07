@@ -1365,9 +1365,9 @@ function requirementSheet(d){
       <div class="ln">การบรรจุพาเลท ${bx(d.palletSpec==='ระบุ','ระบุ')} &nbsp; ${bx(d.palletSpec==='ไม่ระบุ','ไม่ระบุ')} &nbsp;&nbsp; จำนวน ${dots(d.perPallet,110)} ม้วน/พาเลท</div>
       <div class="ln" style="padding-left:96px">${bx(d.pallet==='พาเลทไม้','พาเลทไม้')} &nbsp; ${bx(d.pallet==='LOSCAM','LOSCAM')} &nbsp; ${bx(d.pallet==='พาเลทพลาสติก','พาเลทพลาสติก')}</div>
       <div class="ln">รายละเอียดเพิ่มเติม</div>
-      ${[0,1,2,3,4].map(i=>`<div class="ln">${dots((d.detail||'').split('\n')[i]||'',700)}</div>`).join('')}
-      <div style="text-align:right;margin-top:14px">จึงเรียนมาเพื่อทราบและโปรดดำเนินการ</div>
-      <div style="text-align:right">ขอแสดงความนับถือ</div>
+      ${[0,1,2,3,4].map(i=>`<div class="ln"><span class="dt" style="display:block;text-align:left;padding-left:6px">${esc((d.detail||'').split('\n')[i]||' ')}</span></div>`).join('')}
+      <div style="text-align:right;margin-top:14px;padding-right:6px">จึงเรียนมาเพื่อทราบและโปรดดำเนินการ</div>
+      <div style="text-align:right;padding-right:6px">ขอแสดงความนับถือ</div>
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:6px">
         <div style="width:250px;display:flex">${sgBox('เจ้าหน้าที่ฝ่ายขาย',s.sales||(d.salesName?{name:d.salesName}:null))}</div>
         <div style="width:250px;display:flex">${sgBox('หัวหน้าฝ่ายขาย',s.salesMgr)}</div></div>
