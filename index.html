@@ -1757,8 +1757,14 @@ function signaturePad(){
     ro.observe(cv);
   }
   window.addEventListener('resize',()=>{const r=cv.getBoundingClientRect();if(r.width>=2)fit();});
+  /* กันพลาดอีกชั้น: ถ้าขนาดกระดานยังไม่ตรงกับที่แสดงจริง ให้ปรับก่อนเริ่มวาดเสมอ */
+  const ensureFit=()=>{
+    const r=cv.getBoundingClientRect(),dpr=window.devicePixelRatio||1;
+    if(r.width>=2&&Math.abs(cv.width-Math.round(r.width*dpr))>2)fit();
+  };
+  [150,400,1000].forEach(ms=>setTimeout(ensureFit,ms));
   const pos=e=>{const r=cv.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};};
-  cv.addEventListener('pointerdown',e=>{e.preventDefault();try{cv.setPointerCapture(e.pointerId);}catch(_){}
+  cv.addEventListener('pointerdown',e=>{e.preventDefault();ensureFit();try{cv.setPointerCapture(e.pointerId);}catch(_){}
     drawing=true;dirty=true;ph.style.display='none';last=pos(e);
     ctx.lineWidth=e.pointerType==='pen'?Math.max(1.2,(e.pressure||.5)*3.4):2.2;
     ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(last.x+.1,last.y);ctx.stroke();});
