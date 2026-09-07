@@ -1695,13 +1695,18 @@ async function sbFetch(path,opt,retry){
 }
 const sbGet=p=>sbFetch(p,{method:'GET'});
 
-async function sbRpc(fn,args){
+async function sbRpc(fn,args,retry){
   const c=sbCfg();
   const r=await fetch(c.url.replace(/\/$/,'')+'/rest/v1/rpc/'+fn,{method:'POST',
     headers:sbHeaders(),body:JSON.stringify(args||{})});
   const txt=await r.text();
   if(!r.ok){
     let msg=txt;try{msg=JSON.parse(txt).message||txt;}catch(e){}
+    /* เซสชันหมดอายุ: ต่ออายุให้เองแล้วลองใหม่ ผู้ใช้ไม่ต้องเข้าระบบใหม่ */
+    if(!retry&&(r.status===401||/jwt|expired|invalid token/i.test(msg))&&AUTH.refresh){
+      if(await refreshSession())return sbRpc(fn,args,true);
+      throw new Error('เซสชันหมดอายุ — กรุณาเข้าระบบใหม่');
+    }
     if(/could not find the function|schema cache|does not exist/i.test(msg))
       throw new Error('ยังไม่ได้ติดตั้งส่วนนี้ในฐานข้อมูล — เปิด Supabase แล้วรัน '
         +(/doc_signature/.test(fn)?'supabase-setup-2.sql':'supabase-setup.sql')+' ก่อน');
@@ -3258,10 +3263,11 @@ function b64ToBlob(dataUrl){
   for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);
   return new Blob([u8],{type:m[1]});
 }
-async function stUpload(blob,ext){
+async function stUpload(blob,ext,retry){
   const path=dataOwner()+'/'+uid()+uid()+'.'+(ext||'jpg');
   const r=await fetch(stUrl('/object/'+BUCKET+'/'+path),{method:'POST',
     headers:stHead({'Content-Type':blob.type||'application/octet-stream','x-upsert':'true'}),body:blob});
+  if(r.status===401&&!retry&&AUTH.refresh&&await refreshSession())return stUpload(blob,ext,true);
   if(!r.ok){
     const t=await r.text().catch(()=>'');
     if(/bucket not found|not found/i.test(t)){storageOK=false;
@@ -3276,6 +3282,7 @@ async function stSign(path){
   if(hit&&hit.exp>Date.now()+60000)return hit.url;
   const r=await fetch(stUrl('/object/sign/'+BUCKET+'/'+path),{method:'POST',
     headers:stHead({'Content-Type':'application/json'}),body:JSON.stringify({expiresIn:3600})});
+  if(r.status===401&&AUTH.refresh&&await refreshSession()){delete signCache[path];return stSign(path);}
   if(!r.ok)throw new Error('เปิดไฟล์ไม่ได้ ('+r.status+')');
   const j=await r.json();
   const url=stUrl(String(j.signedURL||j.signedUrl||'').replace(/^\/storage\/v1/,''));
