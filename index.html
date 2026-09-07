@@ -6366,7 +6366,7 @@ async function startApp(){
 }
 async function boot(){
   /* ลิงก์เซ็นเอกสาร: เปิดได้เลยไม่ต้องล็อกอิน */
-  if(/^#(s=|a=|approve=|signed=)/.test(location.hash||'')){
+  if(/^#(s=|a=|cc=|approve=|signed=)/.test(location.hash||'')){
     DB=load()||seed();migrate();booted=true;
     document.querySelector('.app').style.display='none';
     await handleHash();
