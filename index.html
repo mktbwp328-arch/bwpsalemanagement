@@ -1813,9 +1813,20 @@ function saveRoleSig(k,sig){
   DB.roleSigs[k]={img:sig.img,name:sig.name||(old&&old.name)||'',savedAt:today()};
   save();
 }
+/* ลายเซ็นฝ่ายวิจัยล่าสุด — ถ้ายังไม่เคยบันทึกไว้ ให้ไปหยิบจากใบขอตัวอย่างที่เคยเซ็นแล้ว */
+function lastRdSig(){
+  const r=DB.roleSigs&&DB.roleSigs.rd;
+  if(r&&r.img)return r;
+  const prev=(DB.docs||[])
+    .filter(x=>x.type==='sample'&&x.sigs&&x.sigs.rd&&x.sigs.rd.img)
+    .sort((x,y)=>String(y.date||'').localeCompare(String(x.date||'')))[0];
+  if(!prev)return null;
+  saveRoleSig('rd',prev.sigs.rd);      /* จำไว้ใช้ครั้งต่อไป */
+  return (DB.roleSigs&&DB.roleSigs.rd)||prev.sigs.rd;
+}
 function autoSignRd(doc){
   if(!doc||doc.type!=='sample'||readOnly())return false;
-  const r=DB.roleSigs&&DB.roleSigs.rd;
+  const r=lastRdSig();
   if(!r||!r.img)return false;
   doc.sigs=doc.sigs||{};
   if(doc.sigs.rd)return false;
