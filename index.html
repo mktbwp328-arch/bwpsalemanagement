@@ -1901,7 +1901,7 @@ function approveView(p,onlineId){
   $('#layer').append(ov);
 
   const finish=async(ok)=>{
-    const img=ok?pad.data():null;
+    const img=ok?(locked?locked.img:pad.data()):null;
     if(ok&&!img){toast('ยังไม่ได้เซ็น — กรุณาเซ็นชื่อในกรอบก่อน');return;}
     const back={t:'qt-ok',no:p.no,ok,name:box.querySelector('#an').value.trim(),date:today(),img};
     /* ออนไลน์: บันทึกลงฐานข้อมูล ฝ่ายขายจะเห็นเองอัตโนมัติ */
@@ -1979,6 +1979,7 @@ async function shareCredit(d){
     company:DB.company,logo:DB.logo});
   /* ไม่ส่งไฟล์แนบไปกับลิงก์ ให้ลิงก์เบาและเปิดเร็ว ส่งไปแค่จำนวน */
   payload._attachN=(d.photos||[]).length+(d.files||[]).length;
+  payload._roleSigs=DB.roleSigs||{};   /* ลายเซ็นประจำตำแหน่งที่ล็อกไว้ */
   delete payload.photos;delete payload.files;
   const roles=rolesOf(d.type);
   let id=d.sigDocId;
@@ -2133,13 +2134,25 @@ function creditSignView(row,id,role){
   }
   const rdData=()=>({canMake:(box.querySelector('#can .opt.on')||{dataset:{}}).dataset.v||'',
     suggestion:(box.querySelector('#sg')||{value:''}).value.trim()});
-  const pad=signaturePad();box.append(pad.el);
+  /* ลายเซ็นที่ฝ่ายขายล็อกไว้ให้ตำแหน่งนี้ — ไม่ต้องเซ็นใหม่ กรอกแค่รายละเอียด */
+  const locked=(d._roleSigs&&d._roleSigs[role]&&d._roleSigs[role].img)?d._roleSigs[role]:null;
+  let pad=null;
+  if(locked){
+    box.append(el(`<div class="field" style="margin-bottom:6px"><label>ลายเซ็นที่บันทึกไว้</label>
+      <div style="border:1px solid var(--bd);border-radius:12px;padding:12px;text-align:center;background:#f8fafc">
+        <img src="${imgSrc(locked.img)}" style="max-height:60px">
+        <div class="tiny" style="margin-top:6px">${esc(locked.name||'')} — ระบบใช้ลายเซ็นนี้ให้อัตโนมัติ ไม่ต้องเซ็นใหม่</div></div></div>`));
+  }else{
+    pad=signaturePad();box.append(pad.el);
+  }
   const bar=el('<div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap"></div>');
-  const bClr=el('<button class="btn gh">ล้างลายเซ็น</button>');
+  const bClr=locked?null:el('<button class="btn gh">ล้างลายเซ็น</button>');
   const bNo=el('<button class="btn dg">ไม่อนุมัติ</button>');
   const bOk=el('<button class="btn" style="flex:1">บันทึกลายเซ็น</button>');
-  bClr.onclick=()=>pad.clear();
-  bar.append(bClr,bNo,bOk);box.append(bar);ov.append(box);
+  if(bClr)bClr.onclick=()=>pad.clear();
+  bOk.textContent=locked?'บันทึกและส่งกลับ':'บันทึกลายเซ็น';
+  if(bClr)bar.append(bClr);
+  bar.append(bNo,bOk);box.append(bar);ov.append(box);
   $('#layer').append(ov);
 
   const finish=async ok=>{
@@ -2150,7 +2163,7 @@ function creditSignView(row,id,role){
     bOk.disabled=bNo.disabled=true;bOk.textContent='กำลังบันทึก…';
     try{
       const res=await sbRpc('add_doc_signature',{p_id:id,p_role:role,
-        p_name:box.querySelector('#an').value.trim(),p_sig:img,p_ok:ok,
+        p_name:box.querySelector('#an').value.trim()||(locked&&locked.name)||'',p_sig:img,p_ok:ok,
         p_note:rd?JSON.stringify(rd):null,
         p_roles_required:roles.map(r=>r[0])});
       ov.remove();
@@ -4764,6 +4777,26 @@ function pgDocuments(v){
 }
 /* ---- หน้ารายละเอียดใบขอเครดิต (พิมพ์ 2 หน้า + เซ็น 4 ลายเซ็น) ---- */
 /* การ์ดลายเซ็น ใช้ร่วมกันทุกเอกสาร */
+/* ล็อกลายเซ็นประจำตำแหน่งไว้ใช้ตลอด — ครั้งต่อไปส่งลิงก์ให้กรอกแค่รายละเอียด */
+function sigLockBtn(d,k,label,s){
+  const on=!!(DB.roleSigs&&DB.roleSigs[k]&&DB.roleSigs[k].img);
+  const b=el('<button class="btn gh sm">'+(on?'🔒 ล็อกไว้แล้ว':'ล็อกลายเซ็นนี้')+'</button>');
+  b.onclick=()=>{
+    DB.roleSigs=DB.roleSigs||{};
+    if(on){
+      askConfirm('ยกเลิกล็อกลายเซ็น','เอาลายเซ็นของ '+label+' ที่ล็อกไว้ออก? ครั้งต่อไปจะต้องเซ็นใหม่ทุกครั้ง','ยกเลิกล็อก',
+        ()=>{delete DB.roleSigs[k];save(true);render();toast('ยกเลิกล็อกลายเซ็นแล้ว');});
+      return;
+    }
+    askConfirm('ล็อกลายเซ็น — '+label,
+      'ใช้ลายเซ็นของ "'+(s.name||label)+'" นี้กับเอกสารทุกใบต่อจากนี้\n\n'
+      +'เวลาส่งลิงก์ ผู้เซ็นจะไม่ต้องเซ็นใหม่ กรอกแค่รายละเอียดแล้วกดส่งกลับ',
+      'ล็อกไว้เลย',()=>{
+        DB.roleSigs[k]={img:s.img,name:s.name||'',savedAt:today()};
+        save(true);render();toast('ล็อกลายเซ็น '+label+' ไว้แล้ว');});
+  };
+  return b;
+}
 /* ปุ่มลบลายเซ็น เพื่อขอให้เซ็นใหม่ (เซ็นผิดคน ลายเซ็นเบลอ หรือแก้เอกสารแล้ว) */
 function sigRemoveBtn(d,k,label,s){
   const rm=el('<button class="btn gh sm" style="color:#b91c1c;border-color:#fbcaca">ลบลายเซ็น</button>');
@@ -4805,7 +4838,10 @@ function signCard(d,onSigned){
       <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">${esc(label)}</div>
       <div class="tiny">${done?esc(s.name||'')+' · '+fmtDate(s.date):'ยังไม่ได้เซ็น'}</div>
       ${done?`<img src="${imgSrc(s.img)}" style="max-height:40px;margin-top:7px;display:block">`:''}</div></div>`);
-    if(done&&!readOnly())row.append(sigRemoveBtn(d,k,label,s));
+    if(done&&!readOnly()){
+      if(d.type==='sample'&&k==='rd')row.append(sigLockBtn(d,k,label,s));
+      row.append(sigRemoveBtn(d,k,label,s));
+    }
     if(!done){
       const b=el('<button class="btn gh sm">เซ็นที่เครื่องนี้</button>');
       b.onclick=()=>signModal('เซ็น — '+label,d.no,
@@ -6005,6 +6041,7 @@ async function viewUser(id,name,mine){
 function migrate(){
   if(!DB.company)DB.company=Object.assign({},COMPANY);
   if(!DB.products)DB.products=[];
+  if(!DB.roleSigs)DB.roleSigs={};   /* ลายเซ็นประจำตำแหน่งที่ล็อกไว้ เช่น ฝ่ายวิจัย */
   /* อัปเดตรหัสแบบฟอร์มใบเสนอราคาให้เป็นรุ่นล่าสุด (ถ้ายังเป็นรุ่นเก่าที่ระบบตั้งไว้) */
   if(DB.company&&/^FQP-MKT-01:01 Rev\.0[12]$/.test(DB.company.docCode||''))
     DB.company.docCode=COMPANY.docCode;
