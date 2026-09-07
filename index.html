@@ -1783,10 +1783,13 @@ function signaturePad(){
     /* ตัดขอบขาวออกแล้วย่อ เพื่อให้ไฟล์เล็ก */
     data(){
       if(!dirty)return null;
+      ensureFit();                       /* กันกรณีกระดานยังขนาดไม่ตรง จะได้ไม่ได้ลายเซ็นจิ๋ว */
       const w=cv.width,h=cv.height,d=ctx.getImageData(0,0,w,h).data;
+      if(w<40||h<40)return null;         /* กระดานเล็กผิดปกติ ถือว่ายังไม่ได้เซ็น */
       let x0=w,y0=h,x1=0,y1=0;
       for(let y=0;y<h;y++)for(let x=0;x<w;x++){if(d[(y*w+x)*4+3]>12){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;}}
       if(x1<x0)return null;
+      if(x1-x0<6&&y1-y0<6)return null;   /* จุดเล็กจิ๋ว ไม่ใช่ลายเซ็น */
       const pad=8;x0=Math.max(0,x0-pad);y0=Math.max(0,y0-pad);x1=Math.min(w-1,x1+pad);y1=Math.min(h-1,y1+pad);
       const sw=x1-x0+1,sh=y1-y0+1,max=560,sc=Math.min(1,max/sw);
       const o=document.createElement('canvas');o.width=Math.round(sw*sc);o.height=Math.round(sh*sc);
@@ -2166,10 +2169,27 @@ async function shareCustomerCredit(d){
   const st=m.querySelector('#st');
   (d.contacts||[]).forEach((c,i)=>{
     const done=!!(c.sig);
-    st.append(el(`<div class="lrow" style="cursor:default">
+    const row=el(`<div class="lrow" style="cursor:default">
       <div class="lav" ${done?'style="background:#dcfce7;color:#15803d"':''}>${done?'✓':i+1}</div>
       <div class="lmain"><div class="lt">${esc(c.role==='อื่น ๆ (โปรดระบุตำแหน่ง)'?(c.pos||'อื่น ๆ'):c.role)}</div>
-        <div class="lm">${done?esc(c.name||'')+' · เซ็นแล้ว '+fmtDate(c.sigDate||d.date):(c.name?esc(c.name)+' · ยังไม่ได้เซ็น':'ยังไม่มีข้อมูล')}</div></div></div>`));
+        <div class="lm">${done?esc(c.name||'')+' · เซ็นแล้ว '+fmtDate(c.sigDate||d.date):(c.name?esc(c.name)+' · ยังไม่ได้เซ็น':'ยังไม่มีข้อมูล')}</div></div>`);
+    if(done){
+      const rm=el('<button class="btn gh sm" style="color:#b91c1c;border-color:#fbcaca">ขอเซ็นใหม่</button>');
+      rm.onclick=()=>askConfirm('ขอให้เซ็นใหม่',
+        'ลบลายเซ็นของ "'+(c.name||'ตำแหน่งที่ '+(i+1))+'" ออก แล้วให้ลูกค้าเปิดลิงก์เดิมเซ็นใหม่?',
+        'ลบและขอเซ็นใหม่',async()=>{
+          try{
+            const res=await sbRpc('remove_doc_signature',{p_id:d.sigDocId,p_role:'cust'+i});
+            delete c.sig;delete c.sigDate;
+            if(res)applyCreditSigs(d.no,res.sigs,res.status,true,d.type);
+            save(true);render();ov.remove();shareCustomerCredit(d);
+            toast('ลบแล้ว — ส่งลิงก์เดิมให้ลูกค้าเซ็นใหม่ได้เลย');
+          }catch(e){toast(/ยังไม่ได้ติดตั้ง|could not find|does not exist/i.test(e.message)
+            ? 'ยังไม่ได้ติดตั้งส่วนนี้ — ให้ผู้ดูแลรันไฟล์ supabase-setup-10.sql ก่อน':e.message);}
+        });
+      row.append(rm);
+    }
+    st.append(row);
   });
   m.querySelector('#cp').onclick=()=>{const t=m.querySelector('#lk');t.select();
     (navigator.clipboard?navigator.clipboard.writeText(t.value).catch(()=>document.execCommand('copy'))
