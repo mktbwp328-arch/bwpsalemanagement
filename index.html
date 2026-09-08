@@ -5375,7 +5375,7 @@ function quoteDetail(v,d){
   /* เซ็นช่องฝ่ายขายให้อัตโนมัติจากลายเซ็นประจำตัว ไม่ต้องเซ็นซ้ำทุกใบ */
   if(autoSignSales(d)){if(d.status==='ร่าง')d.status='ส่งแล้ว';save();}
   const sg=el('<div class="card pad"><div class="h3">ลายเซ็นและการอนุมัติ</div></div>');
-  const step=(n,label,sig,btnLabel,onSign,locked)=>{
+  const step=(n,label,sig,btnLabel,onSign,locked,onRemove)=>{
     const done=!!(sig&&sig.img);
     const w=el(`<div style="display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--bd2)">
       <div style="width:26px;height:26px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;
@@ -5383,6 +5383,10 @@ function quoteDetail(v,d){
       <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">${esc(label)}</div>
       <div class="tiny">${done?esc(sig.name||'')+' · '+fmtDate(sig.date):locked?'รอขั้นตอนก่อนหน้า':'ยังไม่ได้เซ็น'}</div>
       ${done?`<img src="${imgSrc(sig.img)}" style="max-height:42px;margin-top:7px;display:block">`:''}</div></div>`);
+    if(done&&onRemove){
+      const rm=el('<button class="btn gh sm" style="color:#b91c1c;border-color:#fbcaca">ลบลายเซ็น</button>');
+      rm.onclick=onRemove;w.append(rm);
+    }
     if(!locked){
       const b=el(`<button class="btn ${done?'gh':''} sm">${done?'เซ็นใหม่':btnLabel}</button>`);
       b.onclick=onSign;w.append(b);
@@ -5392,10 +5396,30 @@ function quoteDetail(v,d){
     ()=>signModal('เซ็นชื่อ — พนักงานขาย','ใบเสนอราคา '+d.no,
       d.salesperson||(mySig()&&mySig().name)||(AUTH.profile&&AUTH.profile.name)||'',s=>{
       d.sigSales=s;if(!d.salesperson)d.salesperson=s.name;saveMySig(s);
-      if(d.status==='ร่าง')d.status='ส่งแล้ว';save();render();toast('บันทึกลายเซ็นแล้ว');}),false));
+      if(d.status==='ร่าง')d.status='ส่งแล้ว';save();render();toast('บันทึกลายเซ็นแล้ว');}),false,
+    ()=>askConfirm('ลบลายเซ็นฝ่ายขาย','ลบลายเซ็นของ "'+((d.sigSales&&d.sigSales.name)||'ฝ่ายขาย')+'" ออก?','ลบลายเซ็น',
+      ()=>{d.sigSales=null;save(true);render();toast('ลบลายเซ็นแล้ว');})));
   sg.append(step(2,'ผู้บริหารอนุมัติ',d.sigApprover,'เซ็นที่เครื่องนี้',
     ()=>signModal('เซ็นอนุมัติ — ผู้บริหาร','ใบเสนอราคา '+d.no,d.sigApprover&&d.sigApprover.name,s=>{
-      d.sigApprover=s;d.status='อนุมัติแล้ว';save();render();toast('อนุมัติเรียบร้อย');}),!d.sigSales));
+      d.sigApprover=s;d.status='อนุมัติแล้ว';save();render();toast('อนุมัติเรียบร้อย');}),!d.sigSales,
+    ()=>askConfirm('ลบลายเซ็นผู้บริหาร',
+      'ลบลายเซ็นอนุมัติออก เพื่อส่งลิงก์ให้ผู้บริหารเซ็นใหม่?\n\nลิงก์เดิมจะกลับมาใช้ได้ทันที ไม่ต้องสร้างใหม่','ลบและขอเซ็นใหม่',
+      async()=>{
+        const keep=d.sigApprover;
+        d.sigApprover=null;
+        if(d.status==='อนุมัติแล้ว'||d.status==='ยกเลิก')d.status='ส่งแล้ว';
+        d.rejectNote='';
+        save(true);render();
+        if(!d.approvalId||!sbOn()){toast('ลบลายเซ็นแล้ว');return;}
+        try{
+          await sbRpc('reset_quote_approval',{p_id:d.approvalId});
+          toast('ลบลายเซ็นแล้ว — ส่งลิงก์เดิมให้ผู้บริหารเซ็นใหม่ได้เลย');
+        }catch(e){
+          d.sigApprover=keep;save(true);render();
+          toast(/could not find|schema cache|does not exist|ยังไม่ได้ติดตั้ง/i.test(e.message)
+            ? 'ยังไม่ได้ติดตั้งส่วนนี้ — ให้ผู้ดูแลรันไฟล์ supabase-setup-11.sql ก่อน':e.message);
+        }
+      })));
   const send=el(`<button class="btn blk" style="margin-top:14px">${svg('doc','ic s')}ส่งลิงก์ให้ผู้บริหารเซ็น</button>`);
   send.onclick=()=>shareApproval(d);
   sg.append(send);
