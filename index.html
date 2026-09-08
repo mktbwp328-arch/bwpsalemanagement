@@ -1961,7 +1961,7 @@ function approveView(p,onlineId){
   $('#layer').append(ov);
 
   const finish=async(ok)=>{
-    const img=ok?(locked?locked.img:pad.data()):null;
+    const img=ok?pad.data():null;
     if(ok&&!img){toast('ยังไม่ได้เซ็น — กรุณาเซ็นชื่อในกรอบก่อน');return;}
     const back={t:'qt-ok',no:p.no,ok,name:box.querySelector('#an').value.trim(),date:today(),img};
     /* ออนไลน์: บันทึกลงฐานข้อมูล ฝ่ายขายจะเห็นเองอัตโนมัติ */
