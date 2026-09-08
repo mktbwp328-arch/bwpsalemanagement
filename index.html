@@ -1297,8 +1297,10 @@ function sampleSheet(d){
       <div class="ln">ขนาดผลิตภัณฑ์ที่ต้องการ ${dots(d.size,470)}</div>
       <div class="ln" style="display:flex;gap:6px"><span style="width:76px;flex-shrink:0">งานที่ต้องการ</span>
         <div style="flex:1">
-          <div>${chk(d.workType==='ตัวอย่าง')} ตัวอย่าง น้ำหนักต่อม้วน ${dots(d.wPerRoll,58)} กก. จำนวน ${dots(d.rolls,52)} ม้วน วันที่กำหนดส่ง ${dots(fmtShort(d.dueDate),96)} รวม ${dots(d.totalKg,60)} กก.</div>
-          <div>${chk(d.workType==='ยอดสั่งซื้อตัวอย่าง')} ยอดสั่งซื้อตัวอย่าง น้ำหนักต่อม้วน ${dots(d.wPerRoll,58)} กก. จำนวน ${dots(d.rolls,52)} ม้วน วันที่กำหนดส่ง ${dots(fmtShort(d.dueDate),96)} รวม ${dots(d.totalKg,54)}</div>
+          ${[['ตัวอย่าง',60,' กก.'],['ยอดสั่งซื้อตัวอย่าง',54,'']].map(([k,w,tail])=>{
+            /* กรอกตัวเลขเฉพาะแถวที่ถูกเลือก อีกแถวเว้นว่างไว้ */
+            const on=d.workType===k;
+            return `<div>${chk(on)} ${k} น้ำหนักต่อม้วน ${dots(on?d.wPerRoll:'',58)} กก. จำนวน ${dots(on?d.rolls:'',52)} ม้วน วันที่กำหนดส่ง ${dots(on?fmtShort(d.dueDate):'',96)} รวม ${dots(on?d.totalKg:'',w)}${tail}</div>`;}).join('')}
         </div></div>
       <div style="color:#c00;font-size:10.5px">หมายเหตุ : ในกรณีที่เป็นฟิล์มใสระยะเวลาในการเตรียมตัวอย่าง อย่างน้อย 7 วัน ส่วนงานพิมพ์ระยะเวลาในการเตรียมตัวอย่าง อย่างน้อย15 วัน</div>
     </div>
