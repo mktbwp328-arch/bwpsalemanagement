@@ -4098,7 +4098,8 @@ function productDeals(db,name){
    ดูจากชื่อสินค้าและรหัส เรียงลำดับการตรวจจากเฉพาะเจาะจงไปหากว้าง
    (ถุงคลุมพาเลทมักมีคำว่า SHRINK FILM อยู่ด้วย จึงต้องตรวจ HOOD ก่อน) */
 const CATS=[
-  ['ถุงคลุมพาเลท','#0f7b73',/hood|ถุงคลุม|คลุมพาเลท|คลุมสินค้า|หลังคา/i],
+  /* เผื่อสะกดต่างกัน เช่น ถุงคลุม / ถุงคุลม / ถุง คลุม */
+  ['ถุงคลุมพาเลท','#0f7b73',/hood|ถุง\s*ค\s*[ลุ]\s*[ลุ]\s*ม|คลุม|คุลม|หลังคา/i],
   ['ฟิล์มยืด','#2563eb',/stretch|ฟิล์มยืด|ยืด/i],
   ['ฟิล์มใส (Shrink Film)','#c8a13c',/shrink|ชริ้ง|ชริงค์|ฟิล์มหด|ฟิล์มใส/i]
 ];
@@ -4121,6 +4122,24 @@ function categoryStats(items){
   });
   return Object.values(mp).sort((a,b)=>b.amount-a.amount);
 }
+/* กดที่ประเภทเพื่อดูว่ามีสินค้าตัวไหนถูกจัดเข้าประเภทนั้นบ้าง
+   ใช้ตรวจได้ว่าสินค้าที่หาไม่เจอ ไปตกอยู่ประเภทไหน */
+function catDetail(cat,list){
+  const ov=el('<div class="ov"></div>');
+  const m=el(`<div class="modal" style="max-width:640px"><header><div><b>${esc(cat)}</b>
+      <div class="tiny" style="margin-top:2px">สินค้าในใบเสร็จที่ถูกจัดเข้าประเภทนี้ · ${list.length} รายการ</div></div>
+      <button class="close">✕</button></header><div class="mb"><div class="list"></div></div>
+    <footer><div style="flex:1"></div><button class="btn gh" id="c">ปิด</button></footer></div>`);
+  const L=m.querySelector('.list');
+  list.slice().sort((a,b)=>b.amount-a.amount).forEach(p=>L.append(el(`<div class="lrow" style="cursor:default">
+    <div class="lmain"><div class="lt">${esc(p.name)}</div>
+      <div class="lm">${p.code?esc(p.code)+' · ':''}${num0(p.qty)} ${esc(p.unit||'')}${
+        p.kg?' · '+num0(Math.round(p.kg))+' กก.':(p.noKg?' · ยังไม่ได้ใส่ขนาด':'')}</div></div>
+    <div class="lright"><div class="lamt">${num0(Math.round(p.amount))} ฿</div></div></div>`)));
+  if(!list.length)L.append(el('<div class="empty">ยังไม่มีสินค้าในประเภทนี้<div style="font-size:14px">ถ้ามั่นใจว่าขายไปแล้ว ลองกดดูประเภทอื่น เพื่อเช็คว่าชื่อสินค้าถูกจัดไปอยู่ประเภทไหน</div></div>'));
+  m.querySelector('.close').onclick=()=>ov.remove();m.querySelector('#c').onclick=()=>ov.remove();
+  ov.append(m);$('#layer').append(ov);
+}
 /* กราฟวงกลม (โดนัท) วาดด้วย SVG ล้วน ไม่ต้องโหลดไลบรารี */
 let CAT_MODE='amount';
 function categoryCard(items){
@@ -4133,7 +4152,7 @@ function categoryCard(items){
     const unit=CAT_MODE==='kg'?' กก.':' ฿';
     card.append(el(`<div class="pad" style="padding-bottom:6px">
       <div class="h3" style="margin:0">สัดส่วนตามประเภทสินค้า</div>
-      <div class="tiny" style="margin-top:3px">นับจากใบเสร็จรับเงิน — ตรงกับยอดขายรวมด้านบน · แยกเป็นฟิล์มใส ฟิล์มยืด และถุงคลุมพาเลท</div></div>`));
+      <div class="tiny" style="margin-top:3px">นับจากใบเสร็จรับเงิน — ตรงกับยอดขายรวมด้านบน · กดที่ประเภทเพื่อดูว่ามีสินค้าตัวไหนบ้าง</div></div>`));
     /* ปุ่มสลับระหว่างดูเป็นยอดขายกับดูเป็นน้ำหนัก */
     const sw=el('<div class="pad" style="padding:0 16px 4px"></div>');
     sw.append(seg([['amount','ยอดขาย (บาท)'],['kg','น้ำหนัก (กก.)']],CAT_MODE,k=>{CAT_MODE=k;draw();}));
@@ -4160,13 +4179,16 @@ function categoryCard(items){
       /* ประเภทที่ยังไม่มีรายการเลยในช่วงนี้ ใส่ขีดไว้ จะได้ไม่สับสนกับยอด 0 ที่มีของจริง */
       const kgTxt=!r.n?'ยังไม่มีรายการ':r.kg?num0(Math.round(r.kg))+' กก.':(r.noKg?'ยังไม่ได้ใส่ขนาด':'0 กก.');
       const bhTxt=!r.n?'-':num0(Math.round(r.amount))+' ฿';
-      leg.append(el(`<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--bd2)">
+      const row=el(`<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--bd2);cursor:pointer;border-radius:8px">
         <span style="width:12px;height:12px;border-radius:3px;background:${catColor(r.cat)};flex:0 0 auto"></span>
         <span style="flex:1;min-width:0;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.cat)}</span>
         <b style="font-size:14px;white-space:nowrap">${pct.toFixed(1)}%</b>
         <span style="white-space:nowrap;width:120px;text-align:right;font-size:13px;font-weight:600">${CAT_MODE==='kg'?kgTxt:bhTxt}</span>
         <span class="tiny" style="white-space:nowrap;width:120px;text-align:right">${CAT_MODE==='kg'?bhTxt:kgTxt}${
-          r.noKg&&r.kg?' (ขาด '+r.noKg+')':''}</span></div>`));
+          r.noKg&&r.kg?' (ขาด '+r.noKg+')':''}</span></div>`);
+      row.onmouseenter=()=>row.style.background='#f6f9ff';row.onmouseleave=()=>row.style.background='';
+      row.onclick=()=>catDetail(r.cat,(items||[]).filter(p=>categoryOf(p.name,p.code)===r.cat));
+      leg.append(row);
     });
     const totKg=rows.reduce((a,r)=>a+r.kg,0),totBh=rows.reduce((a,r)=>a+r.amount,0);
     leg.append(el(`<div style="display:flex;align-items:center;gap:10px;padding:9px 0 0">
