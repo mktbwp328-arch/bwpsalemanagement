@@ -3913,8 +3913,11 @@ function issuePoReceipt(p,item){
   const pre=it=>({customer:p.customer,poRef:p.no,poItemId:it?it.id:'',
     shipTo:p.ship||'',salesman:p.owner||'',
     amount:Math.round((it?itemGross(it):poGross(p))*100)/100,
-    items:it?[{code:it.code||'',name:it.name||'',qty:it.qty||0,unit:it.unit||'',price:it.price||0}]
-            :(p.items||[]).map(x=>({code:x.code||'',name:x.name||'',qty:x.qty||0,unit:x.unit||'',price:x.price||0}))});
+    /* ขนาดชิ้นงานติดไปด้วย ใบเสร็จจะได้คำนวณน้ำหนักเป็นกิโลกรัมได้ */
+    items:it?[{code:it.code||'',name:it.name||'',qty:it.qty||0,unit:it.unit||'',price:it.price||0,
+               w:it.w||'',l:it.l||'',t:it.t||''}]
+            :(p.items||[]).map(x=>({code:x.code||'',name:x.name||'',qty:x.qty||0,unit:x.unit||'',price:x.price||0,
+               w:x.w||'',l:x.l||'',t:x.t||''}))});
   if(item)return issueReceipt(pre(item));
   const left=poItemsLeft(p);
   if(!items.length)return issueReceipt(pre(null));
@@ -3973,6 +3976,20 @@ function productStats(inP){
     &&!DB.pos.some(p=>p.status!=='ยกเลิก'&&p.quoteRef===d.no)).forEach(d=>(d.items||[]).forEach(add));
   return Object.values(map).sort((a,b)=>b.amount-a.amount);
 }
+/* สินค้าที่ขายได้จริง — นับจากใบเสร็จรับเงินอย่างเดียว ให้ตรงกับยอดขายรวมบนแดชบอร์ด */
+function receiptProductStats(inP){
+  const map={};
+  liveRc().filter(r=>inP(r.date)).forEach(r=>(r.items||[]).forEach(it=>{
+    const name=String(it.name||'').trim()||'(ไม่ระบุชื่อสินค้า)';
+    const k=name.toLowerCase();
+    const e=map[k]||(map[k]={name,code:it.code||'',qty:0,unit:it.unit||'',amount:0,deals:0,kg:0,noKg:0});
+    e.qty+=(+it.qty||0);e.amount+=(+it.qty||0)*(+it.price||0);e.deals++;
+    if(!e.unit&&it.unit)e.unit=it.unit;
+    const kg=itemKg(it);
+    if(kg===null)e.noKg++;else e.kg+=kg;
+  }));
+  return Object.values(map).sort((a,b)=>b.amount-a.amount);
+}
 /* ตัวเลขสรุปทั้งชุดของข้อมูลหนึ่งชุด (ของตัวเองหรือของเซลคนอื่น) */
 function statsOf(db){
   return withDB(db,()=>{
@@ -3994,7 +4011,8 @@ function statsOf(db){
       quoteN:quotes.length,quoteOk:quotes.filter(d=>d.status==='อนุมัติแล้ว').length,
       poN:pos.length,poSum:pos.reduce((a,b)=>a+poGross(b),0),
       custN:css.length,custWon:css.filter(c=>c.status==='ปิดการขาย').length,
-      products:productStats(inPeriod),buyers:customerStats(inPeriod),months,cnts,year:yr};
+      products:productStats(inPeriod),rcProducts:receiptProductStats(inPeriod),
+      buyers:customerStats(inPeriod),months,cnts,year:yr};
   });
 }
 /* ลูกค้าแต่ละรายซื้อสินค้าอะไรไปบ้าง — รวมจากแหล่งเดียวกับสินค้าที่ขายได้ */
@@ -4113,7 +4131,7 @@ function categoryCard(items){
     const unit=CAT_MODE==='kg'?' กก.':' ฿';
     card.append(el(`<div class="pad" style="padding-bottom:6px">
       <div class="h3" style="margin:0">สัดส่วนตามประเภทสินค้า</div>
-      <div class="tiny" style="margin-top:3px">แยกเป็นฟิล์มใส ฟิล์มยืด และถุงคลุมพาเลท</div></div>`));
+      <div class="tiny" style="margin-top:3px">นับจากใบเสร็จรับเงิน — ตรงกับยอดขายรวมด้านบน · แยกเป็นฟิล์มใส ฟิล์มยืด และถุงคลุมพาเลท</div></div>`));
     /* ปุ่มสลับระหว่างดูเป็นยอดขายกับดูเป็นน้ำหนัก */
     const sw=el('<div class="pad" style="padding:0 16px 4px"></div>');
     sw.append(seg([['amount','ยอดขาย (บาท)'],['kg','น้ำหนัก (กก.)']],CAT_MODE,k=>{CAT_MODE=k;draw();}));
@@ -4263,7 +4281,7 @@ function pgDashboard(v){
     c.onclick=()=>go(page,extra);
     kp2.append(c);});
   v.append(kp2);
-  v.append(categoryCard(st.products));
+  v.append(categoryCard(st.rcProducts));
 
   /* งานที่ปิดการขายแล้วแต่ยังไม่ได้ออกใบเสร็จ — รวมเคส "มีแค่ใบเสนอราคา ไม่มี PO" */
   const pc=el('<div class="card" id="pendingCard"></div>');
@@ -4467,7 +4485,14 @@ function pgTeam(v){
       e.qty+=p.qty;e.amount+=p.amount;e.deals+=p.deals;e.kg+=p.kg||0;e.noKg+=p.noKg||0;
       if(!e.unit&&p.unit)e.unit=p.unit;}));
     prods=Object.values(mp).sort((a,b)=>b.amount-a.amount);}
-  v.append(categoryCard(prods));
+  /* สินค้าจากใบเสร็จ — ใช้กับกราฟวงกลม ให้ตรงกับยอดขายรวมด้านบน */
+  const mergeProds=list=>{const mp={};list.forEach(arr=>(arr||[]).forEach(p=>{
+      const k=p.name.toLowerCase(),e=mp[k]||(mp[k]={name:p.name,code:p.code||'',qty:0,unit:p.unit,amount:0,deals:0,kg:0,noKg:0});
+      e.qty+=p.qty;e.amount+=p.amount;e.deals+=p.deals;e.kg+=p.kg||0;e.noKg+=p.noKg||0;
+      if(!e.unit&&p.unit)e.unit=p.unit;}));
+    return Object.values(mp).sort((a,b)=>b.amount-a.amount);};
+  const rcProds=cur?cur.st.rcProducts:mergeProds(ok.map(r=>r.st.rcProducts));
+  v.append(categoryCard(rcProds));
 
   /* อันดับยอดขายรายคน — กดเพื่อเจาะดูรายคน */
   const rank=el(`<div class="card"><div class="pad" style="padding-bottom:6px">
