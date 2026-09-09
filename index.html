@@ -3958,7 +3958,8 @@ function issueReceipt(pre){
    withDB: สลับชุดข้อมูลชั่วคราวเพื่อคำนวณของเซลคนอื่น แล้วคืนค่าเดิมเสมอ */
 function withDB(db,fn){const o=DB;DB=db;try{return fn();}finally{DB=o;}}
 
-/* สินค้าที่ขายได้ — รวมจากรายการใน PO และใบเสนอราคาที่อนุมัติแล้วแต่ยังไม่มี PO */
+/* สินค้าที่ขายได้ — นับจากรายการในใบเสร็จรับเงินเท่านั้น
+   ทุกตัวเลขบนแดชบอร์ดจึงอ้างอิงชุดเดียวกันกับยอดขายรวม */
 function productStats(inP){
   const map={};
   const add=it=>{
@@ -3971,23 +3972,7 @@ function productStats(inP){
     const kg=itemKg(it);
     if(kg===null)e.noKg++;else e.kg+=kg;
   };
-  DB.pos.filter(p=>p.status!=='ยกเลิก'&&inP(p.date)).forEach(p=>(p.items||[]).forEach(add));
-  DB.docs.filter(d=>d.type==='quotation'&&d.status==='อนุมัติแล้ว'&&inP(d.date)
-    &&!DB.pos.some(p=>p.status!=='ยกเลิก'&&p.quoteRef===d.no)).forEach(d=>(d.items||[]).forEach(add));
-  return Object.values(map).sort((a,b)=>b.amount-a.amount);
-}
-/* สินค้าที่ขายได้จริง — นับจากใบเสร็จรับเงินอย่างเดียว ให้ตรงกับยอดขายรวมบนแดชบอร์ด */
-function receiptProductStats(inP){
-  const map={};
-  liveRc().filter(r=>inP(r.date)).forEach(r=>(r.items||[]).forEach(it=>{
-    const name=String(it.name||'').trim()||'(ไม่ระบุชื่อสินค้า)';
-    const k=name.toLowerCase();
-    const e=map[k]||(map[k]={name,code:it.code||'',qty:0,unit:it.unit||'',amount:0,deals:0,kg:0,noKg:0});
-    e.qty+=(+it.qty||0);e.amount+=(+it.qty||0)*(+it.price||0);e.deals++;
-    if(!e.unit&&it.unit)e.unit=it.unit;
-    const kg=itemKg(it);
-    if(kg===null)e.noKg++;else e.kg+=kg;
-  }));
+  liveRc().filter(r=>inP(r.date)).forEach(r=>(r.items||[]).forEach(add));
   return Object.values(map).sort((a,b)=>b.amount-a.amount);
 }
 /* ตัวเลขสรุปทั้งชุดของข้อมูลหนึ่งชุด (ของตัวเองหรือของเซลคนอื่น) */
@@ -4011,8 +3996,7 @@ function statsOf(db){
       quoteN:quotes.length,quoteOk:quotes.filter(d=>d.status==='อนุมัติแล้ว').length,
       poN:pos.length,poSum:pos.reduce((a,b)=>a+poGross(b),0),
       custN:css.length,custWon:css.filter(c=>c.status==='ปิดการขาย').length,
-      products:productStats(inPeriod),rcProducts:receiptProductStats(inPeriod),
-      buyers:customerStats(inPeriod),months,cnts,year:yr};
+      products:productStats(inPeriod),buyers:customerStats(inPeriod),months,cnts,year:yr};
   });
 }
 /* ลูกค้าแต่ละรายซื้อสินค้าอะไรไปบ้าง — รวมจากแหล่งเดียวกับสินค้าที่ขายได้ */
@@ -4033,9 +4017,8 @@ function customerStats(inP){
     const c=String(cust||'').trim()||'(ไม่ระบุลูกค้า)';
     if(map[c])map[c].deals++;
   };
-  DB.pos.filter(p=>p.status!=='ยกเลิก'&&inP(p.date)).forEach(p=>doc(p.customer,p.items));
-  DB.docs.filter(d=>d.type==='quotation'&&d.status==='อนุมัติแล้ว'&&inP(d.date)
-    &&!DB.pos.some(p=>p.status!=='ยกเลิก'&&p.quoteRef===d.no)).forEach(d=>doc(d.customer,d.items));
+  /* นับจากใบเสร็จรับเงินเท่านั้น ให้ตรงกับยอดขายรวมบนแดชบอร์ด */
+  liveRc().filter(r=>inP(r.date)).forEach(r=>doc(r.customer,r.items));
   return Object.values(map)
     .map(e=>Object.assign(e,{list:Object.values(e.items).sort((a,b)=>b.amount-a.amount)}))
     .sort((a,b)=>b.amount-a.amount);
@@ -4045,7 +4028,7 @@ function customersCard(rows,title,sub){
   const card=el(`<div class="card"><div class="pad" style="padding-bottom:6px">
     <div class="h3" style="margin:0">${esc(title)}</div>
     <div class="tiny" style="margin-top:3px">${esc(sub)}</div></div></div>`);
-  if(!rows.length){card.append(el('<div class="empty">ยังไม่มีข้อมูลการซื้อในช่วงนี้<div style="font-size:14px">จะขึ้นเมื่อมี PO หรือใบเสนอราคาที่อนุมัติแล้ว</div></div>'));return card;}
+  if(!rows.length){card.append(el('<div class="empty">ยังไม่มีข้อมูลการซื้อในช่วงนี้<div style="font-size:14px">จะขึ้นเมื่อออกใบเสร็จรับเงินแล้ว</div></div>'));return card;}
   const mx=Math.max(...rows.map(r=>r.amount),1);
   const box=el('<div class="pad" style="padding-top:4px"></div>');
   rows.slice(0,8).forEach((r,i)=>{
@@ -4084,12 +4067,8 @@ function productDeals(db,name){
   const key=String(name).toLowerCase(),hit=it=>String(it.name||'').trim().toLowerCase()===key;
   return withDB(db,()=>{
     const out=[];
-    DB.pos.filter(p=>p.status!=='ยกเลิก'&&inPeriod(p.date)).forEach(p=>
-      (p.items||[]).filter(hit).forEach(i=>out.push({label:'PO '+p.no,customer:p.customer,date:p.date,
-        qty:+i.qty||0,unit:i.unit||'',kg:itemKg(i),amount:(+i.qty||0)*(+i.price||0)})));
-    DB.docs.filter(d=>d.type==='quotation'&&d.status==='อนุมัติแล้ว'&&inPeriod(d.date)
-      &&!DB.pos.some(p=>p.status!=='ยกเลิก'&&p.quoteRef===d.no)).forEach(d=>
-      (d.items||[]).filter(hit).forEach(i=>out.push({label:'ใบเสนอราคา '+d.no,customer:d.customer,date:d.date,
+    liveRc().filter(r=>inPeriod(r.date)).forEach(r=>
+      (r.items||[]).filter(hit).forEach(i=>out.push({label:'ใบเสร็จ '+r.no,customer:r.customer,date:r.date,
         qty:+i.qty||0,unit:i.unit||'',kg:itemKg(i),amount:(+i.qty||0)*(+i.price||0)})));
     return out.sort((a,b)=>b.date.localeCompare(a.date));
   });
@@ -4159,7 +4138,7 @@ function categoryCard(items){
     card.append(sw);
     if(!tot){
       card.append(el(`<div class="empty">ยังไม่มีข้อมูลในช่วงนี้<div style="font-size:14px">${
-        CAT_MODE==='kg'?'ใส่ขนาดสินค้าในรายการเพื่อให้คำนวณน้ำหนักได้':'สินค้าจะขึ้นเมื่อมี PO หรือใบเสนอราคาที่อนุมัติแล้ว'}</div></div>`));
+        CAT_MODE==='kg'?'ใส่ขนาดสินค้าในรายการเพื่อให้คำนวณน้ำหนักได้':'สินค้าจะขึ้นเมื่อออกใบเสร็จรับเงินแล้ว'}</div></div>`));
       return;
     }
     const R=64,SW=26,C=2*Math.PI*R;
@@ -4214,7 +4193,7 @@ function productsCard(db,items,title,sub){
   const card=el(`<div class="card"><div class="pad" style="padding-bottom:6px">
     <div class="h3" style="margin:0">${esc(title)}</div>
     <div class="tiny" style="margin-top:3px">${esc(sub)}</div></div></div>`);
-  if(!items.length){card.append(el('<div class="empty">ยังไม่มีรายการสินค้าในช่วงนี้<div style="font-size:14px">สินค้าจะขึ้นเมื่อมี PO หรือใบเสนอราคาที่อนุมัติแล้ว</div></div>'));return card;}
+  if(!items.length){card.append(el('<div class="empty">ยังไม่มีรายการสินค้าในช่วงนี้<div style="font-size:14px">สินค้าจะขึ้นเมื่อออกใบเสร็จรับเงินแล้ว</div></div>'));return card;}
   const mx=Math.max(...items.map(p=>p.amount),1);
   /* น้ำหนักรวมของสินค้าทุกตัวในช่วงนี้ */
   const tKg=items.reduce((a,p)=>a+(p.kg||0),0),tNo=items.reduce((a,p)=>a+(p.noKg||0),0);
@@ -4306,7 +4285,7 @@ function pgDashboard(v){
     c.onclick=()=>go(page,extra);
     kp2.append(c);});
   v.append(kp2);
-  v.append(categoryCard(st.rcProducts));
+  v.append(categoryCard(st.products));
 
   /* งานที่ปิดการขายแล้วแต่ยังไม่ได้ออกใบเสร็จ — รวมเคส "มีแค่ใบเสนอราคา ไม่มี PO" */
   const pc=el('<div class="card" id="pendingCard"></div>');
@@ -4412,11 +4391,11 @@ function pgDashboard(v){
 
   const row4=el('<div class="split"></div>');
   row4.append(productsCard(DB,st.products,'สินค้าที่ขายได้',
-    'กดที่สินค้าเพื่อดูว่าขายให้ลูกค้ารายไหนบ้าง'));
+    'นับจากใบเสร็จรับเงิน · กดที่สินค้าเพื่อดูว่าออกใบเสร็จให้ลูกค้ารายไหนบ้าง'));
   row4.append(customersCard(st.buyers,'ลูกค้าซื้ออะไรบ้าง',
-    'กดที่ชื่อลูกค้าเพื่อดูรายการสินค้าที่ซื้อไป'));
+    'นับจากใบเสร็จรับเงิน · กดที่ชื่อลูกค้าเพื่อดูรายการสินค้าที่ซื้อไป'));
   v.append(row4);
-  v.append(el('<div class="tiny" style="margin-top:-4px">ทุกการ์ดนับจากรายการใน PO และใบเสนอราคาที่อนุมัติแล้วแต่ยังไม่มี PO (ไม่นับซ้ำ)</div>'));
+  v.append(el('<div class="tiny" style="margin-top:-4px">ทุกการ์ดในหน้านี้นับจากรายการสินค้าในใบเสร็จรับเงินเท่านั้น จึงตรงกับยอดขายรวมเสมอ — งานที่ยังไม่ได้ออกใบเสร็จดูได้ที่การ์ด "ยอดในมือ"</div>'));
 }
 
 /* ---------- 1b. ภาพรวมทีมขาย (เฉพาะผู้จัดการ/ผู้ดูแล) ----------
@@ -4510,14 +4489,7 @@ function pgTeam(v){
       e.qty+=p.qty;e.amount+=p.amount;e.deals+=p.deals;e.kg+=p.kg||0;e.noKg+=p.noKg||0;
       if(!e.unit&&p.unit)e.unit=p.unit;}));
     prods=Object.values(mp).sort((a,b)=>b.amount-a.amount);}
-  /* สินค้าจากใบเสร็จ — ใช้กับกราฟวงกลม ให้ตรงกับยอดขายรวมด้านบน */
-  const mergeProds=list=>{const mp={};list.forEach(arr=>(arr||[]).forEach(p=>{
-      const k=p.name.toLowerCase(),e=mp[k]||(mp[k]={name:p.name,code:p.code||'',qty:0,unit:p.unit,amount:0,deals:0,kg:0,noKg:0});
-      e.qty+=p.qty;e.amount+=p.amount;e.deals+=p.deals;e.kg+=p.kg||0;e.noKg+=p.noKg||0;
-      if(!e.unit&&p.unit)e.unit=p.unit;}));
-    return Object.values(mp).sort((a,b)=>b.amount-a.amount);};
-  const rcProds=cur?cur.st.rcProducts:mergeProds(ok.map(r=>r.st.rcProducts));
-  v.append(categoryCard(rcProds));
+  v.append(categoryCard(prods));
 
   /* อันดับยอดขายรายคน — กดเพื่อเจาะดูรายคน */
   const rank=el(`<div class="card"><div class="pad" style="padding-bottom:6px">
@@ -4589,8 +4561,8 @@ function pgTeam(v){
 
   const row4=el('<div class="split"></div>');
   row4.append(productsCard(cur?cur.p.db:null,prods,'สินค้าขายดี — '+who,
-    cur?'กดที่สินค้าเพื่อดูว่าขายให้ลูกค้ารายไหนบ้าง':'รวมทุกคนในทีม · เลือกเซลรายคนด้านบนเพื่อดูรายละเอียดสินค้า'));
-  row4.append(customersCard(buyers,'ลูกค้าซื้ออะไรบ้าง — '+who,'กดที่ชื่อลูกค้าเพื่อดูรายการสินค้าที่ซื้อไป'));
+    cur?'นับจากใบเสร็จรับเงิน · กดที่สินค้าเพื่อดูว่าออกใบเสร็จให้ลูกค้ารายไหนบ้าง':'รวมทุกคนในทีม · เลือกเซลรายคนด้านบนเพื่อดูรายละเอียดสินค้า'));
+  row4.append(customersCard(buyers,'ลูกค้าซื้ออะไรบ้าง — '+who,'นับจากใบเสร็จรับเงิน · กดที่ชื่อลูกค้าเพื่อดูรายการสินค้าที่ซื้อไป'));
   v.append(row4);
 
   if(cur&&!cur.p.mine){
