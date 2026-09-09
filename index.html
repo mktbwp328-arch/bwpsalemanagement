@@ -4110,13 +4110,22 @@ const catColor=n=>(CATS.find(c=>c[0]===n)||CAT_OTHER)[1];
 function categoryStats(items){
   const mp={};
   /* ตั้งครบทั้ง 3 ประเภทไว้ก่อน ประเภทที่ยังไม่มียอดจะได้ยังโชว์เป็น 0 ไม่ใช่หายไปเฉย ๆ */
-  CATS.forEach(c=>{mp[c[0]]={cat:c[0],amount:0,kg:0,noKg:0,n:0};});
+  CATS.forEach(c=>{mp[c[0]]={cat:c[0],amount:0,kg:0,noKg:0,n:0,units:{}};});
   (items||[]).forEach(p=>{
     const c=categoryOf(p.name,p.code);
-    const e=mp[c]||(mp[c]={cat:c,amount:0,kg:0,noKg:0,n:0});
+    const e=mp[c]||(mp[c]={cat:c,amount:0,kg:0,noKg:0,n:0,units:{}});
     e.amount+=p.amount||0;e.kg+=p.kg||0;e.noKg+=p.noKg||0;e.n+=p.deals||0;
+    /* รวมจำนวนแยกตามหน่วย เช่น กี่ม้วน กี่ใบ */
+    const u=String(p.unit||'').trim()||'หน่วย';
+    e.units[u]=(e.units[u]||0)+(+p.qty||0);
   });
   return Object.values(mp).sort((a,b)=>b.amount-a.amount);
+}
+/* สรุปจำนวนแยกตามหน่วย เช่น "1,160 ม้วน · 4,000 ใบ" */
+function qtyTxt(r){
+  return Object.keys(r.units||{}).filter(u=>r.units[u]>0)
+    .sort((a,b)=>r.units[b]-r.units[a])
+    .map(u=>num0(Math.round(r.units[u]))+' '+u).join(' · ');
 }
 /* กดที่ประเภทเพื่อดูว่ามีสินค้าตัวไหนถูกจัดเข้าประเภทนั้นบ้าง
    ใช้ตรวจได้ว่าสินค้าที่หาไม่เจอ ไปตกอยู่ประเภทไหน */
@@ -4177,7 +4186,8 @@ function categoryCard(items){
       const bhTxt=!r.n?'-':num0(Math.round(r.amount))+' ฿';
       const row=el(`<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--bd2);cursor:pointer;border-radius:8px">
         <span style="width:12px;height:12px;border-radius:3px;background:${catColor(r.cat)};flex:0 0 auto"></span>
-        <span style="flex:1;min-width:0;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.cat)}</span>
+        <span style="flex:1;min-width:0"><span style="display:block;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.cat)}</span>
+          ${qtyTxt(r)?`<span class="tiny" style="display:block;margin-top:1px">${esc(qtyTxt(r))}</span>`:''}</span>
         <b style="font-size:14px;white-space:nowrap">${pct.toFixed(1)}%</b>
         <span style="white-space:nowrap;width:120px;text-align:right;font-size:13px;font-weight:600">${CAT_MODE==='kg'?kgTxt:bhTxt}</span>
         <span class="tiny" style="white-space:nowrap;width:120px;text-align:right">${CAT_MODE==='kg'?bhTxt:kgTxt}${
