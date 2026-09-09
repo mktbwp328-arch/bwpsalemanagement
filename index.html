@@ -779,9 +779,10 @@ function seedDemo(){
 /* ล้างข้อมูลงานขายทั้งหมด แต่เก็บหัวกระดาษ โลโก้ และการตั้งค่าไว้ */
 function clearAllData(){
   if(!isManager()){toast('เฉพาะผู้ดูแลระบบเท่านั้น');return;}
+  /* กันลบข้อมูลของลูกทีมโดยไม่ตั้งใจ — ล้างได้เฉพาะบัญชีของตัวเอง */
+  if(viewingOther()){toast('ล้างข้อมูลของ '+(AUTH.viewingName||'เพื่อนร่วมทีม')+' ไม่ได้ — ล้างได้เฉพาะบัญชีของตัวเอง');return;}
   askConfirm("ล้างข้อมูลทั้งหมด",
-    "ลบลูกค้า เอกสาร PO และใบเสร็จของ "
-    +(viewingOther()?('บัญชี '+(AUTH.viewingName||'เพื่อนร่วมทีม')):'บัญชีนี้')
+    "ลบลูกค้า เอกสาร PO และใบเสร็จของบัญชีนี้"
     +" ทั้งหมด กู้คืนไม่ได้ (หัวกระดาษ โลโก้ และการตั้งค่ายังอยู่)",
     "ล้างข้อมูล",()=>{
       const keep={logo:DB.logo,cert:DB.cert,company:DB.company,sb:DB.sb};
@@ -3742,6 +3743,8 @@ function render(){
   mk.style.cursor='default';
   /* ปุ่มที่อันตราย ให้เห็นเฉพาะผู้ดูแล กันพนักงานกดผิด */
   document.querySelectorAll('.admin-only').forEach(b=>{b.style.display=isManager()?'':'none';});
+  /* ล้างข้อมูลได้เฉพาะบัญชีตัวเอง — ตอนเปิดดูข้อมูลลูกทีมให้ซ่อนปุ่มไว้ */
+  const clr=$('#clearBtn');if(clr&&isManager())clr.style.display=viewingOther()?'none':'';
   /* ปุ่มสร้างข้อมูลตัวอย่าง เห็นเฉพาะบัญชี bwpsaleadmin */
   const demo=$('#demoBtn');if(demo)demo.style.display=isDemoAccount()?'':'none';
 
