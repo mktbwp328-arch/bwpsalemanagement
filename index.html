@@ -439,7 +439,6 @@ a{color:var(--blue);text-decoration:none}
     <div style="margin-top:auto;padding:18px 12px 0;display:flex;flex-direction:column;gap:8px">
       <button class="btn sm blk" onclick="pasteCodeModal()" style="background:#1b3f86;border-color:#2a55a8">✍ เซ็นอนุมัติเอกสาร</button>
       <button class="btn gh sm blk admin-only" id="dbBtn" onclick="sbSettings()">ตั้งค่าฐานข้อมูล</button>
-      <button class="btn gh sm blk" id="demoBtn" style="display:none" onclick="seedDemo()">สร้างข้อมูลตัวอย่าง</button>
       <button class="btn dg sm blk admin-only" id="clearBtn" onclick="clearAllData()">ล้างข้อมูลทั้งหมด</button>
     </div>
   </aside>
@@ -3745,8 +3744,6 @@ function render(){
   document.querySelectorAll('.admin-only').forEach(b=>{b.style.display=isManager()?'':'none';});
   /* ล้างข้อมูลได้เฉพาะบัญชีตัวเอง — ตอนเปิดดูข้อมูลลูกทีมให้ซ่อนปุ่มไว้ */
   const clr=$('#clearBtn');if(clr&&isManager())clr.style.display=viewingOther()?'none':'';
-  /* ปุ่มสร้างข้อมูลตัวอย่าง เห็นเฉพาะบัญชี bwpsaleadmin */
-  const demo=$('#demoBtn');if(demo)demo.style.display=(isDemoAccount()&&!viewingOther())?'':'none';
 
   const v=$('#view');v.innerHTML='';$('#topActions').innerHTML='';
   if(S.page==='team'&&!isManager())S.page='dashboard';
