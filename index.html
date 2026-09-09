@@ -4112,6 +4112,8 @@ const catColor=n=>(CATS.find(c=>c[0]===n)||CAT_OTHER)[1];
 /* รวมยอดและน้ำหนักตามประเภท จากรายการสินค้าที่สรุปไว้แล้ว */
 function categoryStats(items){
   const mp={};
+  /* ตั้งครบทั้ง 3 ประเภทไว้ก่อน ประเภทที่ยังไม่มียอดจะได้ยังโชว์เป็น 0 ไม่ใช่หายไปเฉย ๆ */
+  CATS.forEach(c=>{mp[c[0]]={cat:c[0],amount:0,kg:0,noKg:0,n:0};});
   (items||[]).forEach(p=>{
     const c=categoryOf(p.name,p.code);
     const e=mp[c]||(mp[c]={cat:c,amount:0,kg:0,noKg:0,n:0});
@@ -4155,8 +4157,9 @@ function categoryCard(items){
     rows.forEach(r=>{
       const pct=tot?r[key]/tot*100:0;
       /* บอกทั้งยอดขายและน้ำหนักในบรรทัดเดียว จะได้รู้ว่าประเภทไหนกี่บาท กี่กิโล */
-      const kgTxt=r.kg?num0(Math.round(r.kg))+' กก.':(r.noKg?'ยังไม่ได้ใส่ขนาด':'0 กก.');
-      const bhTxt=num0(Math.round(r.amount))+' ฿';
+      /* ประเภทที่ยังไม่มีรายการเลยในช่วงนี้ ใส่ขีดไว้ จะได้ไม่สับสนกับยอด 0 ที่มีของจริง */
+      const kgTxt=!r.n?'ยังไม่มีรายการ':r.kg?num0(Math.round(r.kg))+' กก.':(r.noKg?'ยังไม่ได้ใส่ขนาด':'0 กก.');
+      const bhTxt=!r.n?'-':num0(Math.round(r.amount))+' ฿';
       leg.append(el(`<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--bd2)">
         <span style="width:12px;height:12px;border-radius:3px;background:${catColor(r.cat)};flex:0 0 auto"></span>
         <span style="flex:1;min-width:0;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.cat)}</span>
