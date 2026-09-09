@@ -4228,7 +4228,9 @@ async function loadTeam(force){
     const people=[];
     for(const t of all){
       let db=null;
-      try{db=t.mine?DB:await cloudLoad(t.id);}catch(e){}
+      /* ใช้ข้อมูลในเครื่องได้เฉพาะตอนดูข้อมูลของตัวเองอยู่
+         ถ้ากำลังเปิดดูข้อมูลลูกทีม DB ในเครื่องคือของลูกทีมคนนั้น ต้องดึงของตัวเองจากคลาวด์แทน */
+      try{db=(t.mine&&!viewingOther())?DB:await cloudLoad(t.id);}catch(e){}
       if(db&&db.customers){try{withDB(db,migrate);}catch(e){}}
       people.push(Object.assign({},t,{db:db&&db.customers?db:null}));
     }
