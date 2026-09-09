@@ -608,6 +608,41 @@ function offerCompress(bytes){
         +(after>4*1024*1024?' — ยังใหญ่อยู่ ควรลบรูปที่ไม่ใช้ออก':''));
     });
 }
+/* ---------- กันข้อมูลหายเวลาใช้หลายเครื่อง / หลายแท็บ ----------
+   เดิม: ตอนบันทึกขึ้นคลาวด์จะเขียนทับทั้งก้อน ถ้าอีกเครื่องเพิ่งบันทึกงานใหม่ไว้
+         งานนั้นจะถูกทับหายไปทันที (เช่น ออกใบเสร็จที่คอม แล้วมือถือบันทึกทับ)
+   ใหม่: ก่อนเขียน จะเช็คว่าบนคลาวด์มีการบันทึกใหม่กว่าที่เครื่องนี้เห็นล่าสุดหรือไม่
+         ถ้ามี จะรวมข้อมูลสองฝั่งเข้าด้วยกันก่อน แล้วค่อยเขียน — ของใครก็ไม่หาย */
+let cloudSeen=0;                 /* updated_at ล่าสุดที่เครื่องนี้รับรู้ (มิลลิวินาที) */
+const MERGE_KEYS=['customers','docs','pos','receipts'];
+/* รวมรายการสองชุดเข้าด้วยกัน ยึด id เป็นหลัก ของที่มีทั้งสองฝั่งใช้ของเครื่องนี้
+   ของที่มีเฉพาะบนคลาวด์ (อีกเครื่องเพิ่งสร้าง) เติมกลับเข้ามา ไม่ทิ้ง */
+function mergeList(mine,theirs){
+  const out=(mine||[]).slice();
+  const seen=new Set(out.map(x=>x&&x.id).filter(Boolean));
+  /* กันซ้ำอีกชั้นด้วยเลขที่เอกสาร เผื่อ id คนละตัวแต่เป็นใบเดียวกัน */
+  const noKey=x=>x&&x.no?String(x.type||'')+'|'+x.no:null;
+  const nos=new Set(out.map(noKey).filter(Boolean));
+  let added=0;
+  (theirs||[]).forEach(x=>{
+    if(!x)return;
+    if(x.id&&seen.has(x.id))return;
+    const k=noKey(x);
+    if(k&&nos.has(k))return;
+    out.push(x);added++;
+    if(x.id)seen.add(x.id);
+    if(k)nos.add(k);
+  });
+  return {list:out,added};
+}
+function mergeCloud(remote){
+  let total=0;
+  MERGE_KEYS.forEach(k=>{
+    const r=mergeList(DB[k],remote&&remote[k]);
+    DB[k]=r.list;total+=r.added;
+  });
+  return total;
+}
 let lastSyncErr='',syncErrShown=false,retryTimer=null;
 /* ---------- จัดบ้านให้อัตโนมัติ ----------
    เปิดเว็บแล้วถ้ายังมีรูปฝังอยู่ในข้อมูล จะบีบให้เล็กก่อน แล้วย้ายขึ้นที่เก็บไฟล์เอง
@@ -644,12 +679,27 @@ async function cloudSave(tries){
   }
   syncPending=false;
   try{
+    /* เช็คก่อนว่ามีใครบันทึกทับไว้หลังจากที่เครื่องนี้โหลดมา ถ้ามีให้รวมข้อมูลก่อน */
+    try{
+      const cur=await cloudRow(dataOwner());
+      const curT=cur&&cur.updated_at?Date.parse(cur.updated_at):0;
+      if(curT&&curT>cloudSeen+2000&&cur.data&&cur.data.customers){
+        const added=mergeCloud(cur.data);
+        if(added){
+          try{localStorage.setItem(localKey(),JSON.stringify(DB));}catch(e){}
+          render();
+          toast('พบงานที่บันทึกจากอีกเครื่อง '+added+' รายการ — รวมเข้าด้วยกันให้แล้ว');
+        }
+      }
+    }catch(e){}
     /* คลังรหัสสินค้าเก็บในตารางกลาง ไม่ต้องใส่มากับข้อมูลส่วนตัวของแต่ละคน */
     const mine=Object.assign({},DB);delete mine.products;
-    const body=JSON.stringify({user_id:dataOwner(),data:mine,updated_at:new Date().toISOString()});
+    const stamp=new Date().toISOString();
+    const body=JSON.stringify({user_id:dataOwner(),data:mine,updated_at:stamp});
     if(body.length>4*1024*1024)offerCompress(body.length);
     await sbFetch('user_data?on_conflict=user_id',{method:'POST',
       headers:Object.assign(sbHeaders(),{Prefer:'resolution=merge-duplicates,return=minimal'}),body});
+    cloudSeen=Date.parse(stamp)||Date.now();   /* จำไว้ว่านี่คือรุ่นล่าสุดที่เครื่องนี้เขียนเอง */
     lastSyncErr='';syncErrShown=false;
     setSync('saved');setTimeout(()=>{if(syncState==='saved'&&!syncPending)setSync('idle');},2500);
   }catch(e){
@@ -6644,7 +6694,8 @@ async function teamPicker(){
 async function viewUser(id,name,mine){
   toast('กำลังโหลดข้อมูล…');
   try{
-    const d=await cloudLoad(id);
+    const r=await cloudRow(id);const d=r&&r.data;
+    cloudSeen=(r&&r.updated_at)?Date.parse(r.updated_at):0;
     AUTH.viewing=mine?null:id;AUTH.viewingName=mine?null:name;
     const keepProducts=allProducts();      /* คลังสินค้าเป็นของกลาง ไม่เปลี่ยนตามคนที่กำลังดู */
     DB=d&&d.customers?d:seed();
@@ -6698,11 +6749,15 @@ async function startApp(){
     quick=true;dirtySince=0;
   }
   let row=null,cloud=null,failed=false;
-  try{row=await cloudRow(AUTH.user.id);cloud=row&&row.data;}catch(e){failed=true;}
+  try{row=await cloudRow(AUTH.user.id);cloud=row&&row.data;
+    cloudSeen=(row&&row.updated_at)?Date.parse(row.updated_at):0;   /* จำรุ่นที่โหลดมา ใช้เทียบตอนบันทึก */
+  }catch(e){failed=true;}
   if(quick&&!failed&&cloud&&cloud.customers){
     const lT=(+local._t)||0,cT=row.updated_at?Date.parse(row.updated_at):0;
     if(cT>lT+2000&&!dirtySince){       /* คลาวด์ใหม่กว่า และยังไม่ได้แก้อะไรในหน้านี้ */
-      DB=cloud;migrate();render();
+      /* ใช้ของคลาวด์เป็นหลัก แต่ถ้าในเครื่องมีงานที่คลาวด์ยังไม่มี ก็เก็บไว้ด้วย ไม่ทิ้ง */
+      DB=cloud;const back=mergeCloud(local);migrate();render();
+      if(back)save(true);
     }else if(lT>cT+2000){
       save(true);toast('พบงานที่ยังไม่ได้ขึ้นคลาวด์ในเครื่องนี้ — อัปโหลดให้แล้ว');
     }
@@ -6718,7 +6773,9 @@ async function startApp(){
   const cloudT=(row&&row.updated_at)?Date.parse(row.updated_at):0;
   const localNewer=!!(local&&local.customers&&localT&&localT>cloudT+2000);
   let restored=false;
-  if(cloud&&cloud.customers&&!localNewer)DB=cloud;
+  if(cloud&&cloud.customers&&!localNewer){DB=cloud;
+    /* งานที่ค้างอยู่ในเครื่องแต่ยังไม่ขึ้นคลาวด์ เอากลับมารวมด้วย */
+    if(local&&local.customers&&mergeCloud(local))restored=true;}
   else if(local&&local.customers){DB=local;restored=!!(cloud&&localNewer);}
   else DB=seed();
   migrate();
