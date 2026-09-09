@@ -4136,18 +4136,27 @@ function categoryCard(items){
     const leg=box.querySelector('.catleg');
     rows.forEach(r=>{
       const pct=tot?r[key]/tot*100:0;
+      /* บอกทั้งยอดขายและน้ำหนักในบรรทัดเดียว จะได้รู้ว่าประเภทไหนกี่บาท กี่กิโล */
+      const kgTxt=r.kg?num0(Math.round(r.kg))+' กก.':(r.noKg?'ยังไม่ได้ใส่ขนาด':'0 กก.');
+      const bhTxt=num0(Math.round(r.amount))+' ฿';
       leg.append(el(`<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--bd2)">
         <span style="width:12px;height:12px;border-radius:3px;background:${catColor(r.cat)};flex:0 0 auto"></span>
         <span style="flex:1;min-width:0;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.cat)}</span>
         <b style="font-size:14px;white-space:nowrap">${pct.toFixed(1)}%</b>
-        <span class="tiny" style="white-space:nowrap;width:104px;text-align:right">${num0(Math.round(r[key]))}${unit}</span></div>`));
+        <span style="white-space:nowrap;width:120px;text-align:right;font-size:13px;font-weight:600">${CAT_MODE==='kg'?kgTxt:bhTxt}</span>
+        <span class="tiny" style="white-space:nowrap;width:120px;text-align:right">${CAT_MODE==='kg'?bhTxt:kgTxt}${
+          r.noKg&&r.kg?' (ขาด '+r.noKg+')':''}</span></div>`));
     });
-    leg.append(el(`<div style="display:flex;gap:10px;padding:9px 0 0">
+    const totKg=rows.reduce((a,r)=>a+r.kg,0),totBh=rows.reduce((a,r)=>a+r.amount,0);
+    leg.append(el(`<div style="display:flex;align-items:center;gap:10px;padding:9px 0 0">
       <span style="flex:1;font-size:14px;font-weight:600">รวมทั้งหมด</span>
-      <b style="font-size:15px;color:var(--blue-d);white-space:nowrap">${num0(Math.round(tot))}${unit}</b></div>`));
+      <b style="font-size:15px;color:var(--blue-d);white-space:nowrap;width:120px;text-align:right">${
+        CAT_MODE==='kg'?num0(Math.round(totKg))+' กก.':num0(Math.round(totBh))+' ฿'}</b>
+      <span class="tiny" style="white-space:nowrap;width:120px;text-align:right">${
+        CAT_MODE==='kg'?num0(Math.round(totBh))+' ฿':num0(Math.round(totKg))+' กก.'}</span></div>`));
     card.append(box);
     const miss=rows.reduce((a,r)=>a+r.noKg,0);
-    if(CAT_MODE==='kg'&&miss)card.append(el(`<div class="pad tiny" style="padding-top:0">ยังมี ${miss} รายการที่ยังไม่ได้ใส่ขนาด จึงยังไม่ถูกนับเป็นน้ำหนัก</div>`));
+    if(miss)card.append(el(`<div class="pad tiny" style="padding-top:0">ยังมี ${miss} รายการที่ยังไม่ได้ใส่ขนาด จึงยังไม่ถูกนับเป็นน้ำหนัก — เข้าไปแก้ไขรายการแล้วใส่ความกว้าง ยาว หนา</div>`));
   };
   draw();
   return card;
