@@ -1322,7 +1322,7 @@ function sampleSheet(d){
     </div>
     <div class="bx"><div class="bxh">4. ข้อมูลเชิงเทคนิค (ฝ่ายขาย)</div>
       <div class="ln">4.1. ค่าหดที่ต้องการ &nbsp; ด้าน TD ${dots(d.shrinkTD,90)}% &nbsp; ด้าน MD ${dots(d.shrinkMD,90)}%</div>
-      <div class="ln">4.2. ลักษณะการแพ็คและประเภทสินค้าที่ลูกค้าจะบรรจุ ${dots(d.packDesc,250)} ${chk(d.hasLabel==='มีกระดาษ'||d.hasLabel==='มีฉลาก')} มีกระดาษ ${chk(d.hasLabel==='ไม่มีกระดาษ'||d.hasLabel==='ไม่มีฉลาก')} ไม่มีกระดาษ</div>
+      <div class="ln">4.2. ลักษณะการแพ็คและประเภทสินค้าที่ลูกค้าจะบรรจุ ${dots(d.packDesc,250)} ${chk(/^มี/.test(d.hasLabel||''))} มีถาด ${chk(/^ไม่มี/.test(d.hasLabel||''))} ไม่มีถาด</div>
       <div class="ln">4.3. เครื่องจักรที่ลูกค้าใช้ในการทำงาน ${dots(d.machine,420)}</div>
       <div class="ln">4.4. รายละเอียดความต้องการพิเศษเชิงเทคนิคและคุณภาพ</div>
       <div class="free">${esc(d.special||'')}</div>
@@ -4986,7 +4986,7 @@ function sampleFields(){return [
   {key:'shrinkTD',label:'4.1 ค่าหดที่ต้องการ ด้าน TD (%)'},
   {key:'shrinkMD',label:'ด้าน MD (%)'},
   {key:'packDesc',label:'4.2 ลักษณะการแพ็คและประเภทสินค้าที่ลูกค้าจะบรรจุ',full:true},
-  {key:'hasLabel',label:'กระดาษ',type:'radio',options:['มีกระดาษ','ไม่มีกระดาษ']},
+  {key:'hasLabel',label:'ถาด',type:'radio',options:['มีถาด','ไม่มีถาด']},
   {key:'machine',label:'4.3 เครื่องจักรที่ลูกค้าใช้ในการทำงาน',full:true},
   {key:'special',label:'4.4 รายละเอียดความต้องการพิเศษเชิงเทคนิคและคุณภาพ',type:'textarea',full:true,
     ph:'เช่น ลูกค้าต้องการฟิล์มขนาด 56 x 55 ที่มีเนื้อมากกว่าเดิม'},
