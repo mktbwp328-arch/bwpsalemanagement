@@ -702,7 +702,7 @@ function seed(){
 const isDemoAccount=()=>!!(AUTH.profile&&isAdminUser(toUsername(AUTH.profile.email)));
 function seedDemo(){
   if(!isDemoAccount()){toast('สร้างข้อมูลตัวอย่างได้เฉพาะบัญชีผู้ดูแลระบบ');return;}
-  if(readOnly()){toast('กำลังดูข้อมูลของคนอื่นอยู่ — กลับไปข้อมูลของฉันก่อน');return;}
+  if(viewingOther()){toast('กำลังดูข้อมูลของคนอื่นอยู่ — กลับไปข้อมูลของฉันก่อน');return;}
   askConfirm('สร้างข้อมูลตัวอย่าง',
     'เพิ่มลูกค้าตัวอย่าง 5 ราย พร้อมใบเสนอราคา PO และใบเสร็จที่เชื่อมกัน เพื่อลองใช้งานระบบ (ข้อมูลเดิมไม่หาย)',
     'สร้างเลย',()=>{
@@ -3746,7 +3746,7 @@ function render(){
   /* ล้างข้อมูลได้เฉพาะบัญชีตัวเอง — ตอนเปิดดูข้อมูลลูกทีมให้ซ่อนปุ่มไว้ */
   const clr=$('#clearBtn');if(clr&&isManager())clr.style.display=viewingOther()?'none':'';
   /* ปุ่มสร้างข้อมูลตัวอย่าง เห็นเฉพาะบัญชี bwpsaleadmin */
-  const demo=$('#demoBtn');if(demo)demo.style.display=isDemoAccount()?'':'none';
+  const demo=$('#demoBtn');if(demo)demo.style.display=(isDemoAccount()&&!viewingOther())?'':'none';
 
   const v=$('#view');v.innerHTML='';$('#topActions').innerHTML='';
   if(S.page==='team'&&!isManager())S.page='dashboard';
