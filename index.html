@@ -4254,6 +4254,7 @@ function pgDashboard(v){
     c.onclick=()=>go(page,extra);
     kp2.append(c);});
   v.append(kp2);
+  v.append(categoryCard(st.products));
 
   /* งานที่ปิดการขายแล้วแต่ยังไม่ได้ออกใบเสร็จ — รวมเคส "มีแค่ใบเสนอราคา ไม่มี PO" */
   const pc=el('<div class="card" id="pendingCard"></div>');
@@ -4363,7 +4364,6 @@ function pgDashboard(v){
   row4.append(customersCard(st.buyers,'ลูกค้าซื้ออะไรบ้าง',
     'กดที่ชื่อลูกค้าเพื่อดูรายการสินค้าที่ซื้อไป'));
   v.append(row4);
-  v.append(categoryCard(st.products));
   v.append(el('<div class="tiny" style="margin-top:-4px">ทุกการ์ดนับจากรายการใน PO และใบเสนอราคาที่อนุมัติแล้วแต่ยังไม่มี PO (ไม่นับซ้ำ)</div>'));
 }
 
@@ -4450,6 +4450,15 @@ function pgTeam(v){
     <div class="mut">${esc(t)}</div><div style="font-size:26px;font-weight:700;margin-top:4px">${esc(val)}</div>
     <div class="tiny" style="margin-top:8px">${esc(sub)}</div></div>`)));
   v.append(kp2);
+  /* สินค้าขายดี — รวมทั้งทีมหรือเฉพาะคนที่เลือก */
+  let prods;
+  if(cur)prods=cur.st.products;
+  else{const mp={};ok.forEach(r=>r.st.products.forEach(p=>{
+      const k=p.name.toLowerCase(),e=mp[k]||(mp[k]={name:p.name,code:p.code||'',qty:0,unit:p.unit,amount:0,deals:0,kg:0,noKg:0});
+      e.qty+=p.qty;e.amount+=p.amount;e.deals+=p.deals;e.kg+=p.kg||0;e.noKg+=p.noKg||0;
+      if(!e.unit&&p.unit)e.unit=p.unit;}));
+    prods=Object.values(mp).sort((a,b)=>b.amount-a.amount);}
+  v.append(categoryCard(prods));
 
   /* อันดับยอดขายรายคน — กดเพื่อเจาะดูรายคน */
   const rank=el(`<div class="card"><div class="pad" style="padding-bottom:6px">
@@ -4507,14 +4516,6 @@ function pgTeam(v){
   });
   cc.append(chart);v.append(cc);
 
-  /* สินค้าขายดี — รวมทั้งทีมหรือเฉพาะคนที่เลือก */
-  let prods;
-  if(cur)prods=cur.st.products;
-  else{const mp={};ok.forEach(r=>r.st.products.forEach(p=>{
-      const k=p.name.toLowerCase(),e=mp[k]||(mp[k]={name:p.name,code:p.code||'',qty:0,unit:p.unit,amount:0,deals:0,kg:0,noKg:0});
-      e.qty+=p.qty;e.amount+=p.amount;e.deals+=p.deals;e.kg+=p.kg||0;e.noKg+=p.noKg||0;
-      if(!e.unit&&p.unit)e.unit=p.unit;}));
-    prods=Object.values(mp).sort((a,b)=>b.amount-a.amount);}
   /* ลูกค้าซื้ออะไรบ้าง — รวมทั้งทีมหรือเฉพาะคนที่เลือก */
   let buyers;
   if(cur)buyers=cur.st.buyers;
@@ -4532,7 +4533,6 @@ function pgTeam(v){
     cur?'กดที่สินค้าเพื่อดูว่าขายให้ลูกค้ารายไหนบ้าง':'รวมทุกคนในทีม · เลือกเซลรายคนด้านบนเพื่อดูรายละเอียดสินค้า'));
   row4.append(customersCard(buyers,'ลูกค้าซื้ออะไรบ้าง — '+who,'กดที่ชื่อลูกค้าเพื่อดูรายการสินค้าที่ซื้อไป'));
   v.append(row4);
-  v.append(categoryCard(prods));
 
   if(cur&&!cur.p.mine){
     const b=el(`<button class="btn gh" style="margin:16px auto 0;display:flex">เปิดดูข้อมูลทั้งหมดของ ${esc(nameOf(cur.p))}</button>`);
