@@ -5040,6 +5040,46 @@ function ensureCredit(d){
 function nextNo(prefix){const yr=new Date().getFullYear()+543;
   const n=DB.docs.filter(d=>d.no.startsWith(prefix)).length+1;
   return `${prefix}-${yr}-${String(n).padStart(4,'0')}`;}
+/* ---------- กู้เอกสารจากลิงก์เซ็น ----------
+   เอกสารที่เคยส่งลิงก์ให้เซ็น จะมีสำเนาเก็บอยู่บนคลาวด์เสมอ
+   ถ้าเอกสารในเครื่องหายไป ดึงกลับมาได้จากลิงก์เดิม พร้อมลายเซ็นที่เซ็นไปแล้ว */
+function restoreFromLink(){
+  if(readOnly()){toast('โหมดดูอย่างเดียว — กลับไปข้อมูลของฉันก่อน');return;}
+  openForm('กู้เอกสารจากลิงก์เซ็น',[
+    {key:'link',label:'วางลิงก์เซ็น หรือรหัสเอกสาร',req:true,full:true,type:'textarea',
+     hint:'เช่น https://bwpsalemanagement.vercel.app/#s=xxxxxxxx-xxxx-... (ลิงก์ที่เคยส่งให้ผู้เซ็น)'}
+  ],{},async d=>{
+    const m=String(d.link||'').match(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/);
+    if(!m){toast('ไม่พบรหัสเอกสารในลิงก์ที่วาง');return;}
+    const id=m[0];
+    toast('กำลังดึงเอกสารจากคลาวด์…');
+    try{
+      const rows=await sbRpc('get_doc_signature',{p_id:id});
+      const row=Array.isArray(rows)?rows[0]:rows;
+      if(!row||!row.payload){toast('ไม่พบเอกสารนี้บนคลาวด์');return;}
+      const p=row.payload;
+      const type=row.doc_type||p.type||'credit';
+      const no=p.no||row.doc_no||'';
+      const exist=DB.docs.find(x=>x.no===no&&(x.type||'credit')===type);
+      const doc=Object.assign({},p,{
+        id:(exist&&exist.id)||uid(),type,no,
+        sigs:Object.assign({},p.sigs||{},row.sigs||{}),
+        sigDocId:id,
+        photos:(exist&&exist.photos)||[],files:(exist&&exist.files)||[]
+      });
+      delete doc._cust;delete doc._attachN;delete doc._roleSigs;delete doc.company;delete doc.logo;
+      ensureByType(doc);
+      if(exist)Object.assign(exist,doc);
+      else DB.docs.unshift(doc);
+      /* ลูกค้าในเอกสารยังไม่มีในทะเบียน ก็เพิ่มให้ */
+      if(doc.customer)ensureCustomer(doc.customer);
+      applyCreditSigs(doc.no,row.sigs,row.status,true,type);
+      save(true);render();
+      toast(exist?'อัปเดตเอกสาร '+no+' จากคลาวด์แล้ว':'กู้เอกสาร '+no+' กลับมาแล้ว');
+      go('documents',{docType:type,docOpen:doc.id});
+    }catch(e){toast(e.message);}
+  },{okLabel:'กู้เอกสาร'});
+}
 function openDocSmart(d){go('documents',{docType:d.type,docOpen:d.id});}
 function pgDocuments(v){
   if(S.docOpen){const d=DB.docs.find(x=>x.id===S.docOpen);
@@ -5062,6 +5102,7 @@ function pgDocuments(v){
     isQ?{wide:true,sub:'กรอกข้อมูลตามลำดับ 1 → 4 แล้วกดสร้าง',okLabel:'สร้างใบเสนอราคา'}
     :{wide:true,sub:'กรอกตามแบบฟอร์มบริษัท แล้วกดสร้าง',okLabel:'สร้าง'+t[1]}));
 
+  actionBtn('กู้เอกสารจากลิงก์','up',restoreFromLink,'btn gh');
   v.append(hint('เลือกประเภทเอกสารได้จากหัวข้อย่อยใต้ "เอกสารการขาย" ในเมนูซ้าย · คลิกที่รายการเพื่อดูหรือแก้ไข'));
 
   const bar=el('<div class="toolbar"></div>');
