@@ -3958,21 +3958,36 @@ function issueReceipt(pre){
    withDB: สลับชุดข้อมูลชั่วคราวเพื่อคำนวณของเซลคนอื่น แล้วคืนค่าเดิมเสมอ */
 function withDB(db,fn){const o=DB;DB=db;try{return fn();}finally{DB=o;}}
 
+/* ---------- แบ่งยอดของใบเสร็จลงในแต่ละรายการสินค้า ----------
+   ยอดในใบเสร็จรวมภาษีแล้ว แต่ราคาต่อหน่วยยังไม่รวม ถ้าบวกกันตรง ๆ ยอดจะไม่ตรงกับการ์ดยอดขายรวม
+   จึงเทียบสัดส่วนจากราคาก่อนภาษี แล้วปันยอดจริงของใบเสร็จลงไปให้ครบพอดี */
+function rcItemAmounts(r){
+  const items=r.items||[];
+  const raw=items.map(i=>(+i.qty||0)*(+i.price||0));
+  const sub=raw.reduce((a,b)=>a+b,0);
+  const total=+r.amount||0;
+  if(!sub)return raw.map(()=>0);
+  if(!total)return raw;
+  const f=total/sub;
+  return raw.map(x=>x*f);
+}
 /* สินค้าที่ขายได้ — นับจากรายการในใบเสร็จรับเงินเท่านั้น
    ทุกตัวเลขบนแดชบอร์ดจึงอ้างอิงชุดเดียวกันกับยอดขายรวม */
 function productStats(inP){
   const map={};
-  const add=it=>{
+  const add=(it,amt)=>{
     const name=String(it.name||'').trim()||'(ไม่ระบุชื่อสินค้า)';
     const k=name.toLowerCase();
     const e=map[k]||(map[k]={name,code:it.code||'',qty:0,unit:it.unit||'',amount:0,deals:0,kg:0,noKg:0});
-    e.qty+=(+it.qty||0);e.amount+=(+it.qty||0)*(+it.price||0);e.deals++;
+    e.qty+=(+it.qty||0);e.amount+=amt;e.deals++;
     if(!e.unit&&it.unit)e.unit=it.unit;
     /* น้ำหนัก: หน่วย กก. ใช้ตรง ๆ หน่วยอื่นคำนวณจากขนาด ถ้ายังไม่ได้ใส่ขนาดก็นับไว้ว่าคำนวณไม่ได้ */
     const kg=itemKg(it);
     if(kg===null)e.noKg++;else e.kg+=kg;
   };
-  liveRc().filter(r=>inP(r.date)).forEach(r=>(r.items||[]).forEach(add));
+  liveRc().filter(r=>inP(r.date)).forEach(r=>{
+    const amts=rcItemAmounts(r);
+    (r.items||[]).forEach((it,i)=>add(it,amts[i]||0));});
   return Object.values(map).sort((a,b)=>b.amount-a.amount);
 }
 /* ตัวเลขสรุปทั้งชุดของข้อมูลหนึ่งชุด (ของตัวเองหรือของเซลคนอื่น) */
@@ -4002,23 +4017,23 @@ function statsOf(db){
 /* ลูกค้าแต่ละรายซื้อสินค้าอะไรไปบ้าง — รวมจากแหล่งเดียวกับสินค้าที่ขายได้ */
 function customerStats(inP){
   const map={};
-  const add=(cust,it)=>{
+  const add=(cust,it,amt)=>{
     const c=String(cust||'').trim()||'(ไม่ระบุลูกค้า)';
     const e=map[c]||(map[c]={customer:c,amount:0,deals:0,items:{}});
     const name=String(it.name||'').trim()||'(ไม่ระบุชื่อสินค้า)',k=name.toLowerCase();
     const p=e.items[k]||(e.items[k]={name,qty:0,unit:it.unit||'',amount:0});
-    p.qty+=(+it.qty||0);p.amount+=(+it.qty||0)*(+it.price||0);
+    p.qty+=(+it.qty||0);p.amount+=amt;
     if(!p.unit&&it.unit)p.unit=it.unit;
-    e.amount+=(+it.qty||0)*(+it.price||0);
+    e.amount+=amt;
   };
-  const doc=(cust,items)=>{
+  const doc=(cust,items,amts)=>{
     if(!(items||[]).length)return;
-    (items||[]).forEach(i=>add(cust,i));
+    (items||[]).forEach((i,n)=>add(cust,i,amts[n]||0));
     const c=String(cust||'').trim()||'(ไม่ระบุลูกค้า)';
     if(map[c])map[c].deals++;
   };
   /* นับจากใบเสร็จรับเงินเท่านั้น ให้ตรงกับยอดขายรวมบนแดชบอร์ด */
-  liveRc().filter(r=>inP(r.date)).forEach(r=>doc(r.customer,r.items));
+  liveRc().filter(r=>inP(r.date)).forEach(r=>doc(r.customer,r.items,rcItemAmounts(r)));
   return Object.values(map)
     .map(e=>Object.assign(e,{list:Object.values(e.items).sort((a,b)=>b.amount-a.amount)}))
     .sort((a,b)=>b.amount-a.amount);
@@ -4067,9 +4082,11 @@ function productDeals(db,name){
   const key=String(name).toLowerCase(),hit=it=>String(it.name||'').trim().toLowerCase()===key;
   return withDB(db,()=>{
     const out=[];
-    liveRc().filter(r=>inPeriod(r.date)).forEach(r=>
-      (r.items||[]).filter(hit).forEach(i=>out.push({label:'ใบเสร็จ '+r.no,customer:r.customer,date:r.date,
-        qty:+i.qty||0,unit:i.unit||'',kg:itemKg(i),amount:(+i.qty||0)*(+i.price||0)})));
+    liveRc().filter(r=>inPeriod(r.date)).forEach(r=>{
+      const amts=rcItemAmounts(r);
+      (r.items||[]).forEach((i,n)=>{if(!hit(i))return;
+        out.push({label:'ใบเสร็จ '+r.no,customer:r.customer,date:r.date,
+          qty:+i.qty||0,unit:i.unit||'',kg:itemKg(i),amount:amts[n]||0});});});
     return out.sort((a,b)=>b.date.localeCompare(a.date));
   });
 }
