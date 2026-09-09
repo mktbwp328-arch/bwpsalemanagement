@@ -4185,25 +4185,18 @@ function catDetail(cat,list){
   ov.append(m);$('#layer').append(ov);
 }
 /* กราฟวงกลม (โดนัท) วาดด้วย SVG ล้วน ไม่ต้องโหลดไลบรารี */
-let CAT_MODE='amount';
 function categoryCard(items){
   const card=el('<div class="card"></div>');
   const draw=()=>{
     card.innerHTML='';
     const rows=categoryStats(items);
-    const key=CAT_MODE==='kg'?'kg':'amount';
+    const key='amount';       /* คิดสัดส่วนจากยอดขาย น้ำหนักแสดงควบไปในบรรทัดเดียวกัน */
     const tot=rows.reduce((a,r)=>a+r[key],0);
-    const unit=CAT_MODE==='kg'?' กก.':' ฿';
     card.append(el(`<div class="pad" style="padding-bottom:6px">
       <div class="h3" style="margin:0">สัดส่วนตามประเภทสินค้า</div>
       <div class="tiny" style="margin-top:3px">นับจากใบเสร็จรับเงิน — ตรงกับยอดขายรวมด้านบน · กดที่ประเภทเพื่อดูว่ามีสินค้าตัวไหนบ้าง</div></div>`));
-    /* ปุ่มสลับระหว่างดูเป็นยอดขายกับดูเป็นน้ำหนัก */
-    const sw=el('<div class="pad" style="padding:0 16px 4px"></div>');
-    sw.append(seg([['amount','ยอดขาย (บาท)'],['kg','น้ำหนัก (กก.)']],CAT_MODE,k=>{CAT_MODE=k;draw();}));
-    card.append(sw);
     if(!tot){
-      card.append(el(`<div class="empty">ยังไม่มีข้อมูลในช่วงนี้<div style="font-size:14px">${
-        CAT_MODE==='kg'?'ใส่ขนาดสินค้าในรายการเพื่อให้คำนวณน้ำหนักได้':'สินค้าจะขึ้นเมื่อออกใบเสร็จรับเงินแล้ว'}</div></div>`));
+      card.append(el('<div class="empty">ยังไม่มีข้อมูลในช่วงนี้<div style="font-size:14px">สินค้าจะขึ้นเมื่อออกใบเสร็จรับเงินแล้ว</div></div>'));
       return;
     }
     const R=64,SW=26,C=2*Math.PI*R;
@@ -4228,8 +4221,8 @@ function categoryCard(items){
         <span style="flex:1;min-width:0"><span style="display:block;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.cat)}</span>
           ${qtyTxt(r)?`<span class="tiny" style="display:block;margin-top:1px">${esc(qtyTxt(r))}</span>`:''}</span>
         <b style="font-size:14px;white-space:nowrap">${pct.toFixed(1)}%</b>
-        <span style="white-space:nowrap;width:120px;text-align:right;font-size:13px;font-weight:600">${CAT_MODE==='kg'?kgTxt:bhTxt}</span>
-        <span class="tiny" style="white-space:nowrap;width:120px;text-align:right">${CAT_MODE==='kg'?bhTxt:kgTxt}${
+        <span style="white-space:nowrap;width:120px;text-align:right;font-size:13px;font-weight:600">${bhTxt}</span>
+        <span class="tiny" style="white-space:nowrap;width:120px;text-align:right">${kgTxt}${
           r.noKg&&r.kg?' (ขาด '+r.noKg+')':''}</span></div>`);
       row.onmouseenter=()=>row.style.background='#f6f9ff';row.onmouseleave=()=>row.style.background='';
       row.onclick=()=>catDetail(r.cat,(items||[]).filter(p=>categoryOf(p.name,p.code)===r.cat));
@@ -4239,9 +4232,9 @@ function categoryCard(items){
     leg.append(el(`<div style="display:flex;align-items:center;gap:10px;padding:9px 0 0">
       <span style="flex:1;font-size:14px;font-weight:600">รวมทั้งหมด</span>
       <b style="font-size:15px;color:var(--blue-d);white-space:nowrap;width:120px;text-align:right">${
-        CAT_MODE==='kg'?num0(Math.round(totKg))+' กก.':num0(Math.round(totBh))+' ฿'}</b>
+        num0(Math.round(totBh))+' ฿'}</b>
       <span class="tiny" style="white-space:nowrap;width:120px;text-align:right">${
-        CAT_MODE==='kg'?num0(Math.round(totBh))+' ฿':num0(Math.round(totKg))+' กก.'}</span></div>`));
+        num0(Math.round(totKg))+' กก.'}</span></div>`));
     card.append(box);
     const miss=rows.reduce((a,r)=>a+r.noKg,0);
     if(miss)card.append(el(`<div class="pad tiny" style="padding-top:0">ยังมี ${miss} รายการที่ยังไม่ได้ใส่ขนาด จึงยังไม่ถูกนับเป็นน้ำหนัก — เข้าไปแก้ไขรายการแล้วใส่ความกว้าง ยาว หนา</div>`));
