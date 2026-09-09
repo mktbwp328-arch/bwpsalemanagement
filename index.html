@@ -2048,6 +2048,10 @@ async function shareCredit(d){
   try{
     if(!id){id=await sbRpc('create_doc_signature',{p_payload:payload,p_doc_no:d.no,p_doc_type:d.type||'credit',p_customer:d.customer});
       d.sigDocId=typeof id==='string'?id:(id&&id.id)||id;save();}
+    /* เคยส่งลิงก์ไปแล้วแต่กลับมาแก้เอกสาร: อัปเดตสำเนาบนคลาวด์ให้เป็นข้อมูลล่าสุด
+       (ลายเซ็นที่เซ็นไปแล้วยังอยู่ครบ) */
+    else try{await sbRpc('update_doc_payload',{p_id:id,p_payload:payload});}
+         catch(e){toast('อัปเดตข้อมูลในลิงก์ไม่สำเร็จ — ต้องรันไฟล์ supabase-setup-12.sql ก่อน');}
   }catch(e){toast(e.message);return;}
   const ov=el('<div class="ov"></div>');
   /* เซ็นแล้วให้เห็นรูปลายเซ็นเลย จะได้รู้ว่าใครเซ็นแล้วบ้างโดยไม่ต้องเปิดเอกสาร */
@@ -2155,6 +2159,9 @@ async function shareCustomerCredit(d){
       const id=await sbRpc('create_doc_signature',{p_payload:payload,p_doc_no:d.no,p_doc_type:d.type||'credit',p_customer:d.customer});
       d.sigDocId=typeof id==='string'?id:(id&&id.id)||id;save(true);
     }
+    /* แก้เอกสารหลังส่งลิงก์ไปแล้ว: อัปเดตสำเนาบนคลาวด์ให้ลูกค้าเห็นข้อมูลล่าสุด */
+    else try{await sbRpc('update_doc_payload',{p_id:d.sigDocId,p_payload:payload});}
+         catch(e){toast('อัปเดตข้อมูลในลิงก์ไม่สำเร็จ — ต้องรันไฟล์ supabase-setup-12.sql ก่อน');}
   }catch(e){toast(e.message);return;}
   const link=baseUrl()+'#cc='+d.sigDocId;
   const ov=el('<div class="ov"></div>');
