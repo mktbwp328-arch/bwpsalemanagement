@@ -3961,7 +3961,7 @@ function productStats(inP){
   const add=it=>{
     const name=String(it.name||'').trim()||'(ไม่ระบุชื่อสินค้า)';
     const k=name.toLowerCase();
-    const e=map[k]||(map[k]={name,qty:0,unit:it.unit||'',amount:0,deals:0,kg:0,noKg:0});
+    const e=map[k]||(map[k]={name,code:it.code||'',qty:0,unit:it.unit||'',amount:0,deals:0,kg:0,noKg:0});
     e.qty+=(+it.qty||0);e.amount+=(+it.qty||0)*(+it.price||0);e.deals++;
     if(!e.unit&&it.unit)e.unit=it.unit;
     /* น้ำหนัก: หน่วย กก. ใช้ตรง ๆ หน่วยอื่นคำนวณจากขนาด ถ้ายังไม่ได้ใส่ขนาดก็นับไว้ว่าคำนวณไม่ได้ */
@@ -4075,6 +4075,82 @@ function productDeals(db,name){
         qty:+i.qty||0,unit:i.unit||'',kg:itemKg(i),amount:(+i.qty||0)*(+i.price||0)})));
     return out.sort((a,b)=>b.date.localeCompare(a.date));
   });
+}
+/* ---------- แยกประเภทสินค้า สำหรับกราฟวงกลม ----------
+   ดูจากชื่อสินค้าและรหัส เรียงลำดับการตรวจจากเฉพาะเจาะจงไปหากว้าง
+   (ถุงคลุมพาเลทมักมีคำว่า SHRINK FILM อยู่ด้วย จึงต้องตรวจ HOOD ก่อน) */
+const CATS=[
+  ['ถุงคลุมพาเลท','#0f7b73',/hood|ถุงคลุม|คลุมพาเลท|คลุมสินค้า|หลังคา/i],
+  ['ฟิล์มยืด','#2563eb',/stretch|ฟิล์มยืด|ยืด/i],
+  ['ฟิล์มใส (Shrink Film)','#c8a13c',/shrink|ชริ้ง|ชริงค์|ฟิล์มหด|ฟิล์มใส/i]
+];
+const CAT_OTHER=['อื่น ๆ','#94a3b8'];
+function categoryOf(name,code){
+  const s=String(name||'')+' '+String(code||'');
+  const hit=CATS.find(c=>c[2].test(s));
+  return hit?hit[0]:CAT_OTHER[0];
+}
+const catColor=n=>(CATS.find(c=>c[0]===n)||CAT_OTHER)[1];
+/* รวมยอดและน้ำหนักตามประเภท จากรายการสินค้าที่สรุปไว้แล้ว */
+function categoryStats(items){
+  const mp={};
+  (items||[]).forEach(p=>{
+    const c=categoryOf(p.name,p.code);
+    const e=mp[c]||(mp[c]={cat:c,amount:0,kg:0,noKg:0,n:0});
+    e.amount+=p.amount||0;e.kg+=p.kg||0;e.noKg+=p.noKg||0;e.n+=p.deals||0;
+  });
+  return Object.values(mp).sort((a,b)=>b.amount-a.amount);
+}
+/* กราฟวงกลม (โดนัท) วาดด้วย SVG ล้วน ไม่ต้องโหลดไลบรารี */
+let CAT_MODE='amount';
+function categoryCard(items){
+  const card=el('<div class="card"></div>');
+  const draw=()=>{
+    card.innerHTML='';
+    const rows=categoryStats(items);
+    const key=CAT_MODE==='kg'?'kg':'amount';
+    const tot=rows.reduce((a,r)=>a+r[key],0);
+    const unit=CAT_MODE==='kg'?' กก.':' ฿';
+    card.append(el(`<div class="pad" style="padding-bottom:6px">
+      <div class="h3" style="margin:0">สัดส่วนตามประเภทสินค้า</div>
+      <div class="tiny" style="margin-top:3px">แยกเป็นฟิล์มใส ฟิล์มยืด และถุงคลุมพาเลท</div></div>`));
+    /* ปุ่มสลับระหว่างดูเป็นยอดขายกับดูเป็นน้ำหนัก */
+    const sw=el('<div class="pad" style="padding:0 16px 4px"></div>');
+    sw.append(seg([['amount','ยอดขาย (บาท)'],['kg','น้ำหนัก (กก.)']],CAT_MODE,k=>{CAT_MODE=k;draw();}));
+    card.append(sw);
+    if(!tot){
+      card.append(el(`<div class="empty">ยังไม่มีข้อมูลในช่วงนี้<div style="font-size:14px">${
+        CAT_MODE==='kg'?'ใส่ขนาดสินค้าในรายการเพื่อให้คำนวณน้ำหนักได้':'สินค้าจะขึ้นเมื่อมี PO หรือใบเสนอราคาที่อนุมัติแล้ว'}</div></div>`));
+      return;
+    }
+    const R=64,SW=26,C=2*Math.PI*R;
+    let off=0;
+    const segs=rows.filter(r=>r[key]>0).map(r=>{
+      const len=r[key]/tot*C,s=`<circle cx="90" cy="90" r="${R}" fill="none" stroke="${catColor(r.cat)}"
+        stroke-width="${SW}" stroke-dasharray="${len.toFixed(2)} ${(C-len).toFixed(2)}"
+        stroke-dashoffset="${(-off).toFixed(2)}"></circle>`;
+      off+=len;return s;}).join('');
+    const box=el(`<div class="pad" style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;padding-top:6px">
+      <svg viewBox="0 0 180 180" style="width:180px;height:180px;flex:0 0 auto;transform:rotate(-90deg)">${segs}</svg>
+      <div style="flex:1;min-width:200px" class="catleg"></div></div>`);
+    const leg=box.querySelector('.catleg');
+    rows.forEach(r=>{
+      const pct=tot?r[key]/tot*100:0;
+      leg.append(el(`<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--bd2)">
+        <span style="width:12px;height:12px;border-radius:3px;background:${catColor(r.cat)};flex:0 0 auto"></span>
+        <span style="flex:1;min-width:0;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.cat)}</span>
+        <b style="font-size:14px;white-space:nowrap">${pct.toFixed(1)}%</b>
+        <span class="tiny" style="white-space:nowrap;width:104px;text-align:right">${num0(Math.round(r[key]))}${unit}</span></div>`));
+    });
+    leg.append(el(`<div style="display:flex;gap:10px;padding:9px 0 0">
+      <span style="flex:1;font-size:14px;font-weight:600">รวมทั้งหมด</span>
+      <b style="font-size:15px;color:var(--blue-d);white-space:nowrap">${num0(Math.round(tot))}${unit}</b></div>`));
+    card.append(box);
+    const miss=rows.reduce((a,r)=>a+r.noKg,0);
+    if(CAT_MODE==='kg'&&miss)card.append(el(`<div class="pad tiny" style="padding-top:0">ยังมี ${miss} รายการที่ยังไม่ได้ใส่ขนาด จึงยังไม่ถูกนับเป็นน้ำหนัก</div>`));
+  };
+  draw();
+  return card;
 }
 /* การ์ดสินค้าขายดี — ใช้ทั้งหน้าแรกและภาพรวมทีม */
 /* ข้อความน้ำหนัก — บอกด้วยว่ายังมีรายการที่ยังไม่ได้ใส่ขนาด จึงคำนวณไม่ได้ */
@@ -4287,7 +4363,8 @@ function pgDashboard(v){
   row4.append(customersCard(st.buyers,'ลูกค้าซื้ออะไรบ้าง',
     'กดที่ชื่อลูกค้าเพื่อดูรายการสินค้าที่ซื้อไป'));
   v.append(row4);
-  v.append(el('<div class="tiny" style="margin-top:-4px">ทั้งสองการ์ดนับจากรายการใน PO และใบเสนอราคาที่อนุมัติแล้วแต่ยังไม่มี PO (ไม่นับซ้ำ)</div>'));
+  v.append(categoryCard(st.products));
+  v.append(el('<div class="tiny" style="margin-top:-4px">ทุกการ์ดนับจากรายการใน PO และใบเสนอราคาที่อนุมัติแล้วแต่ยังไม่มี PO (ไม่นับซ้ำ)</div>'));
 }
 
 /* ---------- 1b. ภาพรวมทีมขาย (เฉพาะผู้จัดการ/ผู้ดูแล) ----------
@@ -4434,7 +4511,7 @@ function pgTeam(v){
   let prods;
   if(cur)prods=cur.st.products;
   else{const mp={};ok.forEach(r=>r.st.products.forEach(p=>{
-      const k=p.name.toLowerCase(),e=mp[k]||(mp[k]={name:p.name,qty:0,unit:p.unit,amount:0,deals:0,kg:0,noKg:0});
+      const k=p.name.toLowerCase(),e=mp[k]||(mp[k]={name:p.name,code:p.code||'',qty:0,unit:p.unit,amount:0,deals:0,kg:0,noKg:0});
       e.qty+=p.qty;e.amount+=p.amount;e.deals+=p.deals;e.kg+=p.kg||0;e.noKg+=p.noKg||0;
       if(!e.unit&&p.unit)e.unit=p.unit;}));
     prods=Object.values(mp).sort((a,b)=>b.amount-a.amount);}
@@ -4455,6 +4532,7 @@ function pgTeam(v){
     cur?'กดที่สินค้าเพื่อดูว่าขายให้ลูกค้ารายไหนบ้าง':'รวมทุกคนในทีม · เลือกเซลรายคนด้านบนเพื่อดูรายละเอียดสินค้า'));
   row4.append(customersCard(buyers,'ลูกค้าซื้ออะไรบ้าง — '+who,'กดที่ชื่อลูกค้าเพื่อดูรายการสินค้าที่ซื้อไป'));
   v.append(row4);
+  v.append(categoryCard(prods));
 
   if(cur&&!cur.p.mine){
     const b=el(`<button class="btn gh" style="margin:16px auto 0;display:flex">เปิดดูข้อมูลทั้งหมดของ ${esc(nameOf(cur.p))}</button>`);
