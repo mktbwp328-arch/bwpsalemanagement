@@ -5055,8 +5055,11 @@ function pgCustomers(v){
   bar.append(searchRow(S.custQ,'ค้นหาชื่อ เบอร์โทร หรืออีเมล',q=>{S.custQ=q;render();}));
   v.append(bar);
 
+  /* สถานะที่ยังไม่มีลูกค้าสักราย ไม่ต้องขึ้นให้รก (ยกเว้นอันที่กำลังเลือกอยู่) */
   const chipItems=[['ทั้งหมด','ทั้งหมด ('+DB.customers.length+')'],
-    ...custStatuses().map(k=>[k,k+' ('+DB.customers.filter(c=>c.status===k).length+')'])];
+    ...custStatuses().map(k=>[k,DB.customers.filter(c=>c.status===k).length])
+      .filter(([k,n])=>n>0||k===S.custFilter)
+      .map(([k,n])=>[k,k+' ('+n+')'])];
   let clear=null;
   if(S.custFilter!=='ทั้งหมด'||S.custQ){clear=el('<button class="chip clear">ล้างตัวกรอง ✕</button>');
     clear.onclick=()=>{S.custFilter='ทั้งหมด';S.custQ='';render();};}
