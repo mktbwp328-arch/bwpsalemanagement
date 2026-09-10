@@ -3947,13 +3947,15 @@ const poGross=p=>poTotal(p)*1.07;
 const rcRef=r=>r.poRef||'';
 /* ทำดัชนีใบเสร็จไว้ครั้งเดียวต่อการเปลี่ยนข้อมูล เพื่อไม่ต้องไล่ทั้งกองซ้ำ ๆ
    (ตอนข้อมูลเยอะ ๆ ช่วยให้หน้าแรกเปิดเร็วขึ้นมาก) */
-let _rcv=-1,_rci=null;
+let _rcv=-1,_rci=null,_rcSrc=null;
 function rcIndex(){
-  if(_rci&&_rcv===dirtySince&&_rci.n===DB.receipts.length)return _rci;
+  /* เทียบด้วยตัวกองใบเสร็จเองด้วย ไม่งั้นตอนสลับไปคำนวณข้อมูลของเซลคนอื่น
+     ที่บังเอิญมีใบเสร็จเท่ากัน จะหยิบดัชนีของคนก่อนหน้ามาใช้ผิด */
+  if(_rci&&_rcv===dirtySince&&_rcSrc===DB.receipts)return _rci;
   const live=DB.receipts.filter(r=>r.status!=='ยกเลิก');
   const byRef=new Set(),byItem=new Set();
   live.forEach(r=>{const k=rcRef(r);if(k){byRef.add(k);if(r.poItemId)byItem.add(k+'|'+r.poItemId);}});
-  _rci={live,byRef,byItem,n:DB.receipts.length};_rcv=dirtySince;
+  _rci={live,byRef,byItem,n:DB.receipts.length};_rcv=dirtySince;_rcSrc=DB.receipts;
   return _rci;
 }
 const liveRc=()=>rcIndex().live;
@@ -4570,12 +4572,16 @@ function pgTeam(v){
   const nameOf=p=>personName(p,EMP_NAMES)||'ไม่ระบุชื่อ';
 
   v.append(hint(TEAM.at
-    ? 'ข้อมูลอัปเดตเมื่อ '+ago(TEAM.at)+' · กดชื่อเซลในตารางอันดับเพื่อดูตัวเลขเฉพาะคนนั้น กดซ้ำเพื่อกลับมาดูรวมทั้งทีม'
+    ? 'ข้อมูลอัปเดตเมื่อ '+ago(TEAM.at)+' · กดปุ่มด้านล่างเพื่อสลับระหว่างดูรวมทั้งทีมกับเจาะดูรายคน ทุกการ์ดในหน้านี้เปลี่ยนตาม'
     : 'กดชื่อเซลเพื่อดูตัวเลขเฉพาะคนนั้น'));
 
   /* KPI — สลับระหว่างรวมทั้งทีมกับรายคนตามที่เลือก */
   const T=k=>view?view[k]:sum(k);
   const who=cur?nameOf(cur.p):'ทั้งทีม ('+ok.length+' คน)';
+  /* ปุ่มสลับดูรวมทั้งทีม หรือเจาะรายคน — ทุกการ์ดในหน้านี้เปลี่ยนตาม */
+  v.append(chipRow([['','ทั้งทีม ('+ok.length+' คน)'],
+      ...rows.filter(r=>r.st).map(r=>[r.p.id,nameOf(r.p)+(r.p.mine?' (ฉัน)':'')])],
+    sel||'',k=>{S.teamSel=k||null;render();}));
   v.append(el(`<div class="h3" style="margin:18px 0 2px">กำลังดู: ${esc(who)}</div>`));
   const kp=el('<div class="grid g4"></div>');
   [['ยอดขายรวม (จากใบเสร็จ)',num0(Math.round(T('total')))+' ฿',T('rcN')+' ใบเสร็จ'],
@@ -4674,8 +4680,13 @@ function pgTeam(v){
       .sort((a,b)=>b.amount-a.amount);}
 
   const row4=el('<div class="split"></div>');
-  row4.append(productsCard(cur?cur.p.db:null,prods,'สินค้าขายดี — '+who,
-    cur?'นับจากใบเสร็จรับเงิน · กดที่สินค้าเพื่อดูว่าออกใบเสร็จให้ลูกค้ารายไหนบ้าง':'รวมทุกคนในทีม · เลือกเซลรายคนด้านบนเพื่อดูรายละเอียดสินค้า'));
+  /* ดูรวมทั้งทีม: ต่อข้อมูลของทุกคนเป็นชุดเดียว จะได้กดดูรายละเอียดสินค้าได้เหมือนกัน */
+  const teamDB=cur?cur.p.db:{customers:[],docs:[],pos:[],receipts:[],products:[],
+    company:DB.company,logo:DB.logo};
+  if(!cur)ok.forEach(r=>['customers','docs','pos','receipts'].forEach(k=>{
+    teamDB[k]=teamDB[k].concat((r.p.db&&r.p.db[k])||[]);}));
+  row4.append(productsCard(teamDB,prods,'สินค้าขายดี — '+who,
+    'นับจากใบเสร็จรับเงิน · กดที่สินค้าเพื่อดูว่าออกใบเสร็จให้ลูกค้ารายไหนบ้าง'));
   row4.append(customersCard(buyers,'ลูกค้าซื้ออะไรบ้าง — '+who,'นับจากใบเสร็จรับเงิน · กดที่ชื่อลูกค้าเพื่อดูรายการสินค้าที่ซื้อไป'));
   v.append(row4);
 
