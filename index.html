@@ -5862,6 +5862,28 @@ function ensureCustomer(name){
   toast('เพิ่ม "'+n+'" เข้าทะเบียนลูกค้าให้แล้ว');
   return c;
 }
+/* ---------- สถานะ PO เชื่อมกับสถานะลูกค้า ----------
+   ลูกค้าออก PO มาแล้ว = ปิดการขายได้ ระบบจึงเลื่อนสถานะลูกค้าให้เองทุกครั้งที่ PO เปลี่ยนสถานะ
+   ถ้า PO ถูกยกเลิกและลูกค้าไม่มี PO ที่ยังใช้งานเหลือ จะถอยกลับเป็น "รอ PO" ให้ */
+const PO_TO_CUST={'รอตรวจสอบ':'ปิดการขาย','อนุมัติแล้ว':'ปิดการขาย',
+  'กำลังผลิต':'ปิดการขาย','ส่งมอบแล้ว':'ปิดการขาย'};
+function syncCustFromPo(po){
+  if(!po||readOnly())return;
+  const c=DB.customers.find(x=>x.name===po.customer);
+  if(!c)return;
+  if(c.status==='ยกเลิก')return;              /* ลูกค้าที่ปิดไปแล้ว ไม่ไปยุ่ง */
+  let next=PO_TO_CUST[po.status]||null;
+  if(po.status==='ยกเลิก'){
+    const live=DB.pos.some(p=>p.customer===c.name&&p.id!==po.id&&p.status!=='ยกเลิก');
+    next=live?'ปิดการขาย':'รอ PO';
+  }
+  if(!next||c.status===next)return;
+  const from=c.status;
+  c.status=next;
+  c.timeline=c.timeline||[];
+  c.timeline.unshift({date:today(),title:'สถานะเปลี่ยนเป็น "'+next+'"',
+    note:'ตามสถานะ PO '+(po.custPoNo||po.no)+' ('+po.status+')'+(from?' · เดิม '+from:''),by:meName()});
+}
 /* กำหนดส่งมอบของ PO = วันที่เร็วที่สุดในรายการสินค้า */
 function poDue(p){
   const ds=(p.items||[]).map(i=>i.due).filter(Boolean).sort();
@@ -5910,7 +5932,9 @@ function pgPO(v){
         images:at.images||[],files:at.files||[]},d);
       if(!p.no)p.no=nextPoNo();
       ensureCustomer(p.customer);   /* ลูกค้าใหม่ที่พิมพ์เอง เพิ่มเข้าระบบให้เลย */
-      DB.pos.unshift(p);save(true);go('po',{poOpen:p.id});
+      DB.pos.unshift(p);
+      syncCustFromPo(p);            /* เลื่อนสถานะลูกค้าตามสถานะ PO */
+      save(true);go('po',{poOpen:p.id});
       toast('สร้าง PO แล้ว'+((at.images||[]).length+(at.files||[]).length?' พร้อมไฟล์แนบ':''));},
     {wide:true,okLabel:'สร้าง PO'}));
 
@@ -5945,7 +5969,7 @@ function poDetail(v,p){
   header(p.custPoNo||p.no,['PO ลูกค้า',p.customer]);
   backBtn('กลับ',()=>go('po',{poOpen:null}));
   actionBtn('แก้ไขข้อมูล','edit',()=>openForm('แก้ไข '+(p.custPoNo||p.no),poFields(),p,
-    d=>{Object.assign(p,d);ensureCustomer(p.customer);save();render();toast('บันทึกแล้ว');},{wide:true}),'btn gh');
+    d=>{Object.assign(p,d);ensureCustomer(p.customer);syncCustFromPo(p);save();render();toast('บันทึกแล้ว');},{wide:true}),'btn gh');
   actionBtn('แนบรูป PO','up',()=>pickFiles('image/*,.pdf,.doc,.docx,.xls,.xlsx',true,
     fs=>addUploads(fs,p.images,p.files)),'btn gh');
   actionBtn('พิมพ์','print',()=>doPrint(),'btn gh');
@@ -5958,7 +5982,9 @@ function poDetail(v,p){
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px">
       <div class="h3" style="margin:0">ข้อมูล PO</div>${pill(p.status,PO_ST)}</div>
     <div class="grid g3">
-      <div class="fl"><span>ลูกค้า</span><b>${esc(p.customer)}</b></div>
+      <div class="fl"><span>ลูกค้า</span><b>${esc(p.customer)}</b>
+        ${(()=>{const c=DB.customers.find(x=>x.name===p.customer);
+          return c?`<div class="tiny" style="margin-top:4px">สถานะลูกค้า: ${esc(c.status||'-')}</div>`:'';})()}</div>
       <div class="fl"><span>เลขที่ PO ลูกค้า</span><b>${esc(p.custPoNo||'-')}</b></div>
       <div class="fl"><span>วันที่รับ PO</span><b>${fmtDate(p.date)}</b></div>
       <div class="fl"><span>กำหนดส่งมอบ (เร็วที่สุด)</span><b>${fmtDate(poDue(p))}</b></div>
