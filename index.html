@@ -522,7 +522,12 @@ const ICON={
 const svg=(k,cls='ic')=>`<svg class="${cls}" viewBox="0 0 24 24">${ICON[k]}</svg>`;
 
 /* ================= status ================= */
-const CUST_ST={'ใหม่':['#dbeafe','#1d4ed8'],'กำลังติดต่อ':['#cffafe','#0e7490'],'ส่งตัวอย่าง':['#ffe4e6','#be123c'],'ส่งใบเสนอราคา':['#fef3c7','#b45309'],'รอ PO':['#ede9fe','#6d28d9'],'ปิดการขาย':['#dcfce7','#15803d'],'ยกเลิก':['#fee2e2','#b91c1c']};
+const CUST_ST={'ใหม่':['#dbeafe','#1d4ed8'],'กำลังติดต่อ':['#cffafe','#0e7490'],'ส่งตัวอย่าง':['#ffe4e6','#be123c'],'ส่งใบเสนอราคา':['#fef3c7','#b45309'],'รอ PO':['#ede9fe','#6d28d9'],
+  /* สถานะช่วงที่รับ PO แล้ว — ไหลตามสถานะ PO ของลูกค้ารายนั้นโดยอัตโนมัติ */
+  'รอตรวจสอบ':['#fef3c7','#b45309'],'อนุมัติแล้ว':['#dcfce7','#15803d'],'กำลังผลิต':['#dbeafe','#1d4ed8'],'ส่งมอบแล้ว':['#e0e7ff','#4338ca'],
+  'ปิดการขาย':['#dcfce7','#15803d'],'ยกเลิก':['#fee2e2','#b91c1c']};
+/* สถานะที่ถือว่าปิดการขายได้แล้ว (ลูกค้าออก PO มาแล้ว) */
+const WON_ST=['ปิดการขาย','รอตรวจสอบ','อนุมัติแล้ว','กำลังผลิต','ส่งมอบแล้ว'];
 /* สถานะที่พนักงานพิมพ์เพิ่มเอง จะถูกเก็บไว้ให้เลือกซ้ำได้ */
 function custStatuses(){
   const out=Object.keys(CUST_ST);
@@ -4099,7 +4104,7 @@ function statsOf(db){
       pendSum:pend.reduce((a,b)=>a+b.amount,0),pendN:pend.length,
       quoteN:quotes.length,quoteOk:quotes.filter(d=>d.status==='อนุมัติแล้ว').length,
       poN:pos.length,poSum:pos.reduce((a,b)=>a+poGross(b),0),
-      custN:css.length,custWon:css.filter(c=>c.status==='ปิดการขาย').length,
+      custN:css.length,custWon:css.filter(c=>WON_ST.indexOf(c.status)>=0).length,
       products:productStats(inPeriod),buyers:customerStats(inPeriod),months,cnts,year:yr};
   });
 }
@@ -5865,8 +5870,8 @@ function ensureCustomer(name){
 /* ---------- สถานะ PO เชื่อมกับสถานะลูกค้า ----------
    ลูกค้าออก PO มาแล้ว = ปิดการขายได้ ระบบจึงเลื่อนสถานะลูกค้าให้เองทุกครั้งที่ PO เปลี่ยนสถานะ
    ถ้า PO ถูกยกเลิกและลูกค้าไม่มี PO ที่ยังใช้งานเหลือ จะถอยกลับเป็น "รอ PO" ให้ */
-const PO_TO_CUST={'รอตรวจสอบ':'ปิดการขาย','อนุมัติแล้ว':'ปิดการขาย',
-  'กำลังผลิต':'ปิดการขาย','ส่งมอบแล้ว':'ปิดการขาย'};
+const PO_TO_CUST={'รอตรวจสอบ':'รอตรวจสอบ','อนุมัติแล้ว':'อนุมัติแล้ว',
+  'กำลังผลิต':'กำลังผลิต','ส่งมอบแล้ว':'ส่งมอบแล้ว'};
 function syncCustFromPo(po){
   if(!po||readOnly())return;
   const c=DB.customers.find(x=>x.name===po.customer);
@@ -5874,8 +5879,9 @@ function syncCustFromPo(po){
   if(c.status==='ยกเลิก')return;              /* ลูกค้าที่ปิดไปแล้ว ไม่ไปยุ่ง */
   let next=PO_TO_CUST[po.status]||null;
   if(po.status==='ยกเลิก'){
-    const live=DB.pos.some(p=>p.customer===c.name&&p.id!==po.id&&p.status!=='ยกเลิก');
-    next=live?'ปิดการขาย':'รอ PO';
+    /* ยังมี PO ใบอื่นอยู่ ให้ตามสถานะของใบล่าสุดแทน ไม่งั้นถอยกลับเป็นรอ PO */
+    const live=DB.pos.filter(p=>p.customer===c.name&&p.id!==po.id&&p.status!=='ยกเลิก');
+    next=live.length?(PO_TO_CUST[live[0].status]||'ปิดการขาย'):'รอ PO';
   }
   if(!next||c.status===next)return;
   const from=c.status;
@@ -6755,6 +6761,15 @@ function migrate(){
       if(d.type==='quotation'&&typeof d.notes==='string')
         d.notes=d.notes.split('\n').filter(l=>!/ราคาดังกล่าวยังไม่ภาษีมูลค่าเพิ่ม/.test(l)).join('\n');});
     DB.notesFix=1;
+  }
+  /* ครั้งเดียว: ลูกค้าที่รับ PO แล้ว ปรับสถานะให้ตรงกับสถานะ PO ใบล่าสุดของลูกค้ารายนั้น */
+  if(!DB.poStatusSync){
+    (DB.customers||[]).forEach(c=>{
+      if(c.status==='ยกเลิก')return;
+      const po=(DB.pos||[]).find(p=>p.customer===c.name&&p.status!=='ยกเลิก');
+      if(po&&PO_TO_CUST[po.status]&&c.status!==PO_TO_CUST[po.status])c.status=PO_TO_CUST[po.status];
+    });
+    DB.poStatusSync=1;
   }
   (DB.docs||[]).filter(d=>d.type==='quotation').forEach(d=>{
     ensureQuote(d);
