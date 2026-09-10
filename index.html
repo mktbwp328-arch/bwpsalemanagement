@@ -4516,7 +4516,7 @@ function pgDashboard(v){
 
 /* ---------- 1b. ภาพรวมทีมขาย (เฉพาะผู้จัดการ/ผู้ดูแล) ----------
    ดึงข้อมูลของเซลทุกคนจากคลาวด์มารวมกัน แล้วกดดูแยกรายคนได้ในหน้าเดียว */
-const TEAM={loaded:false,loading:false,err:null,people:[],at:null};
+const TEAM={loaded:false,loading:false,err:null,people:[],at:null,done:0,total:0};
 async function loadTeam(force){
   if(TEAM.loading)return;
   if(TEAM.loaded&&!force)return;
@@ -4529,20 +4529,26 @@ async function loadTeam(force){
     const all=[{id:me,name:(AUTH.profile&&AUTH.profile.name)||'ฉัน',
       email:(AUTH.profile&&AUTH.profile.email)||'',role:(AUTH.profile&&AUTH.profile.role)||'sales',mine:true}]
       .concat(list.filter(t=>t.id!==me).map(t=>Object.assign({},t,{mine:false})));
-    const people=[];
-    for(const t of all){
+    /* ดึงข้อมูลของทุกคนพร้อมกัน ไม่ต้องรอทีละคน — ทีม 5 คนเร็วขึ้นราว 5 เท่า */
+    TEAM.done=0;TEAM.total=all.length;
+    const people=await Promise.all(all.map(async t=>{
       let db=null;
       /* ใช้ข้อมูลในเครื่องได้เฉพาะตอนดูข้อมูลของตัวเองอยู่
          ถ้ากำลังเปิดดูข้อมูลลูกทีม DB ในเครื่องคือของลูกทีมคนนั้น ต้องดึงของตัวเองจากคลาวด์แทน */
       try{db=(t.mine&&!viewingOther())?DB:await cloudLoad(t.id);}catch(e){}
       if(db&&db.customers){try{withDB(db,migrate);}catch(e){}}
-      people.push(Object.assign({},t,{db:db&&db.customers?db:null}));
-    }
+      TEAM.done++;
+      if(S.page==='team'&&!TEAM.loaded)paintTeamProgress();
+      return Object.assign({},t,{db:db&&db.customers?db:null});
+    }));
     TEAM.people=people;TEAM.loaded=true;TEAM.at=new Date().toISOString();
   }catch(e){TEAM.err=e.message||'โหลดข้อมูลทีมไม่สำเร็จ';}
   TEAM.loading=false;
   if(S.page==='team')render();
 }
+/* ข้อความความคืบหน้าตอนดึงข้อมูลทีม — อัปเดตเฉพาะบรรทัดนี้ ไม่ต้องวาดหน้าใหม่ทั้งหน้า */
+const teamProgTxt=()=>TEAM.total?('ดึงข้อมูลแล้ว '+TEAM.done+' / '+TEAM.total+' คน'):'ดึงข้อมูลของเซลแต่ละคนจากคลาวด์';
+function paintTeamProgress(){const e=$('#teamProg');if(e)e.textContent=teamProgTxt();}
 function pgTeam(v){
   header('ภาพรวมทีมขาย',['สรุปยอดของเซลทุกคน']);
   $('#topActions').append(seg(PERIODS,S.dash.period,k=>{S.dash.period=k;render();}));
@@ -4554,7 +4560,7 @@ function pgTeam(v){
 
   if(!TEAM.loaded){
     v.append(el(`<div class="empty"><div class="big">${TEAM.loading?'กำลังรวบรวมข้อมูลของทีม…':'ภาพรวมทีมขาย'}</div>
-      <div style="font-size:14px">${TEAM.loading?'ดึงข้อมูลของเซลแต่ละคนจากคลาวด์':'กดปุ่มด้านล่างเพื่อดึงข้อมูลล่าสุดของทุกคน'}</div></div>`));
+      <div style="font-size:14px" id="teamProg">${TEAM.loading?teamProgTxt():'กดปุ่มด้านล่างเพื่อดึงข้อมูลล่าสุดของทุกคน'}</div></div>`));
     if(TEAM.err)v.append(el(`<div class="hint" style="background:#fef2f2;border-color:#fbcaca;color:#b91c1c">${esc(TEAM.err)}</div>`));
     if(!TEAM.loading){const b=el('<button class="btn" style="margin:0 auto;display:flex">รวบรวมข้อมูลทีม</button>');
       b.onclick=()=>loadTeam(true);v.append(b);}
@@ -4562,7 +4568,12 @@ function pgTeam(v){
     return;
   }
 
-  const rows=TEAM.people.map(p=>({p,st:p.db?statsOf(p.db):null}))
+  /* คำนวณตัวเลขของแต่ละคนครั้งเดียวต่อช่วงเวลา แล้วจำไว้
+     กดสลับดูรายคนจึงเปลี่ยนทันที ไม่ต้องคำนวณใหม่ทั้งทีม */
+  const pkey=S.dash.period+'|'+S.dash.year;
+  const rows=TEAM.people.map(p=>{
+      if(p._k!==pkey){p._st=p.db?statsOf(p.db):null;p._k=pkey;}
+      return {p,st:p._st};})
     .sort((a,b)=>(b.st?b.st.total:-1)-(a.st?a.st.total:-1));
   const ok=rows.filter(r=>r.st);
   const sum=k=>ok.reduce((a,r)=>a+r.st[k],0);
