@@ -578,6 +578,7 @@ function save(now){
      (ของเดิมเขียนลงเครื่อง ทำให้ดูเหมือนบันทึกได้ แต่พอรีเฟรชแล้วหาย) */
   if(booted&&readOnly()){setSync('readonly');return;}
   DB._t=Date.now();dirtySince=DB._t;                       /* ใช้เทียบว่าข้อมูลในเครื่องใหม่กว่าบนคลาวด์ไหม */
+  try{noteIds();}catch(e){}                                /* จำ id ที่มีอยู่ ใช้กันของที่ลบแล้วกลับมา */
   try{localStorage.setItem(localKey(),JSON.stringify(DB));}
   catch(e){if(booted)toast('พื้นที่ในเครื่องเต็ม — ข้อมูลยังบันทึกขึ้นคลาวด์ตามปกติ');}
   if(!booted)return;
@@ -622,7 +623,15 @@ let cloudSeen=0;                 /* updated_at ล่าสุดที่เค
 const MERGE_KEYS=['customers','docs','pos','receipts'];
 /* รวมรายการสองชุดเข้าด้วยกัน ยึด id เป็นหลัก ของที่มีทั้งสองฝั่งใช้ของเครื่องนี้
    ของที่มีเฉพาะบนคลาวด์ (อีกเครื่องเพิ่งสร้าง) เติมกลับเข้ามา ไม่ทิ้ง */
-function mergeList(mine,theirs){
+/* จำ id ของทุกอย่างที่เครื่องนี้เคยมี — ใช้แยกว่า "ของใหม่จากอีกเครื่อง" กับ "ของที่ลบไปแล้ว"
+   ถ้าไม่จำ พอลบอะไรไป อีกเครื่องที่ยังถืออยู่จะเอากลับมาให้ใหม่ไม่รู้จบ */
+function noteIds(){
+  const set=new Set(DB.ids||[]);
+  MERGE_KEYS.forEach(k=>(DB[k]||[]).forEach(x=>{if(x&&x.id)set.add(x.id);}));
+  DB.ids=[...set];
+}
+const knownIds=()=>new Set(DB.ids||[]);
+function mergeList(mine,theirs,known){
   const out=(mine||[]).slice();
   const seen=new Set(out.map(x=>x&&x.id).filter(Boolean));
   /* กันซ้ำอีกชั้นด้วยเลขที่เอกสาร เผื่อ id คนละตัวแต่เป็นใบเดียวกัน */
@@ -632,6 +641,8 @@ function mergeList(mine,theirs){
   (theirs||[]).forEach(x=>{
     if(!x)return;
     if(x.id&&seen.has(x.id))return;
+    /* เคยมีอยู่ในเครื่องนี้แต่ตอนนี้ไม่มีแล้ว = ถูกลบไปแล้ว ไม่ต้องเอากลับมา */
+    if(x.id&&known&&known.has(x.id))return;
     const k=noKey(x);
     if(k&&nos.has(k))return;
     out.push(x);added++;
@@ -642,10 +653,15 @@ function mergeList(mine,theirs){
 }
 function mergeCloud(remote){
   let total=0;
+  const known=knownIds();
   MERGE_KEYS.forEach(k=>{
-    const r=mergeList(DB[k],remote&&remote[k]);
+    const r=mergeList(DB[k],remote&&remote[k],known);
     DB[k]=r.list;total+=r.added;
   });
+  /* รับรู้ id ที่อีกเครื่องเคยมีด้วย ของที่เขาลบไปแล้วเราจะได้ไม่เอากลับมา */
+  if(remote&&remote.ids&&remote.ids.length){
+    const set=new Set(DB.ids||[]);remote.ids.forEach(i=>set.add(i));DB.ids=[...set];
+  }
   return total;
 }
 let lastSyncErr='',syncErrShown=false,retryTimer=null;
@@ -842,7 +858,8 @@ function clearAllData(){
     "ลบลูกค้า เอกสาร PO และใบเสร็จของบัญชีนี้"
     +" ทั้งหมด กู้คืนไม่ได้ (หัวกระดาษ โลโก้ และการตั้งค่ายังอยู่)",
     "ล้างข้อมูล",()=>{
-      const keep={logo:DB.logo,cert:DB.cert,company:DB.company,sb:DB.sb};
+      /* เก็บรายการ id เดิมไว้ด้วย ไม่งั้นข้อมูลที่ล้างไปแล้วจะถูกอีกเครื่องส่งกลับมา */
+      const keep={logo:DB.logo,cert:DB.cert,company:DB.company,sb:DB.sb,ids:DB.ids||[]};
       DB=Object.assign(seed(),keep);
       save();go("dashboard");toast("ล้างข้อมูลแล้ว");
     });
