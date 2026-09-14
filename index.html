@@ -1919,15 +1919,12 @@ function saveRoleSig(k,sig){
   save();
 }
 /* ลายเซ็นฝ่ายวิจัยล่าสุด — ถ้ายังไม่เคยบันทึกไว้ ให้ไปหยิบจากใบขอตัวอย่างที่เคยเซ็นแล้ว */
+/* ลายเซ็นผู้รับเรื่อง (ฝ่ายวิจัยและพัฒนา) ประจำบริษัท — ไฟล์ sig-rd.png ที่วางไว้ข้างแอป
+   ใช้เหมือนกันทุกบัญชี เซลคนไหนออกใบขอตัวอย่างก็เซ็นให้อัตโนมัติ ไม่ต้องเคยเซ็นมาก่อน */
+const RD_SIG_FILE='sig-rd.png';
 function lastRdSig(){
   const r=DB.roleSigs&&DB.roleSigs.rd;
-  if(r&&r.img)return r;
-  const prev=(DB.docs||[])
-    .filter(x=>x.type==='sample'&&x.sigs&&x.sigs.rd&&x.sigs.rd.img)
-    .sort((x,y)=>String(y.date||'').localeCompare(String(x.date||'')))[0];
-  if(!prev)return null;
-  saveRoleSig('rd',prev.sigs.rd);      /* จำไว้ใช้ครั้งต่อไป */
-  return (DB.roleSigs&&DB.roleSigs.rd)||prev.sigs.rd;
+  return {img:RD_SIG_FILE,name:(r&&r.name)||''};
 }
 function autoSignRd(doc){
   if(!doc||doc.type!=='sample'||readOnly())return false;
@@ -2115,7 +2112,7 @@ async function shareCredit(d){
     company:DB.company,logo:DB.logo});
   /* ไม่ส่งไฟล์แนบไปกับลิงก์ ให้ลิงก์เบาและเปิดเร็ว ส่งไปแค่จำนวน */
   payload._attachN=(d.photos||[]).length+(d.files||[]).length;
-  payload._roleSigs=DB.roleSigs||{};   /* ลายเซ็นประจำตำแหน่งที่ล็อกไว้ */
+  payload._roleSigs=Object.assign({},DB.roleSigs||{},{rd:lastRdSig()});   /* ลายเซ็นประจำตำแหน่งที่ล็อกไว้ (ฝ่ายวิจัยใช้ของบริษัทเสมอ) */
   delete payload.photos;delete payload.files;
   const roles=rolesOf(d.type);
   let id=d.sigDocId;
