@@ -4016,11 +4016,6 @@ function pgNewCust(v){
     },{wide:true,okLabel:'สร้างบันทึก',sub:p.label});
   });
   v.append(hint('บันทึกนี้ส่งให้ฝ่ายบัญชีคิดค่าคอมมิสชั่น · ระบบดึงเฉพาะลูกค้าที่ออกใบเสร็จครั้งแรกในรอบนี้มาให้ แก้ไขได้ก่อนพิมพ์'));
-  const p=ncPeriod();
-  v.append(el(`<div class="card pad" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
-    <div><div class="mut">รอบปัจจุบัน</div><div style="font-size:18px;font-weight:700">${esc(p.label)}</div></div>
-    <div style="text-align:right"><div class="mut">ลูกค้าใหม่ในรอบนี้</div>
-      <div style="font-size:26px;font-weight:700;color:var(--blue-d)">${ncFindRows(p).length} ราย</div></div></div>`));
   const items=ncDocs().slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
   v.append(listCard(items,{
     avatar:()=>svg('doc','ic s'),
