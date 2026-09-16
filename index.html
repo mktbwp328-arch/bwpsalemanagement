@@ -255,6 +255,19 @@ a{color:var(--blue);text-decoration:none}
 .sheet{width:210mm;min-height:297mm;background:#fff;margin:0 auto;padding:12mm 12mm 10mm;
   font-family:'Sarabun','IBM Plex Sans Thai',sans-serif;color:#000;font-size:12px;line-height:1.5;
   box-shadow:0 10px 40px rgba(0,0,0,.35);display:flex;flex-direction:column;position:relative}
+/* ---------- บันทึกข้อความรายชื่อลูกค้าใหม่ ---------- */
+.sheet.nc{font-size:14px;line-height:1.7}
+.sheet.nc .ncline{display:flex;gap:10px;margin-bottom:3mm}
+.sheet.nc .nck{width:16mm;flex:0 0 auto}
+.sheet.nc .nctb{width:100%;border-collapse:collapse;table-layout:fixed}
+.sheet.nc .nctb th{background:#1f4e9c;color:#fff;border:1px solid #1f4e9c;padding:4px 5px;font-weight:600;font-size:13.5px}
+.sheet.nc .nctb td{border:1px solid #000;padding:5px;font-size:13.5px;vertical-align:middle}
+.sheet.nc .nctb td.c{text-align:center}
+.sheet.nc .nctb td.pre{white-space:pre-line}
+.sheet.nc .ncsigs{display:flex;justify-content:flex-end;gap:12mm;margin-top:6mm;text-align:center}
+.sheet.nc .ncsig{min-width:52mm}
+.sheet.nc .ncpad{height:17mm;display:flex;align-items:flex-end;justify-content:center}
+.sheet.nc .ncfoot{margin-top:auto;padding-top:8mm;text-align:center;color:#1f4e9c;font-size:12px;line-height:1.5}
 .sheet .sh-top{display:flex;align-items:flex-start;gap:10px}
 .sheet .sh-logo{width:30mm;flex-shrink:0;display:flex;align-items:center;justify-content:center}
 .sheet .sh-logo img{max-width:100%;max-height:26mm}
@@ -1565,6 +1578,7 @@ function sheetsFor(d){
   if(d.type==='sample')return [sampleSheet(d)];
   if(d.type==='requirement')return [requirementSheet(d)];
   if(d.type==='receipt')return [receiptSheet(d)];
+  if(d.type==='newcust')return [newCustSheet(d)];
   return [quoteSheet(d)];
 }
 /* โหลดฟอนต์เอกสารเมื่อเปิดหน้าพิมพ์ครั้งแรก (ไม่ถ่วงตอนเปิดแอป) */
@@ -2104,6 +2118,7 @@ function pasteCodeModal(){
 /* ================= ใบขอเครดิต: เซ็น 4 ลายเซ็น ================= */
 const roleName=(k,t)=>(rolesOf(t||'credit').find(r=>r[0]===k)||[,k])[1];
 const ensureByType=d=>d.type==='sample'?ensureSample(d):d.type==='requirement'?ensureReq(d)
+  :d.type==='newcust'?ensureNewCust(d)
   :d.type==='receipt'?(d.sigs=d.sigs||{},d):ensureCredit(d);
 async function shareCredit(d){
   ensureByType(d);
@@ -3601,6 +3616,12 @@ function openForm(title,fields,values,onSubmit,opts){
     if(f.group){gi++;
       ff.append(el(`<div class="fgroup"><span class="n">${gi}</span><span>${esc(f.group)}</span>
         ${f.sub?`<span class="sub">${esc(f.sub)}</span>`:''}</div>`));return;}
+    if(f.type==='ncrows'){
+      const ed=ncRowsEditor(values[f.key]);
+      custom[f.key]=ed.value;ctl[f.key]=ed;
+      const w=el('<div style="grid-column:1/-1"></div>');
+      w.append(ed.el);ff.append(w);return;
+    }
     if(f.type==='items'){
       const ed=itemsEditor(values[f.key],{due:f.due});
       custom[f.key]=ed.value;ctl[f.key]=ed;
@@ -3756,6 +3777,233 @@ function openForm(title,fields,values,onSubmit,opts){
   setTimeout(()=>ff.querySelector('input,select,textarea')?.focus(),40);
 }
 
+/* ================= รายชื่อลูกค้าใหม่ (บันทึกข้อความถึงฝ่ายบัญชี) =================
+   สรุปลูกค้าที่เพิ่งเริ่มซื้อขายในรอบเดือน เพื่อให้ฝ่ายบัญชีคิดค่าคอมมิชชั่น
+   ตัดยอดวันที่ 22 ของทุกเดือน (รอบคือ 23 เดือนก่อน ถึง 22 เดือนนี้)
+   พิมพ์ออกมาเป็นบันทึก มีลายเซ็นเจ้าหน้าที่ฝ่ายขายและกรรมการผู้จัดการ ส่งลิงก์ให้เซ็นได้ */
+const NC_CUT=22;
+const isoOf=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+/* รอบตัดยอดของวันที่หนึ่ง ๆ — คืนวันเริ่ม/วันตัด และชื่อรอบไว้โชว์ */
+function ncPeriod(iso){
+  const d=iso?new Date(iso):new Date();
+  const base=isNaN(d)?new Date():d;
+  const end=base.getDate()>NC_CUT
+    ? new Date(base.getFullYear(),base.getMonth()+1,NC_CUT)
+    : new Date(base.getFullYear(),base.getMonth(),NC_CUT);
+  const start=new Date(end.getFullYear(),end.getMonth()-1,NC_CUT+1);
+  return {start:isoOf(start),end:isoOf(end),
+    label:'รอบ '+fmtDate(isoOf(start))+' – '+fmtDate(isoOf(end))};
+}
+/* ชนิดสินค้าในบันทึก — ใช้คำแบบเดียวกับที่เขียนในเอกสารจริง */
+const NC_KIND={'ฟิล์มยืด':'Stretch Film','ฟิล์มใส (Shrink Film)':'Shrink Film','ถุงคลุมพาเลท':'ถุงคลุม'};
+/* ขนาดสินค้า: ถ้าอ่านขนาดจากชื่อได้ ก็เขียนให้เป็นรูปแบบเดียวกัน ไม่งั้นใช้ชื่อสินค้าเดิม */
+function ncSize(it){
+  const d=parseDims(it.name);
+  const w=+it.w||d.w,l=+it.l||d.l,t=+it.t||d.t;
+  const cm=v=>(Math.round(v*100)/100);
+  if(w&&l&&t)return t+' mic x '+cm(w)+' cm x '+(l>=10000?cm(l/100)+' m':cm(l)+' cm');
+  if(w&&t)return cm(w)+' cm x '+t+' mic';
+  return String(it.name||'').replace(/\s+/g,' ').trim();
+}
+const ncGrade=name=>((String(name||'').match(/เกรด\s*(AB|A|B)/i)||[])[1]||'').toUpperCase();
+/* ลูกค้าที่เพิ่งเริ่มซื้อขายในรอบนี้ — ดูจาก PO และใบเสร็จ ถ้าเคยซื้อก่อนรอบนี้ถือว่าไม่ใช่รายใหม่ */
+function ncFindRows(period){
+  const deals=[];
+  (DB.pos||[]).filter(p=>p.status!=='ยกเลิก').forEach(p=>deals.push({customer:p.customer,date:p.date,items:p.items||[]}));
+  (DB.receipts||[]).filter(r=>r.status!=='ยกเลิก').forEach(r=>deals.push({customer:r.customer,date:r.date,items:r.items||[]}));
+  const first={};
+  deals.forEach(x=>{
+    const k=normName(x.customer);if(!k||!x.date)return;
+    if(!first[k]||x.date<first[k].date)first[k]=x;
+  });
+  return Object.values(first)
+    .filter(x=>x.date>=period.start&&x.date<=period.end)
+    .sort((a,b)=>String(a.date).localeCompare(String(b.date)))
+    .map(x=>{
+      const it=(x.items||[])[0]||{};
+      return {customer:x.customer,
+        kind:NC_KIND[categoryOf(it.name,it.code)]||'',
+        size:(x.items||[]).map(ncSize).filter(Boolean).slice(0,2).join('\n'),
+        grade:ncGrade(it.name)};
+    });
+}
+/* ตารางรายชื่อในฟอร์ม — เพิ่ม/ลบแถวได้ */
+function ncRowsEditor(initial){
+  const box=el('<div class="itbl"><div class="itrows"></div></div>');
+  const rowsEl=box.querySelector('.itrows');
+  const renum=()=>rowsEl.querySelectorAll('.itrow').forEach((r,i)=>r.querySelector('.itno').textContent='ลำดับที่ '+(i+1));
+  function addRow(v){
+    v=v||{};
+    const r=el(`<div class="itrow">
+      <div class="ittop"><span class="itno">ลำดับ</span>
+        <button type="button" class="itdel">✕ ลบแถวนี้</button></div>
+      <div class="itl1">
+        <label class="itf"><span>ชนิดสินค้า</span>
+          <input class="nckind" placeholder="เช่น Stretch Film" value="${esc(v.kind||'')}"></label>
+        <label class="itf"><span>รายชื่อลูกค้าที่มีการซื้อขาย</span>
+          <input class="nccust" placeholder="ชื่อบริษัทลูกค้า" value="${esc(v.customer||'')}"></label>
+      </div>
+      <div class="itl2" style="grid-template-columns:minmax(0,1fr) 110px">
+        <label class="itf"><span>ขนาดสินค้า</span>
+          <textarea class="ncsize" rows="2" placeholder="เช่น 15 mic x 50 cm x 570 m">${esc(v.size||'')}</textarea></label>
+        <label class="itf"><span>เกรด</span>
+          <input class="ncgrade" placeholder="A / AB" value="${esc(v.grade||'')}"></label>
+      </div></div>`);
+    r.querySelector('.itdel').onclick=()=>{r.remove();if(!rowsEl.children.length)addRow();renum();};
+    rowsEl.append(r);renum();return r;
+  }
+  (initial&&initial.length?initial:[{}]).forEach(addRow);
+  const add=el('<button type="button" class="btn gh" style="width:100%;border-style:dashed;border-color:#bfd3f5;color:var(--blue-d);background:#f8fbff">+ เพิ่มรายชื่อ</button>');
+  add.onclick=()=>{const r=addRow();r.querySelector('.nccust').focus();r.scrollIntoView({behavior:'smooth',block:'nearest'});};
+  box.append(add);
+  return {el:box,
+    value:()=>[...rowsEl.querySelectorAll('.itrow')].map(r=>({
+      customer:r.querySelector('.nccust').value.trim(),
+      kind:r.querySelector('.nckind').value.trim(),
+      size:r.querySelector('.ncsize').value.trim(),
+      grade:r.querySelector('.ncgrade').value.trim()
+    })).filter(x=>x.customer||x.kind||x.size)};
+}
+function ensureNewCust(d){
+  if(!d.rows)d.rows=[];
+  if(!d.sigs)d.sigs={};
+  if(!d.attn)d.attn='ผู้จัดการฝ่ายบัญชี';
+  if(!d.intro)d.intro=NC_INTRO;
+  return d;
+}
+const NC_INTRO='โดยทางบริษัทฯ ตกลงค่าคอมมิสชั่นของสินค้าที่ขาย โดยมีรายชื่อดังต่อไปนี้ '
+  +'และขอให้ทางฝ่ายบัญชีคิดค่าคอมมิสชั่นดังกล่าวตามรายชื่อลูกค้าตามตารางดังต่อไปนี้';
+function ncFields(){return [
+  {group:'หัวบันทึก'},
+  {key:'date',label:'วันที่ตัดยอด',type:'date',def:ncPeriod().end,
+   hint:'ตัดยอดวันที่ 22 ของทุกเดือน — รอบคือ 23 เดือนก่อน ถึง 22 เดือนนี้'},
+  {key:'attn',label:'เรียน',def:'ผู้จัดการฝ่ายบัญชี'},
+  {key:'salesName',label:'ชื่อเจ้าหน้าที่ฝ่ายขาย',def:meName()},
+  {key:'intro',label:'ข้อความนำ',type:'textarea',full:true,def:NC_INTRO},
+  {group:'รายชื่อลูกค้าที่มีการซื้อขาย',sub:'ระบบดึงลูกค้าที่เพิ่งเริ่มซื้อขายในรอบนี้มาให้ แก้ไขเพิ่มลดได้'},
+  {key:'rows',type:'ncrows'}
+];}
+/* ---------- แผ่นพิมพ์ ---------- */
+function newCustSheet(d){
+  ensureNewCust(d);
+  const co=DB.company||COMPANY,lg=logoSrc(),s=d.sigs||{};
+  const sig=k=>s[k]&&s[k].img?`<img src="${imgSrc(s[k].img)}" style="max-height:15mm;max-width:46mm">`:'';
+  const rows=(d.rows||[]).length?d.rows:[{customer:'',kind:'',size:'',grade:''}];
+  return el(`<div class="sheet nc">
+    <div class="sh-top" style="align-items:center">
+      <div class="sh-logo">${lg?`<img src="${imgSrc(lg)}">`:''}</div>
+      <div class="sh-mid" style="text-align:left">
+        <div class="co-th" style="font-size:20px;font-weight:700">${esc(co.nameTh)}</div>
+        <div class="co-en" style="font-size:15px">${esc(co.nameEn)}</div>
+      </div>
+    </div>
+    <div style="text-align:right;margin:10mm 0 8mm">วันที่ ${esc(thaiDate(d.date))}</div>
+    <div class="ncline"><span class="nck">เรื่อง</span><span>รายชื่อลูกค้าของ ${esc(d.salesName||'')}</span></div>
+    <div class="ncline"><span class="nck">เรียน</span><span>${esc(d.attn||'')}</span></div>
+    <div style="margin:6mm 0 5mm;text-indent:15mm;line-height:1.9">${esc(d.intro||'')}</div>
+    <table class="nctb">
+      <thead><tr>
+        <th style="width:14mm">ลำดับ</th><th>รายชื่อลูกค้าที่มีการซื้อขาย</th>
+        <th style="width:30mm">ชนิดสินค้า</th><th style="width:52mm">ขนาดสินค้า</th><th style="width:16mm">เกรด</th>
+      </tr></thead>
+      <tbody>${rows.map((r,i)=>`<tr>
+        <td class="c">${i+1}</td><td class="c">${esc(r.customer||'')}</td>
+        <td class="c">${esc(r.kind||'')}</td><td class="c pre">${esc(r.size||'')}</td>
+        <td class="c">${esc(r.grade||'')}</td></tr>`).join('')}</tbody>
+    </table>
+    <div style="margin:8mm 0 0;text-indent:15mm">จึงเรียนมาเพื่อทราบและโปรดดำเนินการ</div>
+    <div class="ncsigs">
+      <div class="ncsig">
+        <div>ขอแสดงความนับถือ</div>
+        <div class="ncpad">${sig('sales')}</div>
+        <div>(${esc(d.salesName||'')})</div>
+        <div>เจ้าหน้าที่ฝ่ายขาย</div>
+      </div>
+      <div class="ncsig">
+        <div>&nbsp;</div>
+        <div class="ncpad">${sig('md')}</div>
+        <div>(${esc((s.md&&s.md.name)||'')})</div>
+        <div>กรรมการผู้จัดการ</div>
+      </div>
+    </div>
+    <div class="ncfoot">
+      <div>${esc(co.address)}</div>
+      <div>328 Moo 6 T.Klongniyomyatra, A.Bangbor, Samutprakarn 10560</div>
+      <div>${esc(co.phone)}</div>
+    </div>
+  </div>`);
+}
+/* วันที่แบบเต็มไม่มีชื่อวัน: 22 กรกฎาคม 2569 */
+function thaiDate(iso){const x=new Date(iso);if(!iso||isNaN(x))return '';
+  return x.getDate()+' '+TH_MON[x.getMonth()]+' '+(x.getFullYear()+543);}
+/* ---------- หน้าจอ ---------- */
+function ncDocs(){return (DB.docs||[]).filter(d=>d.type==='newcust');}
+function pgNewCust(v){
+  if(S.ncOpen){const d=ncDocs().find(x=>x.id===S.ncOpen);
+    if(d)return ncDetail(v,d);
+    S.ncOpen=null;}
+  header('รายชื่อลูกค้าใหม่',['ส่งฝ่ายบัญชี · ตัดยอดวันที่ '+NC_CUT+' ของทุกเดือน']);
+  actionBtn('สร้างบันทึกรอบนี้','plus',()=>{
+    const p=ncPeriod();
+    const pre={date:p.end,attn:'ผู้จัดการฝ่ายบัญชี',salesName:meName(),intro:NC_INTRO,rows:ncFindRows(p)};
+    openForm('สร้างบันทึกรายชื่อลูกค้าใหม่',ncFields(),pre,d=>{
+      const doc=ensureNewCust(Object.assign({id:uid(),type:'newcust',status:'ร่าง'},d));
+      doc.no=doc.no||('NC-'+(new Date(doc.date).getFullYear()+543)+'-'+String(ncDocs().length+1).padStart(2,'0'));
+      autoSignSales(doc);
+      DB.docs.unshift(doc);save(true);render();toast('สร้างบันทึกแล้ว');
+      go('newcust',{ncOpen:doc.id});
+    },{wide:true,okLabel:'สร้างบันทึก',sub:p.label});
+  });
+  v.append(hint('บันทึกนี้ส่งให้ฝ่ายบัญชีคิดค่าคอมมิสชั่น · ระบบดึงลูกค้าที่เพิ่งเริ่มซื้อขายในรอบมาให้อัตโนมัติ แก้ไขได้ก่อนพิมพ์'));
+  const p=ncPeriod();
+  v.append(el(`<div class="card pad" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
+    <div><div class="mut">รอบปัจจุบัน</div><div style="font-size:18px;font-weight:700">${esc(p.label)}</div></div>
+    <div style="text-align:right"><div class="mut">ลูกค้าใหม่ในรอบนี้</div>
+      <div style="font-size:26px;font-weight:700;color:var(--blue-d)">${ncFindRows(p).length} ราย</div></div></div>`));
+  const items=ncDocs().slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
+  v.append(listCard(items,{
+    avatar:()=>svg('doc','ic s'),
+    title:d=>esc('ตัดยอด '+fmtDate(d.date)),
+    meta:d=>esc((d.salesName||'')+' · '+(d.rows||[]).length+' ราย')
+      +' · '+Object.keys(d.sigs||{}).length+'/2 ลายเซ็น',
+    status:d=>pill(d.status||'ร่าง',DOC_ST),
+    onOpen:d=>go('newcust',{ncOpen:d.id}),
+    empty:emptyState('ยังไม่มีบันทึกรายชื่อลูกค้าใหม่','กดปุ่มด้านบนเพื่อสร้างบันทึกของรอบนี้')
+  }));
+}
+function ncDetail(v,d){
+  ensureNewCust(d);
+  header('ตัดยอด '+fmtDate(d.date),['รายชื่อลูกค้าใหม่']);
+  backBtn('กลับ',()=>go('newcust',{ncOpen:null}));
+  actionBtn('แก้ไขข้อมูล','edit',()=>openForm('แก้ไขบันทึก',ncFields(),d,o=>{
+    Object.assign(d,o);save();render();toast('บันทึกแล้ว');},{wide:true,okLabel:'บันทึกการแก้ไข'}),'btn gh');
+  actionBtn('ดูตัวอย่าง / พิมพ์','print',()=>printDocSheet(d));
+  const wrap=el('<div class="split"></div>');
+  const left=el('<div style="display:flex;flex-direction:column;gap:16px;min-width:0"></div>');
+  const per=ncPeriod(d.date);
+  left.append(el(`<div class="card pad">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px">
+      <div class="h3" style="margin:0">ข้อมูลบันทึก</div>${pill(d.status||'ร่าง',DOC_ST)}</div>
+    <div class="grid g3">
+      <div class="fl"><span>วันที่ตัดยอด</span><b>${fmtDate(d.date)}</b></div>
+      <div class="fl"><span>รอบ</span><b>${esc(per.label.replace('รอบ ',''))}</b></div>
+      <div class="fl"><span>เจ้าหน้าที่ฝ่ายขาย</span><b>${esc(d.salesName||'-')}</b></div>
+      <div class="fl"><span>เรียน</span><b>${esc(d.attn||'-')}</b></div>
+      <div class="fl"><span>จำนวนลูกค้า</span><b>${(d.rows||[]).length} ราย</b></div>
+    </div></div>`));
+  const tb=el(`<div class="card"><div class="pad" style="padding-bottom:6px">
+    <div class="h3" style="margin:0">รายชื่อลูกค้า</div></div><div class="list"></div></div>`);
+  const L=tb.querySelector('.list');
+  (d.rows||[]).forEach((r,i)=>L.append(el(`<div class="lrow" style="cursor:default">
+    <div class="lav">${i+1}</div>
+    <div class="lmain"><div class="lt">${esc(r.customer||'-')}</div>
+      <div class="lm">${esc([r.kind,String(r.size||'').split('\n').join(' / '),r.grade&&('เกรด '+r.grade)].filter(Boolean).join(' · '))}</div></div></div>`)));
+  if(!(d.rows||[]).length)L.append(el('<div class="empty">ยังไม่มีรายชื่อ</div>'));
+  left.append(tb);
+  wrap.append(left);
+  wrap.append(signCard(d,()=>render()));
+  v.append(wrap);
+}
 /* ================= drawer ================= */
 let drawerOpen=null;
 function closeDrawer(){$('#layer').querySelectorAll('.dr,.drbd').forEach(x=>x.remove());drawerOpen=null;}
@@ -3797,9 +4045,10 @@ const PAGES=[
   {id:'dashboard',label:'หน้าแรก',icon:'home',count:()=>null},
   {id:'team',label:'ภาพรวมทีมขาย',icon:'up',count:()=>null,mgr:true},
   {id:'customers',label:'ลูกค้าติดต่อเข้ามา',icon:'users',count:()=>DB.customers.length},
-  {id:'documents',label:'เอกสารการขาย',icon:'doc',count:()=>DB.docs.length},
+  {id:'documents',label:'เอกสารการขาย',icon:'doc',count:()=>DB.docs.filter(d=>DOC_TYPES.some(t=>t[0]===d.type)).length},
   {id:'po',label:'PO ลูกค้า',icon:'cart',count:()=>DB.pos.length},
   {id:'receipts',label:'ใบเสร็จรับเงิน',icon:'receipt',count:()=>DB.receipts.length},
+  {id:'newcust',label:'รายชื่อลูกค้าใหม่',icon:'users',count:()=>DB.docs.filter(d=>d.type==='newcust').length},
   {id:'profiles',label:'ข้อมูลลูกค้า',icon:'profile',count:()=>DB.customers.length},
   {id:'products',label:'ข้อมูลสินค้า',icon:'cart',count:()=>(DB.products||[]).length},
   {id:'employees',label:'ข้อมูลพนักงาน',icon:'badge',count:()=>null,mgr:true}
@@ -3814,7 +4063,7 @@ let S={page:'dashboard',
   rcY:'',rcM:'',rcFrom:'',rcTo:'',           /* ตัวกรองวันที่หน้าใบเสร็จ */
   docType:'quotation',docQ:'',docFilter:'ทั้งหมด',docOpen:null,
   poQ:'',poFilter:'ทั้งหมด',poOpen:null,
-  rcQ:'',rcFilter:'ทั้งหมด',rcOpen:null,empQ:'',
+  rcQ:'',rcFilter:'ทั้งหมด',rcOpen:null,empQ:'',ncOpen:null,
   profSel:null,profTab:'info',profQ:'',teamSel:null,prodQ:'',
   dash:{chart:'line'}};   /* ช่วงเวลาใช้ตัวกรอง dashY/dashM/dashFrom/dashTo */
 /* จำหน้าที่เปิดอยู่ ไม่ให้รีเฟรชแล้วเด้งกลับหน้าแรก */
@@ -3996,7 +4245,8 @@ function render(){
   const v=$('#view');v.innerHTML='';$('#topActions').innerHTML='';
   if(S.page==='team'&&!isManager())S.page='dashboard';
   ({dashboard:pgDashboard,team:pgTeam,customers:pgCustomers,documents:pgDocuments,po:pgPO,
-    receipts:pgReceipts,profiles:pgProfiles,products:pgProducts,employees:pgEmployees}[S.page]||pgDashboard)(v);
+    receipts:pgReceipts,newcust:pgNewCust,profiles:pgProfiles,products:pgProducts,
+    employees:pgEmployees}[S.page]||pgDashboard)(v);
   if(readOnly()){
     v.prepend(el(`<div class="hint" style="background:#eef0ff;border-color:#c7cdfb;color:#4338ca">
       👁 กำลังดูข้อมูลของ <b>${esc(AUTH.viewingName||'เพื่อนร่วมทีม')}</b> — แก้ไขหรือสร้างเอกสารไม่ได้</div>`));
@@ -5375,7 +5625,8 @@ const SIGN_ROLES={
     ['blow','ฝ่ายผลิตส่วนงานเป่า'],['print','ฝ่ายผลิตส่วนงานพิมพ์'],
     ['qc','ฝ่ายควบคุมคุณภาพ'],['store','ฝ่ายคลังสินค้า'],['plan','ฝ่ายวางแผน'],
     ['logistics','ฝ่ายขนส่ง'],['asstMd','ผู้ช่วยกรรมการผู้จัดการ']],
-  receipt:[['sender','ผู้ส่งสินค้า'],['authorized','ผู้มีอำนาจลงนาม']]
+  receipt:[['sender','ผู้ส่งสินค้า'],['authorized','ผู้มีอำนาจลงนาม']],
+  newcust:[['sales','เจ้าหน้าที่ฝ่ายขาย'],['md','กรรมการผู้จัดการ']]
 };
 const CREDIT_ROLES=SIGN_ROLES.credit;
 const rolesOf=t=>SIGN_ROLES[t]||SIGN_ROLES.credit;
