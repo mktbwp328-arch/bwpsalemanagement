@@ -3806,6 +3806,7 @@ const PAGES=[
 let S={page:'dashboard',
   custFilter:'ทั้งหมด',custQ:'',
   custY:'',custM:'',custFrom:'',custTo:'',   /* ตัวกรองวันที่หน้าลูกค้า */
+  teamY:'',teamM:'',teamFrom:'',teamTo:'',   /* ตัวกรองวันที่หน้าภาพรวมทีม */
   docType:'quotation',docQ:'',docFilter:'ทั้งหมด',docOpen:null,
   poQ:'',poFilter:'ทั้งหมด',poOpen:null,
   rcQ:'',rcFilter:'ทั้งหมด',rcMonth:null,rcOpen:null,empQ:'',
@@ -4011,9 +4012,17 @@ function render(){
 
 /* ---------- 1. DASHBOARD ---------- */
 const PERIODS=[['30','30 วัน'],['90','90 วัน'],['year','รายปี'],['all','ทั้งหมด']];
-function inPeriod(iso){const d=new Date(iso);if(isNaN(d))return false;const p=S.dash.period;
+function inPeriod(iso){
+  /* หน้าภาพรวมทีมใช้ตัวกรอง ปี/เดือน/ช่วงวันที่ แบบเดียวกับหน้าลูกค้า ไม่ใช่ปุ่ม 30/90 วัน */
+  if(S.page==='team')return dateFilterPass({date:iso},'team');
+  const d=new Date(iso);if(isNaN(d))return false;const p=S.dash.period;
   if(p==='all')return true;if(p==='year')return d.getFullYear()===S.dash.year;
   return (Date.now()-d.getTime())/86400000<=parseInt(p,10);}
+function teamChartYear(){
+  const s=S.teamFrom||S.teamTo;
+  const y=s?+String(s).slice(0,4):0;
+  return y||new Date().getFullYear();
+}
 function dataYears(){const ys=new Set([new Date().getFullYear()]);
   [...DB.receipts,...DB.pos,...DB.docs].forEach(x=>{const d=new Date(x.date);if(!isNaN(d))ys.add(d.getFullYear());});
   return [...ys].sort((a,b)=>b-a);}
@@ -4175,7 +4184,7 @@ function statsOf(db){
     const quotes=DB.docs.filter(d=>d.type==='quotation'&&inPeriod(d.date));
     const pos=DB.pos.filter(p=>p.status!=='ยกเลิก'&&inPeriod(p.date));
     const css=DB.customers.filter(c=>inPeriod(c.date));
-    const yr=S.dash.period==='year'?S.dash.year:new Date().getFullYear();
+    const yr=S.page==='team'?(+S.teamY||teamChartYear()):(S.dash.period==='year'?S.dash.year:new Date().getFullYear());
     const months=Array(12).fill(0),cnts=Array(12).fill(0);
     liveRc().forEach(r=>{const d=new Date(r.date);
       if(!isNaN(d)&&d.getFullYear()===yr){months[d.getMonth()]+=r.amount;cnts[d.getMonth()]++;}});
@@ -4632,11 +4641,11 @@ const teamProgTxt=()=>TEAM.total?('ดึงข้อมูลแล้ว '+TEA
 function paintTeamProgress(){const e=$('#teamProg');if(e)e.textContent=teamProgTxt();}
 function pgTeam(v){
   header('ภาพรวมทีมขาย',['สรุปยอดของเซลทุกคน']);
-  $('#topActions').append(seg(PERIODS,S.dash.period,k=>{S.dash.period=k;render();}));
-  if(S.dash.period==='year'){
-    const sel=el(`<select style="border:1px solid #d3ddec;border-radius:10px;height:44px;padding:0 12px;background:#fff;cursor:pointer">${dataYears().map(y=>`<option value="${y}" ${y===S.dash.year?'selected':''}>ปี ${y+543}</option>`).join('')}</select>`);
-    sel.onchange=()=>{S.dash.year=+sel.value;render();};$('#topActions').append(sel);
-  }
+  /* เลือกช่วงเวลาแบบเดียวกับหน้าลูกค้าติดต่อเข้ามา — ปี / เดือน / กำหนดช่วงวันเอง */
+  const dated=[];
+  (TEAM.people||[]).forEach(p=>{const d=p.db;if(!d)return;
+    ['receipts','pos','docs','customers'].forEach(k=>(d[k]||[]).forEach(x=>dated.push(x)));});
+  $('#topActions').append(dateFilter(dated,'team'));
   actionBtn('โหลดข้อมูลใหม่','up',()=>loadTeam(true),'btn gh');
 
   if(!TEAM.loaded){
@@ -4651,7 +4660,7 @@ function pgTeam(v){
 
   /* คำนวณตัวเลขของแต่ละคนครั้งเดียวต่อช่วงเวลา แล้วจำไว้
      กดสลับดูรายคนจึงเปลี่ยนทันที ไม่ต้องคำนวณใหม่ทั้งทีม */
-  const pkey=S.dash.period+'|'+S.dash.year;
+  const pkey=[S.teamY,S.teamM,S.teamFrom,S.teamTo].join('|');
   const rows=TEAM.people.map(p=>{
       if(p._k!==pkey){p._st=p.db?statsOf(p.db):null;p._k=pkey;}
       return {p,st:p._st};})
