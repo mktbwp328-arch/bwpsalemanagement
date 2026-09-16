@@ -3833,6 +3833,36 @@ function ncFindRows(period){
         grade:ncGrade(it.name)};
     });
 }
+/* ตรวจว่าใครถูกข้ามและเพราะอะไร — ไว้ไล่หาเวลารายชื่อไม่ครบตามที่คาด */
+function ncAudit(period){
+  const rcs=(DB.receipts||[]).filter(r=>r.status!=='ยกเลิก'&&r.date);
+  const firstRc={};
+  rcs.forEach(r=>{const k=normName(r.customer);if(!k)return;
+    if(!firstRc[k]||r.date<firstRc[k].date)firstRc[k]=r;});
+  const skipped=[];
+  /* ลูกค้าที่มีใบเสร็จอยู่แล้ว แต่ไม่เข้าเงื่อนไข */
+  Object.keys(firstRc).forEach(k=>{
+    const r=firstRc[k];
+    if(r.date>=period.start&&r.date<=period.end){
+      const c=findCustomer(r.customer);
+      if(c&&c.date&&c.date<period.start)
+        skipped.push({customer:r.customer,reason:'ติดต่อเข้ามาตั้งแต่ '+fmtDate(c.date)+' (ก่อนรอบนี้)',fix:'แก้วันที่ติดต่อในข้อมูลลูกค้า'});
+      return;
+    }
+    if(r.date<period.start){
+      /* เคยซื้อก่อนรอบ — ถ้ารอบนี้ก็ซื้ออีก แปลว่าลูกค้าเก่าซื้อซ้ำ ไม่ต้องเตือน */
+      const again=rcs.some(x=>normName(x.customer)===k&&x.date>=period.start&&x.date<=period.end);
+      if(again)skipped.push({customer:r.customer,reason:'เคยออกใบเสร็จแล้วเมื่อ '+fmtDate(r.date),fix:'ลูกค้าเก่าซื้อซ้ำ ไม่ใช่รายใหม่'});
+    }
+  });
+  /* มี PO ในรอบแต่ยังไม่เคยออกใบเสร็จเลย */
+  (DB.pos||[]).filter(p=>p.status!=='ยกเลิก'&&p.date>=period.start&&p.date<=period.end).forEach(p=>{
+    const k=normName(p.customer);if(!k||firstRc[k])return;
+    if(skipped.some(s=>normName(s.customer)===k))return;
+    skipped.push({customer:p.customer,reason:'มี PO แต่ยังไม่ได้ออกใบเสร็จ',fix:'ออกใบเสร็จแล้วจะขึ้นให้เอง'});
+  });
+  return skipped;
+}
 /* ตารางรายชื่อในฟอร์ม — เพิ่ม/ลบแถวได้ */
 function ncRowsEditor(initial){
   const box=el('<div class="itbl"><div class="itrows"></div></div>');
@@ -3966,6 +3996,20 @@ function pgNewCust(v){
     <div><div class="mut">รอบปัจจุบัน</div><div style="font-size:18px;font-weight:700">${esc(p.label)}</div></div>
     <div style="text-align:right"><div class="mut">ลูกค้าใหม่ในรอบนี้</div>
       <div style="font-size:26px;font-weight:700;color:var(--blue-d)">${ncFindRows(p).length} ราย</div></div></div>`));
+  /* รายชื่อไม่ครบตามที่คาด — ดูตรงนี้ว่าใครถูกข้ามและเพราะอะไร */
+  const skip=ncAudit(p);
+  if(skip.length){
+    const card=el(`<div class="card"><div class="pad" style="padding-bottom:4px">
+      <div class="h3" style="margin:0">ลูกค้าที่ระบบข้ามไว้ ${skip.length} ราย</div>
+      <div class="tiny" style="margin-top:3px">ถ้ารายไหนควรนับเป็นลูกค้าใหม่ แก้ตามคำแนะนำ แล้วกดสร้างบันทึกใหม่ หรือเพิ่มชื่อเองในฟอร์มก็ได้</div>
+      </div><div class="list"></div></div>`);
+    const L=card.querySelector('.list');
+    skip.forEach(s=>L.append(el(`<div class="lrow" style="cursor:default">
+      <div class="lav" style="background:#fef3c7;color:#b45309">!</div>
+      <div class="lmain"><div class="lt">${esc(s.customer||'-')}</div>
+        <div class="lm">${esc(s.reason)} · ${esc(s.fix)}</div></div></div>`)));
+    v.append(card);
+  }
   const items=ncDocs().slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
   v.append(listCard(items,{
     avatar:()=>svg('doc','ic s'),
