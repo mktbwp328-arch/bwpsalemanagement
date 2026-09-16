@@ -174,7 +174,7 @@ a{color:var(--blue);text-decoration:none}
 .itl1{display:grid;grid-template-columns:190px minmax(0,1fr);gap:12px}
 .itl2{display:grid;grid-template-columns:110px 130px 150px minmax(0,1fr);gap:12px;align-items:end}
 /* ขนาดชิ้นงาน ใช้คำนวณน้ำหนักเป็นกิโลกรัม */
-.itl3{display:grid;grid-template-columns:130px 130px 150px minmax(0,1fr);gap:12px;align-items:end;margin-top:10px}
+.itl3{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:12px;align-items:end;margin-top:10px}
 /* ช่องเลือกรหัสสินค้าแบบพิมพ์ค้นหา */
 .pcw{position:relative;min-width:0}
 .pcw>input{width:100%}
@@ -3446,8 +3446,25 @@ const UNITS=['ม้วน','ใบ','กก.','แผ่น','ชิ้น','�
    สูตร: กว้าง(ซม.) × ยาว(ซม.) × หนา(ไมครอน) × 0.921 ÷ 10,000,000 = กก. ต่อชิ้น */
 const FILM_DENS=0.921;
 const isKgUnit=u=>/^(กก\.?|กิโล|kg)/i.test(String(u||'').trim());
-function pieceKg(it){
-  const w=+it.w||0,l=+it.l||0,t=+it.t||0;
+/* ถุงคลุมพาเลทเป็นถุงสามมิติ ต้องใช้ความสูงด้วย */
+const isHoodItem=it=>categoryOf(it&&it.name,it&&it.code)==='ถุงคลุมพาเลท';
+/* น้ำหนักต่อชิ้น (กก.)
+   ฟิล์ม: กว้าง × ยาว × หนา × 0.921 ÷ 10,000,000
+   ถุงคลุมพาเลท (สูตรบริษัท มีระยะเผื่อ กว้าง/ยาว/สูง +2 ซม. หนา +5 ไมครอน):
+     ด้านบน       (กว้าง+2) × (ยาว+2) × (หนา+5) × 0.921 ÷ 10,000,000
+     ด้านข้าง      (กว้าง+2) × (สูง+2) × (หนา+5) × 0.921 × 2 ÷ 10,000,000
+                 + (ยาว+2)  × (สูง+2) × (หนา+5) × 0.921 × 2 ÷ 10,000,000
+   กรณีกว้างเท่ากับยาว สองบรรทัดด้านข้างจะเท่ากับ (กว้าง+2)×(สูง+2)×4 ตามสูตรเดิมพอดี */
+const HOOD_ADD_CM=2,HOOD_ADD_MIC=5;
+function pieceKg(it,hood){
+  const w=+it.w||0,l=+it.l||0,t=+it.t||0,h=+it.h||0;
+  if(hood){
+    if(!(w>0&&l>0&&h>0&&t>0))return 0;
+    const W=w+HOOD_ADD_CM,L=l+HOOD_ADD_CM,H=h+HOOD_ADD_CM,T=t+HOOD_ADD_MIC;
+    const top=W*L*T*FILM_DENS/10000000;
+    const sides=W*H*T*FILM_DENS*2/10000000+L*H*T*FILM_DENS*2/10000000;
+    return top+sides;
+  }
   if(!(w>0&&l>0&&t>0))return 0;
   return w*l*t*FILM_DENS/10000000;
 }
@@ -3456,10 +3473,11 @@ function pieceKg(it){
 function itemKg(it){
   const q=+it.qty||0;
   if(isKgUnit(it.unit))return q;
-  let per=pieceKg(it);
+  const hood=isHoodItem(it);
+  let per=pieceKg(it,hood);
   if(!per){
     const d=parseDims(it.name);
-    per=pieceKg({w:it.w||d.w,l:it.l||d.l,t:it.t||d.t});
+    per=pieceKg({w:it.w||d.w,l:it.l||d.l,h:it.h||d.h,t:it.t||d.t},hood);
   }
   return per>0?q*per:null;
 }
@@ -3475,6 +3493,20 @@ function parseDims(name){
   /* ความหนา: ตัวเลขตามด้วย mic / mc / micron / ไมครอน */
   const mt=s.match(/(\d+(?:\.\d+)?)\s*(?:mic(?:ron)?s?|mc|ไมครอน)\b/i);
   if(mt)out.t=parseFloat(mt[1]);
+  const toCm=(v,u)=>{u=String(u||'').toLowerCase();
+    return /^(mm|มม)/.test(u)?v/10:/^(m|เมตร|ม)\.?$/.test(u)?v*100:v;};
+  /* ขนาดสามมิติแบบถุงคลุม: "100 x 50 x 65 cm" หรือ "2.5 m * 11.80 m * 2.3 m"
+     หน่วยเขียนไว้ท้ายตัวเดียวก็ได้ หรือเขียนทุกตัวก็ได้ */
+  const U='(cm|mm|m|เมตร)?\\.?';
+  const c3=s.match(new RegExp('(\\d+(?:\\.\\d+)?)\\s*'+U+'\\s*[x×*]\\s*(\\d+(?:\\.\\d+)?)\\s*'+U
+    +'\\s*[x×*]\\s*(\\d+(?:\\.\\d+)?)\\s*(cm|mm|m|เมตร)\\b','i'));
+  if(c3){
+    const last=c3[6];
+    out.w=toCm(parseFloat(c3[1]),c3[2]||last);
+    out.l=toCm(parseFloat(c3[3]),c3[4]||last);
+    out.h=toCm(parseFloat(c3[5]),last);
+    return out;
+  }
   /* ความยาว: ตัวเลขตามด้วยหน่วยความยาว เก็บเรียงตามลำดับที่เจอ แปลงเป็นเซนติเมตรทั้งหมด */
   const dims=[];
   const re=/(\d+(?:\.\d+)?)\s*(cm|มม\.?|mm|เมตร|ม\.|m)\b\.?/gi;
@@ -3513,8 +3545,15 @@ function itemsEditor(initial,opts){
       const q=parseFloat(r.querySelector('.itqty').value)||0,p=parseFloat(r.querySelector('.itprice').value)||0;
       const a=q*p;t+=a;r.querySelector('.itamt').textContent=num(a);
       /* น้ำหนักของรายการนี้ อัปเดตให้เห็นทันทีระหว่างพิมพ์ */
-      const kg=itemKg({qty:q,unit:r.querySelector('.itunit').value,
-        w:r.querySelector('.itw').value,l:r.querySelector('.itlen').value,t:r.querySelector('.itthk').value});
+      const nm=r.querySelector('.itname').value,hood=isHoodItem({name:nm});
+      const kg=itemKg({qty:q,unit:r.querySelector('.itunit').value,name:nm,
+        w:r.querySelector('.itw').value,l:r.querySelector('.itlen').value,
+        h:r.querySelector('.ithgt').value,t:r.querySelector('.itthk').value});
+      /* ความสูงใช้เฉพาะถุงคลุมพาเลท */
+      r.querySelector('.ithwrap').style.display=hood?'':'none';
+      r.querySelector('.itkghint').textContent=hood
+        ?'ถุงคลุมพาเลท: ด้านบน (กว้าง+2)×(ยาว+2) + ด้านข้าง (กว้าง+2)×(สูง+2)×2 + (ยาว+2)×(สูง+2)×2 แล้ว ×(หนา+5)×0.921÷10,000,000 · หน่วยซม./ไมครอน'
+        :'คำนวณน้ำหนักจาก กว้าง × ยาว × หนา × 0.921 ÷ 10,000,000 · ถ้าชื่อสินค้ามีขนาดอยู่แล้ว (เช่น 15 mic x 50 cm x 1800 m) ระบบเติมให้เอง แก้ทับได้ · หน่วย กก. ไม่ต้องใส่';
       const kgEl=r.querySelector('.itkg');
       kgEl.textContent=kg===null?'-':num(kg)+' กก.';
       kgEl.style.color=kg===null?'var(--mut)':'';
@@ -3551,11 +3590,13 @@ function itemsEditor(initial,opts){
           <input class="itw" type="number" step="0.01" inputmode="decimal" placeholder="0" value="${it.w??''}"></label>
         <label class="itf"><span>ความยาว (ซม.)</span>
           <input class="itlen" type="number" step="0.01" inputmode="decimal" placeholder="0" value="${it.l??''}"></label>
+        <label class="itf ithwrap"><span>ความสูง (ซม.)</span>
+          <input class="ithgt" type="number" step="0.01" inputmode="decimal" placeholder="0" value="${it.h??''}"></label>
         <label class="itf"><span>ความหนา (ไมครอน)</span>
           <input class="itthk" type="number" step="0.01" inputmode="decimal" placeholder="0" value="${it.t??''}"></label>
         <div class="itf itamtwrap"><span>น้ำหนักรวม</span><div class="itamtbox"><span class="itkg">-</span></div></div>
       </div>
-      <div class="tiny itkghint" style="margin-top:6px">คำนวณน้ำหนักจาก กว้าง × ยาว × หนา × 0.921 ÷ 10,000,000 · ถ้าชื่อสินค้ามีขนาดอยู่แล้ว (เช่น 15 mic x 50 cm x 1800 m) ระบบเติมให้เอง แก้ทับได้ · หน่วย กก. ไม่ต้องใส่</div>
+      <div class="tiny itkghint" style="margin-top:6px"></div>
       ${opts.due?`<div class="itl2" style="margin-top:10px"><label class="itf"><span>กำหนดส่งมอบ</span>
         <input class="itdue" type="date" value="${esc(it.due||'')}"></label><div style="flex:1"></div></div>`:''}</div>`);
     /* พิมพ์รหัสแล้วเลือกจากคลังได้ เลือกแล้วเติมรายละเอียดให้ถ้ายังว่าง */
@@ -3568,16 +3609,16 @@ function itemsEditor(initial,opts){
       if(!wEl.value&&w)wEl.value=Math.round(w*100)/100;
       if(!tEl.value&&p.thick)tEl.value=parseFloat(p.thick)||'';
       calc();});
-    ['.itqty','.itprice','.itw','.itlen','.itthk'].forEach(s=>{r.querySelector(s).oninput=calc;});
+    ['.itqty','.itprice','.itw','.itlen','.ithgt','.itthk','.itname'].forEach(s=>{r.querySelector(s).oninput=calc;});
     r.querySelector('.itunit').onchange=calc;
     /* พิมพ์ชื่อสินค้าเสร็จ ลองอ่านขนาดจากในชื่อมาเติมช่องที่ยังว่าง */
     const fillFromName=()=>{
       const d=parseDims(r.querySelector('.itname').value);
       const set=(sel,v)=>{const e=r.querySelector(sel);if(!e.value&&v)e.value=Math.round(v*1000)/1000;};
-      set('.itw',d.w);set('.itlen',d.l);set('.itthk',d.t);calc();
+      set('.itw',d.w);set('.itlen',d.l);set('.ithgt',d.h);set('.itthk',d.t);calc();
     };
     r.querySelector('.itname').onblur=fillFromName;
-    if(it.name&&!(it.w||it.l||it.t))fillFromName();
+    if(it.name&&!(it.w||it.l||it.h||it.t))fillFromName();
     r.querySelector('.itdel').onclick=()=>{r.remove();if(!rowsEl.children.length)addRow();renum();calc();};
     rowsEl.append(r);renum();calc();return r;
   }
@@ -3598,6 +3639,7 @@ function itemsEditor(initial,opts){
       price:parseFloat(r.querySelector('.itprice').value)||0,
       w:parseFloat(r.querySelector('.itw').value)||'',
       l:parseFloat(r.querySelector('.itlen').value)||'',
+      h:parseFloat(r.querySelector('.ithgt').value)||'',
       t:parseFloat(r.querySelector('.itthk').value)||'',
       due:r.querySelector('.itdue')?r.querySelector('.itdue').value:'',
       id:r.dataset.id||uid()
@@ -3803,8 +3845,10 @@ const NC_KIND={'ฟิล์มยืด':'Stretch Film','ฟิล์มใส 
 /* ขนาดสินค้า: ถ้าอ่านขนาดจากชื่อได้ ก็เขียนให้เป็นรูปแบบเดียวกัน ไม่งั้นใช้ชื่อสินค้าเดิม */
 function ncSize(it){
   const d=parseDims(it.name);
-  const w=+it.w||d.w,l=+it.l||d.l,t=+it.t||d.t;
+  const w=+it.w||d.w,l=+it.l||d.l,t=+it.t||d.t,hh=+it.h||d.h;
   const cm=v=>(Math.round(v*100)/100);
+  /* ถุงคลุมพาเลท: กว้าง x ยาว x สูง */
+  if(w&&l&&hh)return cm(w)+' x '+cm(l)+' x '+cm(hh)+' cm'+(t?' x '+t+' mic':'');
   if(w&&l&&t)return t+' mic x '+cm(w)+' cm x '+(l>=10000?cm(l/100)+' m':cm(l)+' cm');
   if(w&&t)return cm(w)+' cm x '+t+' mic';
   return String(it.name||'').replace(/\s+/g,' ').trim();
@@ -4416,9 +4460,9 @@ function issuePoReceipt(p,item){
     amount:Math.round((it?itemGross(it):poGross(p))*100)/100,
     /* ขนาดชิ้นงานติดไปด้วย ใบเสร็จจะได้คำนวณน้ำหนักเป็นกิโลกรัมได้ */
     items:it?[{code:it.code||'',name:it.name||'',qty:it.qty||0,unit:it.unit||'',price:it.price||0,
-               w:it.w||'',l:it.l||'',t:it.t||''}]
+               w:it.w||'',l:it.l||'',h:it.h||'',t:it.t||''}]
             :(p.items||[]).map(x=>({code:x.code||'',name:x.name||'',qty:x.qty||0,unit:x.unit||'',price:x.price||0,
-               w:x.w||'',l:x.l||'',t:x.t||''}))});
+               w:x.w||'',l:x.l||'',h:x.h||'',t:x.t||''}))});
   if(item)return issueReceipt(pre(item));
   const left=poItemsLeft(p);
   if(!items.length)return issueReceipt(pre(null));
