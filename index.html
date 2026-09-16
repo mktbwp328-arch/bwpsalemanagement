@@ -540,7 +540,8 @@ const DOC_ST={'ร่าง':['#f1f5f9','#64748b'],'รออนุมัติ'
 const PO_ST={'รอตรวจสอบ':['#fef3c7','#b45309'],'อนุมัติแล้ว':['#dcfce7','#15803d'],'กำลังผลิต':['#dbeafe','#1d4ed8'],'ส่งมอบแล้ว':['#e0e7ff','#4338ca'],'ยกเลิก':['#fee2e2','#b91c1c']};
 const RC_ST={'รอชำระ':['#fef3c7','#b45309'],'บางส่วน':['#e0e7ff','#4338ca'],'ชำระแล้ว':['#dcfce7','#15803d'],'ยกเลิก':['#fee2e2','#b91c1c']};
 const pill=(s,m)=>{const c=m[s]||['#f1f5f9','#64748b'];return `<span class="pill" style="background:${c[0]};color:${c[1]}">${esc(s)}</span>`;};
-const DOC_TYPES=[['quotation','ใบเสนอราคา','QUO'],['sample','ใบขอตัวอย่าง','SMP'],['requirement','ใบข้อกำหนดของลูกค้า','REQ'],['credit','ใบขอเครดิต','CRD']];
+/* ตัวที่ 3 คือรหัสนำหน้าเลขที่เอกสารที่บริษัทใช้จริง — ใช้เหมือนกันทุกบัญชี เลขจึงเดินต่อกันทั้งทีม */
+const DOC_TYPES=[['quotation','ใบเสนอราคา','QUO'],['sample','ใบขอตัวอย่าง','RD'],['requirement','ใบข้อกำหนดของลูกค้า','DR'],['credit','ใบขอเครดิต','CRD']];
 const docTypeName=t=>(DOC_TYPES.find(x=>x[0]===t)||[,'-'])[1];
 const MN=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
 
@@ -5379,7 +5380,7 @@ const WIND_DIR=['ดึงท้าย ข้อความอ่านออ�
   'ดึงท้าย ข้อความอ่านออกด้านนอก','ดึงหัว ข้อความอ่านออกด้านนอก'];
 function sampleFields(){return [
   {group:'ข้อมูลรายละเอียดงานเบื้องต้น',sub:'ข้อ 1'},
-  {key:'no',label:'เอกสารเลขที่',req:true,def:nextNo('SMP','sample')},
+  {key:'no',label:'เอกสารเลขที่',req:true,def:nextNo('RD','sample')},
   {key:'rev',label:'Rev.',def:'01'},
   {key:'date',label:'วัน/เดือน/ปี',type:'date',def:today()},
   {key:'status',label:'สถานะ',type:'select',options:Object.keys(DOC_ST),def:'ร่าง'},
@@ -5423,7 +5424,7 @@ function sampleFields(){return [
 /* ---------- ใบข้อกำหนดลูกค้า (ข้อกำหนดในการส่งสินค้า) ---------- */
 function requirementFields(){return [
   {group:'ข้อมูลเอกสาร'},
-  {key:'no',label:'เอกสารเลขที่',req:true,def:nextNo('REQ','requirement')},
+  {key:'no',label:'เอกสารเลขที่',req:true,def:nextNo('DR','requirement')},
   {key:'rev',label:'REV.',def:'01'},
   {key:'date',label:'วัน/เดือน/ปี',type:'date',def:today()},
   {key:'status',label:'สถานะ',type:'select',options:Object.keys(DOC_ST),def:'ร่าง'},
@@ -5463,7 +5464,7 @@ function ensureCredit(d){
   return d;
 }
 /* เลขเอกสารใบถัดไป — เดินเลขต่อจากใบล่าสุดของเอกสารประเภทเดียวกัน
-   ถ้าเคยตั้งรหัสนำหน้าเอง (เช่น RD แทน SMP) จะใช้รหัสนั้นต่อให้ ไม่ต้องมาพิมพ์เองทุกใบ */
+   ถ้าเคยตั้งรหัสนำหน้าเองต่างจากค่ามาตรฐาน จะใช้รหัสนั้นต่อให้ ไม่ต้องมาพิมพ์เองทุกใบ */
 const NO_PAT=/^([A-Za-z]+)-(\d{4})-(\d+)$/;
 function nextNo(prefix,type){
   const yr=new Date().getFullYear()+543;
