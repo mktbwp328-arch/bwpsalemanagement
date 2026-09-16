@@ -3812,16 +3812,18 @@ function ncSize(it){
 const ncGrade=name=>((String(name||'').match(/เกรด\s*(AB|A|B)/i)||[])[1]||'').toUpperCase();
 /* ลูกค้าที่เพิ่งเริ่มซื้อขายในรอบนี้ — ดูจาก PO และใบเสร็จ ถ้าเคยซื้อก่อนรอบนี้ถือว่าไม่ใช่รายใหม่ */
 function ncFindRows(period){
-  const deals=[];
-  (DB.pos||[]).filter(p=>p.status!=='ยกเลิก').forEach(p=>deals.push({customer:p.customer,date:p.date,items:p.items||[]}));
-  (DB.receipts||[]).filter(r=>r.status!=='ยกเลิก').forEach(r=>deals.push({customer:r.customer,date:r.date,items:r.items||[]}));
+  /* นับจากใบเสร็จเท่านั้น (ซื้อขายกันจริง) — PO ยังไม่ถือว่าซื้อ */
   const first={};
-  deals.forEach(x=>{
-    const k=normName(x.customer);if(!k||!x.date)return;
-    if(!first[k]||x.date<first[k].date)first[k]=x;
+  (DB.receipts||[]).filter(r=>r.status!=='ยกเลิก').forEach(r=>{
+    const k=normName(r.customer);if(!k||!r.date)return;
+    if(!first[k]||r.date<first[k].date)first[k]={customer:r.customer,date:r.date,items:r.items||[]};
   });
   return Object.values(first)
+    /* ใบเสร็จใบแรกของลูกค้ารายนั้นต้องอยู่ในรอบนี้ */
     .filter(x=>x.date>=period.start&&x.date<=period.end)
+    /* และต้องเป็นลูกค้าที่เพิ่งติดต่อเข้ามาในรอบนี้ด้วย — ถ้าติดต่อกันมาก่อนหน้านี้แล้ว
+       ถือว่าเป็นลูกค้าเก่าที่เพิ่งมาซื้อ ไม่ใช่ลูกค้าใหม่ของรอบ */
+    .filter(x=>{const c=findCustomer(x.customer);return !c||!c.date||c.date>=period.start;})
     .sort((a,b)=>String(a.date).localeCompare(String(b.date)))
     .map(x=>{
       const it=(x.items||[])[0]||{};
@@ -3884,7 +3886,7 @@ function ncFields(){return [
   {key:'attn',label:'เรียน',def:'ผู้จัดการฝ่ายบัญชี'},
   {key:'salesName',label:'ชื่อเจ้าหน้าที่ฝ่ายขาย',def:meName()},
   {key:'intro',label:'ข้อความนำ',type:'textarea',full:true,def:NC_INTRO},
-  {group:'รายชื่อลูกค้าที่มีการซื้อขาย',sub:'ระบบดึงลูกค้าที่เพิ่งเริ่มซื้อขายในรอบนี้มาให้ แก้ไขเพิ่มลดได้'},
+  {group:'รายชื่อลูกค้าที่มีการซื้อขาย',sub:'นับจากใบเสร็จใบแรกของลูกค้ารายนั้น และต้องเป็นลูกค้าที่ติดต่อเข้ามาในรอบนี้ · แก้ไขเพิ่มลดได้'},
   {key:'rows',type:'ncrows'}
 ];}
 /* ---------- แผ่นพิมพ์ ---------- */
@@ -3958,7 +3960,7 @@ function pgNewCust(v){
       go('newcust',{ncOpen:doc.id});
     },{wide:true,okLabel:'สร้างบันทึก',sub:p.label});
   });
-  v.append(hint('บันทึกนี้ส่งให้ฝ่ายบัญชีคิดค่าคอมมิสชั่น · ระบบดึงลูกค้าที่เพิ่งเริ่มซื้อขายในรอบมาให้อัตโนมัติ แก้ไขได้ก่อนพิมพ์'));
+  v.append(hint('บันทึกนี้ส่งให้ฝ่ายบัญชีคิดค่าคอมมิสชั่น · ระบบดึงเฉพาะลูกค้าที่ออกใบเสร็จครั้งแรกในรอบนี้มาให้ แก้ไขได้ก่อนพิมพ์'));
   const p=ncPeriod();
   v.append(el(`<div class="card pad" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
     <div><div class="mut">รอบปัจจุบัน</div><div style="font-size:18px;font-weight:700">${esc(p.label)}</div></div>
