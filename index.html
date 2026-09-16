@@ -3805,6 +3805,7 @@ const PAGES=[
 ];
 let S={page:'dashboard',
   custFilter:'ทั้งหมด',custQ:'',
+  custY:'',custM:'',custD:'',        /* ตัวกรองวันที่หน้าลูกค้า */
   docType:'quotation',docQ:'',docFilter:'ทั้งหมด',docOpen:null,
   poQ:'',poFilter:'ทั้งหมด',poOpen:null,
   rcQ:'',rcFilter:'ทั้งหมด',rcMonth:null,rcOpen:null,empQ:'',
@@ -3851,6 +3852,46 @@ function searchRow(value,placeholder,onInput){
   const i=w.querySelector('input');
   let t;i.oninput=()=>{clearTimeout(t);t=setTimeout(()=>onInput(i.value),160);};
   return w;
+}
+/* ---------- ตัวกรองตามวันที่ (ปี / เดือน / วัน) ----------
+   เลือกได้อิสระ เช่น เลือกแค่เดือนอย่างเดียวก็ได้ = ทุกปีเฉพาะเดือนนั้น
+   เก็บค่าไว้ใน S.<key>Y / S.<key>M / S.<key>D  (ค่าว่าง = ทั้งหมด) */
+const dateOf=x=>{const d=new Date(x&&x.date);return isNaN(d)?null:d;};
+function dateFilterOn(key){return !!(S[key+'Y']||S[key+'M']||S[key+'D']);}
+function dateFilterClear(key){S[key+'Y']=S[key+'M']=S[key+'D']='';}
+function dateFilterPass(x,key){
+  if(!dateFilterOn(key))return true;
+  const d=dateOf(x);
+  if(!d)return false;
+  if(S[key+'Y']&&d.getFullYear()!==+S[key+'Y'])return false;
+  if(S[key+'M']&&d.getMonth()!==+S[key+'M'])return false;
+  if(S[key+'D']&&d.getDate()!==+S[key+'D'])return false;
+  return true;
+}
+function dateFilter(list,key){
+  const wrap=el('<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"></div>');
+  const mk=(cur,opts,onPick,width)=>{
+    const s=el(`<select style="border:1px solid var(--bd);border-radius:10px;height:42px;padding:0 10px;
+      background:#fff;cursor:pointer;font-size:14px;min-width:${width}px">${
+      opts.map(([v,l])=>`<option value="${esc(v)}" ${String(v)===String(cur)?'selected':''}>${esc(l)}</option>`).join('')}</select>`);
+    s.onchange=()=>onPick(s.value);
+    return s;
+  };
+  /* ปีที่มีข้อมูลจริงเท่านั้น จะได้ไม่ต้องเลื่อนหาในลิสต์ยาว ๆ */
+  const years=[...new Set((list||[]).map(x=>{const d=dateOf(x);return d?d.getFullYear():null;}).filter(Boolean))]
+    .sort((a,b)=>b-a);
+  wrap.append(mk(S[key+'Y'],[['','ทุกปี'],...years.map(y=>[y,'ปี '+(y+543)])],
+    v=>{S[key+'Y']=v;render();},96));
+  wrap.append(mk(S[key+'M'],[['','ทุกเดือน'],...MN.map((m,i)=>[i,m])],
+    v=>{S[key+'M']=v;render();},110));
+  wrap.append(mk(S[key+'D'],[['','ทุกวัน'],...Array.from({length:31},(_,i)=>[i+1,'วันที่ '+(i+1)])],
+    v=>{S[key+'D']=v;render();},104));
+  if(dateFilterOn(key)){
+    const x=el('<button class="btn gh sm" style="height:42px">ล้างวันที่ ✕</button>');
+    x.onclick=()=>{dateFilterClear(key);render();};
+    wrap.append(x);
+  }
+  return wrap;
 }
 function chipRow(items,cur,onPick,extra){
   const w=el('<div class="chips"></div>');
@@ -5094,6 +5135,7 @@ function pgCustomers(v){
 
   const bar=el('<div class="toolbar"></div>');
   bar.append(searchRow(S.custQ,'ค้นหาชื่อ เบอร์โทร หรืออีเมล',q=>{S.custQ=q;render();}));
+  bar.append(dateFilter(DB.customers,'cust'));
   v.append(bar);
 
   /* สถานะที่ยังไม่มีลูกค้าสักราย ไม่ต้องขึ้นให้รก (ยกเว้นอันที่กำลังเลือกอยู่) */
@@ -5102,12 +5144,13 @@ function pgCustomers(v){
       .filter(([k,n])=>n>0||k===S.custFilter)
       .map(([k,n])=>[k,k+' ('+n+')'])];
   let clear=null;
-  if(S.custFilter!=='ทั้งหมด'||S.custQ){clear=el('<button class="chip clear">ล้างตัวกรอง ✕</button>');
-    clear.onclick=()=>{S.custFilter='ทั้งหมด';S.custQ='';render();};}
+  if(S.custFilter!=='ทั้งหมด'||S.custQ||dateFilterOn('cust')){clear=el('<button class="chip clear">ล้างตัวกรอง ✕</button>');
+    clear.onclick=()=>{S.custFilter='ทั้งหมด';S.custQ='';dateFilterClear('cust');render();};}
   v.append(chipRow(chipItems,S.custFilter,k=>{S.custFilter=k;render();},clear));
 
   const q=S.custQ.toLowerCase();
   const items=DB.customers.filter(c=>(S.custFilter==='ทั้งหมด'||c.status===S.custFilter)&&
+    dateFilterPass(c,'cust')&&
     (!q||[c.name,c.contact,c.phone,c.email].join(' ').toLowerCase().includes(q)));
   const cnt=el(`<div style="display:flex;align-items:center;gap:12px"><div class="tiny">พบ ${items.length} รายการ</div></div>`);
   if(items.length){
