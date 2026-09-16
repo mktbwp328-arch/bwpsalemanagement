@@ -555,7 +555,7 @@ const RC_ST={'รอชำระ':['#fef3c7','#b45309'],'บางส่วน':
 const pill=(s,m)=>{const c=m[s]||['#f1f5f9','#64748b'];return `<span class="pill" style="background:${c[0]};color:${c[1]}">${esc(s)}</span>`;};
 /* ตัวที่ 3 คือรหัสนำหน้าเลขที่เอกสารที่บริษัทใช้จริง — ใช้เหมือนกันทุกบัญชี เลขจึงเดินต่อกันทั้งทีม */
 const DOC_TYPES=[['quotation','ใบเสนอราคา','QUO'],['sample','ใบขอตัวอย่าง','RD'],['requirement','ใบข้อกำหนดของลูกค้า','DR'],['credit','ใบขอเครดิต','CRD']];
-const docTypeName=t=>(DOC_TYPES.find(x=>x[0]===t)||[,'-'])[1];
+const docTypeName=t=>t==='newcust'?'รายชื่อลูกค้าใหม่':(DOC_TYPES.find(x=>x[0]===t)||[,'-'])[1];
 const MN=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
 
 /* ================= storage ================= */
@@ -2133,7 +2133,7 @@ async function shareCredit(d){
   const roles=rolesOf(d.type);
   let id=d.sigDocId;
   try{
-    if(!id){id=await sbRpc('create_doc_signature',{p_payload:payload,p_doc_no:d.no,p_doc_type:d.type||'credit',p_customer:d.customer});
+    if(!id){id=await sbRpc('create_doc_signature',{p_payload:payload,p_doc_no:d.no,p_doc_type:d.type||'credit',p_customer:d.customer||''});
       d.sigDocId=typeof id==='string'?id:(id&&id.id)||id;save();}
     /* เคยส่งลิงก์ไปแล้วแต่กลับมาแก้เอกสาร: อัปเดตสำเนาบนคลาวด์ให้เป็นข้อมูลล่าสุด
        (ลายเซ็นที่เซ็นไปแล้วยังอยู่ครบ) */
@@ -2161,7 +2161,7 @@ async function shareCredit(d){
       </div></div>`;}).join('');
   const nSigned=roles.filter(r=>d.sigs[r[0]]).length;
   const m=el(`<div class="modal" style="max-width:760px"><header><div><b>ส่งลิงก์ให้เซ็น ${roles.length} ท่าน</b>
-      <div class="tiny" style="margin-top:2px">${esc(d.no)} · ${esc(d.customer)} · เซ็นแล้ว ${nSigned}/${roles.length}</div></div>
+      <div class="tiny" style="margin-top:2px">${esc(d.no)}${d.customer?' · '+esc(d.customer):''} · เซ็นแล้ว ${nSigned}/${roles.length}</div></div>
       <button class="close">✕</button></header>
     <div class="mb"><div class="hint" style="margin-bottom:6px">ส่งลิงก์ของแต่ละท่านทางไลน์ เปิดบนมือถือหรือ iPad แล้วเซ็นได้เลย · ท่านที่เซ็นแล้วจะขึ้นรูปลายเซ็นให้เห็นตรงนี้</div>
       ${links}</div>
@@ -2243,7 +2243,7 @@ async function shareCustomerCredit(d){
   delete payload.photos;delete payload.files;
   try{
     if(!d.sigDocId){
-      const id=await sbRpc('create_doc_signature',{p_payload:payload,p_doc_no:d.no,p_doc_type:d.type||'credit',p_customer:d.customer});
+      const id=await sbRpc('create_doc_signature',{p_payload:payload,p_doc_no:d.no,p_doc_type:d.type||'credit',p_customer:d.customer||''});
       d.sigDocId=typeof id==='string'?id:(id&&id.id)||id;save(true);
     }
     /* แก้เอกสารหลังส่งลิงก์ไปแล้ว: อัปเดตสำเนาบนคลาวด์ให้ลูกค้าเห็นข้อมูลล่าสุด */
@@ -2443,13 +2443,15 @@ function creditSignView(row,id,role){
   const ov=el('<div class="prevov"></div>');
   const done=!!(row.sigs&&row.sigs[role]);
   const title=type==='sample'?'ใบขอตัวอย่าง':type==='requirement'?'ใบข้อกำหนดในการส่งสินค้า'
-    :type==='receipt'?'ใบกำกับภาษี/ใบส่งของ':'ใบขอเครดิต';
+    :type==='receipt'?'ใบกำกับภาษี/ใบส่งของ':type==='newcust'?'บันทึกรายชื่อลูกค้าใหม่':'ใบขอเครดิต';
   const subline=type==='credit'?`วงเงินขออนุมัติ ${d.approvedAmount?num(d.approvedAmount):'-'} บาท · เครดิต ${esc(d.creditDays||'-')} วัน`
     :type==='receipt'?`ยอดรวม ${num(d.amount||0)} บาท`
-    :type==='sample'?esc(d.size||'-'):esc(d.workType||d.size||'-');
+    :type==='sample'?esc(d.size||'-')
+    :type==='newcust'?('ตัดยอด '+fmtDate(d.date)+' · '+(d.rows||[]).length+' ราย')
+    :esc(d.workType||d.size||'-');
   ov.append(el(`<div style="max-width:210mm;margin:0 auto 18px;background:#fff;border-radius:14px;padding:18px 20px">
     <div style="font-size:19px;font-weight:700">${title} ${esc(d.no)}</div>
-    <div class="mut">${esc(d.customer)} · ${subline}</div>
+    <div class="mut">${d.customer?esc(d.customer)+' · ':''}${subline}</div>
     <div style="margin-top:10px;font-size:15px">คุณกำลังเซ็นในฐานะ <b style="color:var(--blue-d)">${esc(roleName(role,type))}</b></div>
     <div class="tiny" style="margin-top:6px">ลายเซ็นที่ครบแล้ว: ${roles.filter(r=>row.sigs&&row.sigs[r[0]]).map(r=>r[1]).join(' · ')||'ยังไม่มี'}</div>
     ${+d._attachN>0?`<div class="tiny" style="margin-top:4px">📎 มีเอกสารแนบ ${+d._attachN} ไฟล์ในระบบ (ดูได้ที่หน้าเอกสารในโปรแกรม)</div>`:''}</div>`));
