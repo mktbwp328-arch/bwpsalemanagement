@@ -3805,7 +3805,7 @@ const PAGES=[
 ];
 let S={page:'dashboard',
   custFilter:'ทั้งหมด',custQ:'',
-  custY:'',custM:'',custD:'',        /* ตัวกรองวันที่หน้าลูกค้า */
+  custY:'',custM:'',custFrom:'',custTo:'',   /* ตัวกรองวันที่หน้าลูกค้า */
   docType:'quotation',docQ:'',docFilter:'ทั้งหมด',docOpen:null,
   poQ:'',poFilter:'ทั้งหมด',poOpen:null,
   rcQ:'',rcFilter:'ทั้งหมด',rcMonth:null,rcOpen:null,empQ:'',
@@ -3857,15 +3857,18 @@ function searchRow(value,placeholder,onInput){
    เลือกได้อิสระ เช่น เลือกแค่เดือนอย่างเดียวก็ได้ = ทุกปีเฉพาะเดือนนั้น
    เก็บค่าไว้ใน S.<key>Y / S.<key>M / S.<key>D  (ค่าว่าง = ทั้งหมด) */
 const dateOf=x=>{const d=new Date(x&&x.date);return isNaN(d)?null:d;};
-function dateFilterOn(key){return !!(S[key+'Y']||S[key+'M']||S[key+'D']);}
-function dateFilterClear(key){S[key+'Y']=S[key+'M']=S[key+'D']='';}
+function dateFilterOn(key){return !!(S[key+'Y']||S[key+'M']||S[key+'From']||S[key+'To']);}
+function dateFilterClear(key){S[key+'Y']=S[key+'M']=S[key+'From']=S[key+'To']='';}
 function dateFilterPass(x,key){
   if(!dateFilterOn(key))return true;
   const d=dateOf(x);
   if(!d)return false;
+  /* เลือกช่วงวันที่เอง — เทียบเป็นข้อความ YYYY-MM-DD ตรง ๆ ไม่ต้องห่วงเรื่องเวลา */
+  const s=String(x.date||'').slice(0,10);
+  if(S[key+'From']&&s<S[key+'From'])return false;
+  if(S[key+'To']&&s>S[key+'To'])return false;
   if(S[key+'Y']&&d.getFullYear()!==+S[key+'Y'])return false;
   if(S[key+'M']&&d.getMonth()!==+S[key+'M'])return false;
-  if(S[key+'D']&&d.getDate()!==+S[key+'D'])return false;
   return true;
 }
 function dateFilter(list,key){
@@ -3884,8 +3887,17 @@ function dateFilter(list,key){
     v=>{S[key+'Y']=v;render();},96));
   wrap.append(mk(S[key+'M'],[['','ทุกเดือน'],...MN.map((m,i)=>[i,m])],
     v=>{S[key+'M']=v;render();},110));
-  wrap.append(mk(S[key+'D'],[['','ทุกวัน'],...Array.from({length:31},(_,i)=>[i+1,'วันที่ '+(i+1)])],
-    v=>{S[key+'D']=v;render();},104));
+  /* กำหนดช่วงวันที่เอง: จากวันไหน ถึงวันไหน (ใส่ช่องเดียวก็ได้) */
+  const dt=(cur,onPick,title)=>{
+    const i=el(`<input type="date" title="${esc(title)}" value="${esc(cur||'')}"
+      style="border:1px solid var(--bd);border-radius:10px;height:42px;padding:0 10px;background:#fff;
+      cursor:pointer;font-size:14px;font-family:inherit;color:var(--ink)">`);
+    i.onchange=()=>onPick(i.value);
+    return i;
+  };
+  wrap.append(dt(S[key+'From'],v=>{S[key+'From']=v;render();},'ตั้งแต่วันที่'));
+  wrap.append(el('<span class="tiny" style="padding:0 2px">ถึง</span>'));
+  wrap.append(dt(S[key+'To'],v=>{S[key+'To']=v;render();},'ถึงวันที่'));
   if(dateFilterOn(key)){
     const x=el('<button class="btn gh sm" style="height:42px">ล้างวันที่ ✕</button>');
     x.onclick=()=>{dateFilterClear(key);render();};
