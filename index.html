@@ -1727,7 +1727,9 @@ function sbHeaders(){
   return {apikey:c.key,Authorization:'Bearer '+(AUTH.token||c.key),'Content-Type':'application/json'};
 }
 function saveSession(){
-  try{localStorage.setItem(AKEY,JSON.stringify({token:AUTH.token,refresh:AUTH.refresh,user:AUTH.user}));}catch(e){}
+  /* จำคนที่กำลังเปิดดูข้อมูลไว้ด้วย รีเฟรชแล้วจะได้กลับมาที่เดิม ไม่เด้งกลับบัญชีตัวเอง */
+  try{localStorage.setItem(AKEY,JSON.stringify({token:AUTH.token,refresh:AUTH.refresh,user:AUTH.user,
+    viewing:AUTH.viewing||null,viewingName:AUTH.viewingName||null}));}catch(e){}
 }
 function clearSession(){AUTH.token=AUTH.refresh=AUTH.user=AUTH.profile=null;AUTH.viewing=null;
   try{localStorage.removeItem(AKEY);}catch(e){}}
@@ -7222,7 +7224,7 @@ async function viewUser(id,name,mine){
   try{
     const r=await cloudRow(id);const d=r&&r.data;
     cloudSeen=(r&&r.updated_at)?Date.parse(r.updated_at):0;
-    AUTH.viewing=mine?null:id;AUTH.viewingName=mine?null:name;
+    AUTH.viewing=mine?null:id;AUTH.viewingName=mine?null:name;saveSession();
     const keepProducts=allProducts();      /* คลังสินค้าเป็นของกลาง ไม่เปลี่ยนตามคนที่กำลังดู */
     DB=d&&d.customers?d:seed();
     DB.products=keepProducts;
@@ -7275,16 +7277,22 @@ function paintUser(){
 }
 async function startApp(){
   try{await loadProfile();}catch(e){}
+  /* รีเฟรชแล้วยังอยู่ที่ข้อมูลของคนที่เปิดดูค้างไว้ — เฉพาะผู้ดูแลเท่านั้น */
+  if(AUTH.viewing&&(!isManager()||AUTH.viewing===(AUTH.user&&AUTH.user.id))){
+    AUTH.viewing=null;AUTH.viewingName=null;saveSession();
+  }
+  const owner=dataOwner();
   const local=load();
   /* แสดงข้อมูลในเครื่องก่อนเลย ไม่ต้องรอคลาวด์ — เปิดเว็บแล้วใช้งานได้ทันที
      แล้วค่อยสลับเป็นข้อมูลจากคลาวด์ให้ทีหลังถ้าใหม่กว่าและยังไม่ได้แก้อะไร */
   let quick=false;
   if(local&&local.customers){
     DB=local;migrate();loadView();booted=true;paintUser();render();
+    if(viewingOther())setSync(readOnly()?'readonly':'editing');
     quick=true;dirtySince=0;
   }
   let row=null,cloud=null,failed=false;
-  try{row=await cloudRow(AUTH.user.id);cloud=row&&row.data;
+  try{row=await cloudRow(owner);cloud=row&&row.data;
     cloudSeen=(row&&row.updated_at)?Date.parse(row.updated_at):0;   /* จำรุ่นที่โหลดมา ใช้เทียบตอนบันทึก */
   }catch(e){failed=true;}
   if(quick&&!failed&&cloud&&cloud.customers){
@@ -7316,6 +7324,7 @@ async function startApp(){
   migrate();
   loadView();booted=true;
   paintUser();render();
+  if(viewingOther())setSync(readOnly()?'readonly':'editing');
   if(failed){setSync('offline');toast('เชื่อมคลาวด์ไม่ได้ — ใช้ข้อมูลในเครื่องไปก่อน แล้วจะบันทึกให้เมื่อกลับมาออนไลน์');}
   else if(!cloud){save(true);}   /* ผู้ใช้ใหม่: อัปข้อมูลเริ่มต้นขึ้นคลาวด์ */
   else if(restored){save(true);toast('พบงานที่ยังไม่ได้ขึ้นคลาวด์ในเครื่องนี้ — อัปโหลดให้แล้ว');}
