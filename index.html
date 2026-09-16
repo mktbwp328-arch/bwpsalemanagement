@@ -3807,9 +3807,12 @@ let S={page:'dashboard',
   custFilter:'ทั้งหมด',custQ:'',
   custY:'',custM:'',custFrom:'',custTo:'',   /* ตัวกรองวันที่หน้าลูกค้า */
   teamY:'',teamM:'',teamFrom:'',teamTo:'',   /* ตัวกรองวันที่หน้าภาพรวมทีม */
+  docY:'',docM:'',docFrom:'',docTo:'',       /* ตัวกรองวันที่หน้าเอกสารการขาย */
+  poY:'',poM:'',poFrom:'',poTo:'',           /* ตัวกรองวันที่หน้า PO ลูกค้า */
+  rcY:'',rcM:'',rcFrom:'',rcTo:'',           /* ตัวกรองวันที่หน้าใบเสร็จ */
   docType:'quotation',docQ:'',docFilter:'ทั้งหมด',docOpen:null,
   poQ:'',poFilter:'ทั้งหมด',poOpen:null,
-  rcQ:'',rcFilter:'ทั้งหมด',rcMonth:null,rcOpen:null,empQ:'',
+  rcQ:'',rcFilter:'ทั้งหมด',rcOpen:null,empQ:'',
   profSel:null,profTab:'info',profQ:'',teamSel:null,prodQ:'',
   dash:{period:'year',year:new Date().getFullYear(),chart:'line'}};
 /* จำหน้าที่เปิดอยู่ ไม่ให้รีเฟรชแล้วเด้งกลับหน้าแรก */
@@ -4137,7 +4140,7 @@ function issueReceipt(pre){
     no:'RC-'+(new Date().getFullYear()+543)+'-'+String(DB.receipts.length+67).padStart(4,'0'),
     date:today(),status:'รอชำระ'},pre),d=>{
     const r=Object.assign({id:uid(),photos:[],files:[]},d);DB.receipts.unshift(r);save(true);
-    go('receipts',{rcFilter:'ทั้งหมด',rcQ:'',rcMonth:null});toast('ออกใบเสร็จแล้ว — ยอดเข้าแดชบอร์ดทันที');openRc(r);});
+    go('receipts',{rcFilter:'ทั้งหมด',rcQ:'',rcY:'',rcM:'',rcFrom:'',rcTo:''});toast('ออกใบเสร็จแล้ว — ยอดเข้าแดชบอร์ดทันที');openRc(r);});
 }
 
 /* ================= สรุปตัวเลข ใช้ร่วมกันทั้งหน้าแรกและภาพรวมทีม =================
@@ -4461,9 +4464,9 @@ function pgDashboard(v){
   v.append(hint('ยอดขายนับจาก "ใบเสร็จรับเงิน" เท่านั้น จึงไม่นับซ้ำกับ PO — งานที่ปิดแล้วแต่ยังไม่ออกใบเสร็จดูได้ที่การ์ด "ยอดในมือ"'));
 
   const kp=el('<div class="grid g4"></div>');
-  [['ยอดขายรวม (จากใบเสร็จ)',num0(Math.round(total))+' ฿',rcs.length+' ใบเสร็จในช่วงนี้','receipts',{rcFilter:'ทั้งหมด',rcMonth:null}],
-   ['รับชำระแล้ว',num0(Math.round(paid))+' ฿',rcs.filter(r=>r.status==='ชำระแล้ว').length+' ใบ','receipts',{rcFilter:'ชำระแล้ว',rcMonth:null}],
-   ['รอเก็บเงิน',num0(Math.round(unpaid))+' ฿',rcs.filter(r=>r.status!=='ชำระแล้ว').length+' ใบที่ยังไม่ครบ','receipts',{rcFilter:'รอชำระ',rcMonth:null}],
+  [['ยอดขายรวม (จากใบเสร็จ)',num0(Math.round(total))+' ฿',rcs.length+' ใบเสร็จในช่วงนี้','receipts',{rcFilter:'ทั้งหมด',rcY:'',rcM:'',rcFrom:'',rcTo:''}],
+   ['รับชำระแล้ว',num0(Math.round(paid))+' ฿',rcs.filter(r=>r.status==='ชำระแล้ว').length+' ใบ','receipts',{rcFilter:'ชำระแล้ว',rcY:'',rcM:'',rcFrom:'',rcTo:''}],
+   ['รอเก็บเงิน',num0(Math.round(unpaid))+' ฿',rcs.filter(r=>r.status!=='ชำระแล้ว').length+' ใบที่ยังไม่ครบ','receipts',{rcFilter:'รอชำระ',rcY:'',rcM:'',rcFrom:'',rcTo:''}],
    ['ยอดในมือ (ยังไม่ออกใบเสร็จ)',num0(Math.round(pendSum))+' ฿',pend.length+' รายการรอออกใบเสร็จ',null,null]
   ].forEach(([t,val,sub,page,extra])=>{
     const c=el(`<div class="card pad" style="cursor:pointer;transition:.15s">
@@ -4480,7 +4483,7 @@ function pgDashboard(v){
   const kp2=el('<div class="grid g4"></div>');
   [['ใบเสนอราคา',st.quoteN+' ใบ','อนุมัติแล้ว '+st.quoteOk+' ใบ','documents',{docType:'quotation',docFilter:'ทั้งหมด',docQ:'',docOpen:null}],
    ['PO ลูกค้า',st.poN+' ใบ','มูลค่ารวม '+num0(Math.round(st.poSum))+' ฿','po',{poFilter:'ทั้งหมด',poQ:'',poOpen:null}],
-   ['ใบเสร็จรับเงิน',st.rcN+' ใบ','ออกแล้วในช่วงนี้','receipts',{rcFilter:'ทั้งหมด',rcMonth:null,rcQ:''}],
+   ['ใบเสร็จรับเงิน',st.rcN+' ใบ','ออกแล้วในช่วงนี้','receipts',{rcFilter:'ทั้งหมด',rcY:'',rcM:'',rcFrom:'',rcTo:'',rcQ:''}],
    ['ลูกค้าที่ติดต่อเข้ามา',st.custN+' ราย','ปิดการขายแล้ว '+st.custWon+' ราย','customers',{custFilter:'ทั้งหมด',custQ:''}]
   ].forEach(([t,val,sub,page,extra])=>{
     const c=el(`<div class="card pad" style="cursor:pointer;transition:.15s">
@@ -4555,7 +4558,7 @@ function pgDashboard(v){
       tip.style.top=(chart.offsetTop+Math.max(Y(months[i])*sc-54,0))+'px';
       sv.querySelectorAll('.pt').forEach(p=>p.setAttribute('opacity',+p.dataset.i===i?'1':'.4'));};
     h.onmouseleave=()=>{tip.style.opacity=0;sv.querySelectorAll('.pt').forEach(p=>p.setAttribute('opacity','1'));};
-    h.onclick=()=>{if(!cnts[i]){toast('เดือน'+MN[i]+' ยังไม่มีรายการ');return;}go('receipts',{rcMonth:{y:yr,m:i},rcFilter:'ทั้งหมด',rcQ:''});};
+    h.onclick=()=>{if(!cnts[i]){toast('เดือน'+MN[i]+' ยังไม่มีรายการ');return;}go('receipts',{rcY:yr,rcM:i,rcFrom:'',rcTo:'',rcFilter:'ทั้งหมด',rcQ:''});};
   });
   cc.append(chart);row.append(cc);
 
@@ -4592,7 +4595,7 @@ function pgDashboard(v){
       <span style="width:10px;height:10px;border-radius:50%;background:${RC_ST[k][1]}"></span>${k}
       <b style="margin-left:auto">${g.length} ใบ · ${num0(g.reduce((a,b)=>a+b.amount,0))} ฿</b></div>`);
     r.onmouseenter=()=>r.style.background='#f6f9ff';r.onmouseleave=()=>r.style.background='';
-    r.onclick=()=>go('receipts',{rcFilter:k,rcMonth:null,rcQ:''});rcCard.append(r);});
+    r.onclick=()=>go('receipts',{rcFilter:k,rcY:'',rcM:'',rcFrom:'',rcTo:'',rcQ:''});rcCard.append(r);});
   row3.append(rcCard);v.append(row3);
 
   const row4=el('<div class="split"></div>');
@@ -5534,17 +5537,18 @@ function pgDocuments(v){
 
   const bar=el('<div class="toolbar"></div>');
   bar.append(searchRow(S.docQ,'ค้นหาเลขที่เอกสารหรือชื่อลูกค้า',q=>{S.docQ=q;render();}));
+  bar.append(dateFilter(DB.docs.filter(d=>d.type===S.docType),'doc'));
   v.append(bar);
 
   let clear=null;
-  if(S.docFilter!=='ทั้งหมด'||S.docQ){clear=el('<button class="chip clear">ล้างตัวกรอง ✕</button>');
-    clear.onclick=()=>{S.docFilter='ทั้งหมด';S.docQ='';render();};}
+  if(S.docFilter!=='ทั้งหมด'||S.docQ||dateFilterOn('doc')){clear=el('<button class="chip clear">ล้างตัวกรอง ✕</button>');
+    clear.onclick=()=>{S.docFilter='ทั้งหมด';S.docQ='';dateFilterClear('doc');render();};}
   const inType=DB.docs.filter(d=>d.type===S.docType);
   v.append(chipRow([['ทั้งหมด','ทั้งหมด ('+inType.length+')'],
     ...Object.keys(DOC_ST).map(k=>[k,k+' ('+inType.filter(d=>d.status===k).length+')'])],S.docFilter,k=>{S.docFilter=k;render();},clear));
 
   const q=S.docQ.toLowerCase();
-  const items=inType.filter(d=>(S.docFilter==='ทั้งหมด'||d.status===S.docFilter)&&
+  const items=inType.filter(d=>(S.docFilter==='ทั้งหมด'||d.status===S.docFilter)&&dateFilterPass(d,'doc')&&
     (!q||[d.no,d.customer].join(' ').toLowerCase().includes(q)));
   const money=S.docType==='quotation'||S.docType==='credit';
   v.append(el(`<div class="tiny">พบ ${items.length} รายการ${money?' · ยอดรวม '+num0(items.reduce((a,b)=>a+b.amount,0))+' ฿':''}</div>`));
@@ -6062,16 +6066,17 @@ function pgPO(v){
 
   const bar=el('<div class="toolbar"></div>');
   bar.append(searchRow(S.poQ,'ค้นหาเลขที่ PO หรือชื่อลูกค้า',q=>{S.poQ=q;render();}));
+  bar.append(dateFilter(DB.pos,'po'));
   v.append(bar);
 
   let clear=null;
-  if(S.poFilter!=='ทั้งหมด'||S.poQ){clear=el('<button class="chip clear">ล้างตัวกรอง ✕</button>');
-    clear.onclick=()=>{S.poFilter='ทั้งหมด';S.poQ='';render();};}
+  if(S.poFilter!=='ทั้งหมด'||S.poQ||dateFilterOn('po')){clear=el('<button class="chip clear">ล้างตัวกรอง ✕</button>');
+    clear.onclick=()=>{S.poFilter='ทั้งหมด';S.poQ='';dateFilterClear('po');render();};}
   v.append(chipRow([['ทั้งหมด','ทั้งหมด ('+DB.pos.length+')'],
     ...Object.keys(PO_ST).map(k=>[k,k+' ('+DB.pos.filter(p=>p.status===k).length+')'])],S.poFilter,k=>{S.poFilter=k;render();},clear));
 
   const q=S.poQ.toLowerCase();
-  const items=DB.pos.filter(p=>(S.poFilter==='ทั้งหมด'||p.status===S.poFilter)&&
+  const items=DB.pos.filter(p=>(S.poFilter==='ทั้งหมด'||p.status===S.poFilter)&&dateFilterPass(p,'po')&&
     (!q||[p.no,p.custPoNo,p.customer].join(' ').toLowerCase().includes(q)));
   v.append(el(`<div class="tiny">พบ ${items.length} รายการ · ยอดรวม ${num0(items.reduce((a,b)=>a+poTotal(b),0))} ฿</div>`));
   v.append(listCard(items,{
@@ -6209,27 +6214,25 @@ function pgReceipts(v){
    ['รอชำระ',st('รอชำระ').length+' ใบ','รอชำระ']].forEach(([t,val,f])=>{
     const c=el(`<div class="card pad" style="cursor:pointer"><div class="mut">${esc(t)}</div>
       <div style="font-size:23px;font-weight:700;margin-top:4px">${val}</div></div>`);
-    c.onclick=()=>{S.rcFilter=f;S.rcMonth=null;render();};cards.append(c);});
+    c.onclick=()=>{S.rcFilter=f;render();};cards.append(c);});
   v.append(cards);
 
   const bar=el('<div class="toolbar"></div>');
   bar.append(searchRow(S.rcQ,'ค้นหาเลขที่ใบเสร็จหรือชื่อลูกค้า',q=>{S.rcQ=q;render();}));
+  bar.append(dateFilter(DB.receipts,'rc'));
   v.append(bar);
 
   let clear=null;
-  if(S.rcFilter!=='ทั้งหมด'||S.rcQ||S.rcMonth){clear=el('<button class="chip clear">ล้างตัวกรอง ✕</button>');
-    clear.onclick=()=>{S.rcFilter='ทั้งหมด';S.rcQ='';S.rcMonth=null;render();};}
+  if(S.rcFilter!=='ทั้งหมด'||S.rcQ||dateFilterOn('rc')){clear=el('<button class="chip clear">ล้างตัวกรอง ✕</button>');
+    clear.onclick=()=>{S.rcFilter='ทั้งหมด';S.rcQ='';dateFilterClear('rc');render();};}
   const chips=chipRow([['ทั้งหมด','ทั้งหมด ('+DB.receipts.length+')'],
     ...Object.keys(RC_ST).map(k=>[k,k+' ('+st(k).length+')'])],S.rcFilter,k=>{S.rcFilter=k;render();},clear);
-  if(S.rcMonth){
-    const m=el(`<button class="chip on" style="background:#101b2e;border-color:#101b2e">เดือน ${MN[S.rcMonth.m]} ${S.rcMonth.y+543} ✕</button>`);
-    m.onclick=()=>{S.rcMonth=null;render();};chips.append(m);}
   v.append(chips);
 
   const q=S.rcQ.toLowerCase();
   const items=DB.receipts.filter(r=>{
     if(S.rcFilter!=='ทั้งหมด'&&r.status!==S.rcFilter)return false;
-    if(S.rcMonth){const d=new Date(r.date);if(isNaN(d)||d.getFullYear()!==S.rcMonth.y||d.getMonth()!==S.rcMonth.m)return false;}
+    if(!dateFilterPass(r,'rc'))return false;
     return !q||[r.no,r.invNo,r.customer].join(' ').toLowerCase().includes(q);});
   v.append(el(`<div class="tiny">พบ ${items.length} รายการ · ยอดรวม ${num0(items.reduce((a,b)=>a+b.amount,0))} ฿</div>`));
   v.append(listCard(items,{
