@@ -5485,6 +5485,25 @@ function nextNo(prefix,type){
    ข้อมูลของพนักงานขายแต่ละคนแยกกัน ต่างคนจึงเดินเลขของตัวเองและชนกันได้
    ฟังก์ชันนี้ไปขอเลขจากตัวนับกลางบนคลาวด์ ใครกดสร้างก่อนได้เลขก่อน
    ถ้าต่อคลาวด์ไม่ได้ ก็ใช้เลขที่คำนวณในเครื่องไปก่อน (ยังใช้งานต่อได้) */
+/* ดูเลขถัดไปของทีมโดยไม่จอง — ใช้โชว์ในฟอร์มให้ตรงกับความจริงตั้งแต่เปิด
+   คืนเลขที่มากกว่าระหว่างเลขของทีมกับเลขที่คำนวณในเครื่อง */
+async function peekNo(localNo){
+  const m=String(localNo||'').trim().toUpperCase().match(NO_PAT);
+  if(!m||!sbOn()||sbReady===false||!authed())return localNo;
+  try{
+    const n=await sbRpc('peek_doc_no',{p_prefix:m[1],p_year:+m[2]});
+    const next=Math.max((+n||0)+1,+m[3]);
+    const width=Math.max(4,m[3].length);
+    return `${m[1]}-${m[2]}-${String(next).padStart(width,'0')}`;
+  }catch(e){return localNo;}
+}
+/* เติมเลขจริงลงในช่อง "เลขที่เอกสาร" หลังฟอร์มเปิด ถ้าผู้ใช้ยังไม่ได้แก้เอง */
+async function fillNoField(state){
+  const real=await peekNo(state.no);
+  const i=$('#layer .ov .modal [name="no"]');
+  if(!i||i.value!==state.no)return;      /* ผู้ใช้พิมพ์เองแล้ว ไม่ไปทับ */
+  i.value=real;state.no=real;
+}
 async function reserveNo(localNo){
   const m=String(localNo||'').trim().toUpperCase().match(NO_PAT);
   if(!m||!sbOn()||sbReady===false||!authed())return localNo;
@@ -5546,9 +5565,10 @@ function pgDocuments(v){
   /* เลขที่ตั้งต้นที่โชว์ในฟอร์ม — ถ้าไม่ได้แก้เอง ตอนกดสร้างจะไปขอเลขจริงจากส่วนกลาง
      เพื่อไม่ให้ชนกับของเพื่อนร่วมทีมที่กดสร้างพร้อมกัน */
   const fields=docFields(S.docType);
-  const noDef=(fields.find(f=>f.key==='no')||{}).def||'';
-  actionBtn('สร้าง'+t[1],'plus',()=>openForm('สร้าง'+t[1],fields,{},async d=>{
-    if(d.no===noDef)d.no=await reserveNo(noDef);
+  const noState={no:(fields.find(f=>f.key==='no')||{}).def||''};
+  actionBtn('สร้าง'+t[1],'plus',()=>{
+   openForm('สร้าง'+t[1],fields,{},async d=>{
+    if(d.no===noState.no)d.no=await reserveNo(noState.no);
     const doc=Object.assign({id:uid(),type:S.docType},d);
     if(doc.type==='quotation'){ensureQuote(doc);doc.amount=qtTotal(doc);}
     if(doc.type==='credit'){ensureCredit(doc);doc.amount=doc.approvedAmount||0;}
@@ -5559,7 +5579,9 @@ function pgDocuments(v){
     toast(signed?'สร้างเอกสารแล้ว — เซ็นชื่อฝ่ายขายให้อัตโนมัติ':'สร้างเอกสารแล้ว');
     openDocSmart(doc);},
     isQ?{wide:true,sub:'กรอกข้อมูลตามลำดับ 1 → 4 แล้วกดสร้าง',okLabel:'สร้างใบเสนอราคา'}
-    :{wide:true,sub:'กรอกตามแบบฟอร์มบริษัท แล้วกดสร้าง',okLabel:'สร้าง'+t[1]}));
+    :{wide:true,sub:'กรอกตามแบบฟอร์มบริษัท แล้วกดสร้าง',okLabel:'สร้าง'+t[1]});
+   fillNoField(noState);   /* ดึงเลขจริงของทีมมาโชว์แทนเลขที่เดาจากเครื่องนี้ */
+  });
 
   actionBtn('กู้เอกสารจากลิงก์','up',restoreFromLink,'btn gh');
   v.append(hint('เลือกประเภทเอกสารได้จากหัวข้อย่อยใต้ "เอกสารการขาย" ในเมนูซ้าย · คลิกที่รายการเพื่อดูหรือแก้ไข'));
