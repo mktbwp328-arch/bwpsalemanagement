@@ -4003,7 +4003,14 @@ function ncDetail(v,d){
   if(!(d.rows||[]).length)L.append(el('<div class="empty">ยังไม่มีรายชื่อ</div>'));
   left.append(tb);
   wrap.append(left);
-  wrap.append(signCard(d,()=>render()));
+  const right=el('<div style="display:flex;flex-direction:column;gap:16px;min-width:0"></div>');
+  right.append(signCard(d,()=>render()));
+  const del=el(`<button class="btn dg blk">${svg('trash','ic s')}ลบบันทึกนี้</button>`);
+  del.onclick=()=>askConfirm('ลบบันทึก','ลบบันทึกตัดยอด '+fmtDate(d.date)+' ออกจากระบบ?','ลบ',()=>{
+    const i=DB.docs.indexOf(d);DB.docs.splice(i,1);save(true);go('newcust',{ncOpen:null});
+    toast('ลบบันทึกแล้ว',()=>{DB.docs.splice(i,0,d);save(true);render();});});
+  right.append(del);
+  wrap.append(right);
   v.append(wrap);
 }
 /* ================= drawer ================= */
