@@ -5286,7 +5286,7 @@ function openCustomer(c){
 function docFields(type){
   const t=DOC_TYPES.find(x=>x[0]===type);
   const money=type==='quotation'||type==='credit';
-  const base=[{key:'no',label:'เลขที่เอกสาร',req:true,def:nextNo(t[2])},
+  const base=[{key:'no',label:'เลขที่เอกสาร',req:true,def:nextNo(t[2],type)},
     {key:'customer',label:'ลูกค้า',type:'select',options:DB.customers.map(c=>c.name),req:true},
     {key:'date',label:'วันที่',type:'date',def:today()},
     {key:'status',label:'สถานะ',type:'select',options:Object.keys(DOC_ST),def:'ร่าง'}];
@@ -5296,7 +5296,7 @@ function docFields(type){
       hint:'ที่อยู่บนเอกสารดึงจากข้อมูลลูกค้าอัตโนมัติ'},
     {key:'contact',label:'ผู้ติดต่อ',def:'ฝ่ายจัดซื้อ'},
     {group:'ข้อมูลเอกสาร'},
-    {key:'no',label:'เลขที่ใบเสนอราคา',req:true,def:nextNo('QUO')},
+    {key:'no',label:'เลขที่ใบเสนอราคา',req:true,def:nextNo('QUO','quotation')},
     {key:'date',label:'วันที่ออกเอกสาร',type:'date',def:today()},
     {key:'payment',label:'เงื่อนไขการชำระเงิน',type:'select',options:['เงินสด','เครดิต 30 วัน','เครดิต 45 วัน','เครดิต 60 วัน'],def:'เงินสด'},
     {key:'validDays',label:'ยืนราคา (วัน)',type:'number',def:7,hint:'ระบบคำนวณวันหมดอายุให้อัตโนมัติ'},
@@ -5332,7 +5332,7 @@ const CREDIT_DOCS=['ทะเบียนภาษีมูลค่าเพิ
   'แผนที่ (สำหรับส่งสินค้า, รับเช็ค-วางบิล)','สำเนาบัตรประชาชนผู้มีอำนาจลงนาม','ระเบียบวางบิล / รับเช็ค'];
 function creditFields(){return [
   {group:'ข้อมูลบริษัทลูกค้า',sub:'ข้อ 1 ในแบบฟอร์ม'},
-  {key:'no',label:'เลขที่เอกสาร',req:true,def:nextNo('CRD')},
+  {key:'no',label:'เลขที่เอกสาร',req:true,def:nextNo('CRD','credit')},
   {key:'date',label:'วันที่',type:'date',def:today()},
   {key:'customer',label:'ชื่อบริษัท / ห้างหุ้นส่วน / ร้าน',req:true,full:true,type:'combo',
    options:()=>DB.customers.map(c=>c.name),ph:'พิมพ์ชื่อลูกค้า หรือเลือกจากรายการ',
@@ -5379,7 +5379,7 @@ const WIND_DIR=['ดึงท้าย ข้อความอ่านออ�
   'ดึงท้าย ข้อความอ่านออกด้านนอก','ดึงหัว ข้อความอ่านออกด้านนอก'];
 function sampleFields(){return [
   {group:'ข้อมูลรายละเอียดงานเบื้องต้น',sub:'ข้อ 1'},
-  {key:'no',label:'เอกสารเลขที่',req:true,def:nextNo('SMP')},
+  {key:'no',label:'เอกสารเลขที่',req:true,def:nextNo('SMP','sample')},
   {key:'rev',label:'Rev.',def:'01'},
   {key:'date',label:'วัน/เดือน/ปี',type:'date',def:today()},
   {key:'status',label:'สถานะ',type:'select',options:Object.keys(DOC_ST),def:'ร่าง'},
@@ -5423,7 +5423,7 @@ function sampleFields(){return [
 /* ---------- ใบข้อกำหนดลูกค้า (ข้อกำหนดในการส่งสินค้า) ---------- */
 function requirementFields(){return [
   {group:'ข้อมูลเอกสาร'},
-  {key:'no',label:'เอกสารเลขที่',req:true,def:nextNo('REQ')},
+  {key:'no',label:'เอกสารเลขที่',req:true,def:nextNo('REQ','requirement')},
   {key:'rev',label:'REV.',def:'01'},
   {key:'date',label:'วัน/เดือน/ปี',type:'date',def:today()},
   {key:'status',label:'สถานะ',type:'select',options:Object.keys(DOC_ST),def:'ร่าง'},
@@ -5462,9 +5462,25 @@ function ensureCredit(d){
   if(d.creditDays==null)d.creditDays=30;
   return d;
 }
-function nextNo(prefix){const yr=new Date().getFullYear()+543;
-  const n=DB.docs.filter(d=>d.no.startsWith(prefix)).length+1;
-  return `${prefix}-${yr}-${String(n).padStart(4,'0')}`;}
+/* เลขเอกสารใบถัดไป — เดินเลขต่อจากใบล่าสุดของเอกสารประเภทเดียวกัน
+   ถ้าเคยตั้งรหัสนำหน้าเอง (เช่น RD แทน SMP) จะใช้รหัสนั้นต่อให้ ไม่ต้องมาพิมพ์เองทุกใบ */
+const NO_PAT=/^([A-Za-z]+)-(\d{4})-(\d+)$/;
+function nextNo(prefix,type){
+  const yr=new Date().getFullYear()+543;
+  const mine=(DB.docs||[]).filter(d=>!type||d.type===type)
+    .map(d=>String(d.no||'').trim().toUpperCase().match(NO_PAT)).filter(Boolean);
+  /* รหัสนำหน้าที่ใช้บ่อยที่สุดของเอกสารประเภทนี้ */
+  const tally={};
+  mine.forEach(m=>{tally[m[1]]=(tally[m[1]]||0)+1;});
+  const pre=Object.keys(tally).sort((a,b)=>tally[b]-tally[a])[0]||prefix;
+  /* เลขล่าสุดของรหัสนำหน้านั้นในปีนี้ */
+  const last=mine.filter(m=>m[1]===pre&&+m[2]===yr).reduce((a,m)=>Math.max(a,+m[3]),0);
+  const width=Math.max(4,String(last).length);
+  let n=last+1,no;
+  do{no=`${pre}-${yr}-${String(n++).padStart(width,'0')}`;}
+  while((DB.docs||[]).some(d=>String(d.no||'').trim().toUpperCase()===no));
+  return no;
+}
 /* ---------- กู้เอกสารจากลิงก์เซ็น ----------
    เอกสารที่เคยส่งลิงก์ให้เซ็น จะมีสำเนาเก็บอยู่บนคลาวด์เสมอ
    ถ้าเอกสารในเครื่องหายไป ดึงกลับมาได้จากลิงก์เดิม พร้อมลายเซ็นที่เซ็นไปแล้ว */
