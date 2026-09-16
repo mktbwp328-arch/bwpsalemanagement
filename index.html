@@ -3816,7 +3816,7 @@ function ncFindRows(period){
   const first={};
   (DB.receipts||[]).filter(r=>r.status!=='ยกเลิก').forEach(r=>{
     const k=normName(r.customer);if(!k||!r.date)return;
-    if(!first[k]||r.date<first[k].date)first[k]={customer:r.customer,date:r.date,items:r.items||[]};
+    if(!first[k]||r.date<first[k].date)first[k]={customer:r.customer,date:r.date,no:r.no,items:r.items||[]};
   });
   return Object.values(first)
     /* ใบเสร็จใบแรกของลูกค้ารายนั้นต้องอยู่ในรอบนี้ */
@@ -3827,48 +3827,103 @@ function ncFindRows(period){
     .sort((a,b)=>String(a.date).localeCompare(String(b.date)))
     .map(x=>{
       const it=(x.items||[])[0]||{};
-      return {customer:x.customer,
+      return {rcNo:x.no,customer:x.customer,
         kind:NC_KIND[categoryOf(it.name,it.code)]||'',
         size:(x.items||[]).map(ncSize).filter(Boolean).slice(0,2).join('\n'),
         grade:ncGrade(it.name)};
     });
 }
-/* ตารางรายชื่อในฟอร์ม — เพิ่ม/ลบแถวได้ */
+/* เลือกใบเสร็จเข้าบันทึก — กำหนดช่วงวันที่เอง แล้วติ๊กเลือกทีละใบ
+   ติ๊กแล้วรายชื่อจะไปโผล่ในตารางด้านล่าง แก้ข้อความในตารางได้อิสระ */
 function ncRowsEditor(initial){
-  const box=el('<div class="itbl"><div class="itrows"></div></div>');
-  const rowsEl=box.querySelector('.itrows');
-  const renum=()=>rowsEl.querySelectorAll('.itrow').forEach((r,i)=>r.querySelector('.itno').textContent='ลำดับที่ '+(i+1));
-  function addRow(v){
-    v=v||{};
-    const r=el(`<div class="itrow">
-      <div class="ittop"><span class="itno">ลำดับ</span>
-        <button type="button" class="itdel">✕ ลบแถวนี้</button></div>
-      <div class="itl1">
-        <label class="itf"><span>ชนิดสินค้า</span>
-          <input class="nckind" placeholder="เช่น Stretch Film" value="${esc(v.kind||'')}"></label>
-        <label class="itf"><span>รายชื่อลูกค้าที่มีการซื้อขาย</span>
-          <input class="nccust" placeholder="ชื่อบริษัทลูกค้า" value="${esc(v.customer||'')}"></label>
+  const per=ncPeriod();
+  const box=el(`<div>
+    <div class="card pad" style="margin-bottom:14px">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+        <b style="font-size:14px">เลือกจากใบเสร็จ</b>
+        <input class="ncf" type="date" value="${esc(per.start)}" style="border:1px solid var(--bd);border-radius:10px;height:38px;padding:0 10px;font-family:inherit">
+        <span class="tiny">ถึง</span>
+        <input class="nct" type="date" value="${esc(per.end)}" style="border:1px solid var(--bd);border-radius:10px;height:38px;padding:0 10px;font-family:inherit">
+        <div style="flex:1"></div>
+        <button type="button" class="btn gh sm ncall">เลือกทั้งหมด</button>
+        <button type="button" class="btn gh sm ncnone">ล้างที่เลือก</button>
       </div>
-      <div class="itl2" style="grid-template-columns:minmax(0,1fr) 110px">
-        <label class="itf"><span>ขนาดสินค้า</span>
-          <textarea class="ncsize" rows="2" placeholder="เช่น 15 mic x 50 cm x 570 m">${esc(v.size||'')}</textarea></label>
-        <label class="itf"><span>เกรด</span>
-          <input class="ncgrade" placeholder="A / AB" value="${esc(v.grade||'')}"></label>
-      </div></div>`);
-    r.querySelector('.itdel').onclick=()=>{r.remove();if(!rowsEl.children.length)addRow();renum();};
-    rowsEl.append(r);renum();return r;
+      <div class="list nclist" style="max-height:260px;overflow:auto"></div>
+    </div>
+    <div class="itbl"><div class="itrows"></div></div>
+  </div>`);
+  const listEl=box.querySelector('.nclist'),rowsEl=box.querySelector('.itrows');
+  /* แถวที่เลือกไว้ — ถ้ามาจากใบเสร็จจะจำเลขที่ใบไว้ด้วย จะได้ติ๊กออกแล้วหายตรงกัน */
+  let rows=(initial||[]).map(r=>Object.assign({},r));
+
+  const rcInRange=()=>{
+    const f=box.querySelector('.ncf').value,t=box.querySelector('.nct').value;
+    return (DB.receipts||[]).filter(r=>r.status!=='ยกเลิก'&&r.date
+      &&(!f||r.date>=f)&&(!t||r.date<=t))
+      .sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  };
+  const rowFromRc=r=>{
+    const it=(r.items||[])[0]||{};
+    return {rcNo:r.no,customer:r.customer||'',
+      kind:NC_KIND[categoryOf(it.name,it.code)]||'',
+      size:(r.items||[]).map(ncSize).filter(Boolean).slice(0,2).join('\n'),
+      grade:ncGrade(it.name)};
+  };
+  const picked=no=>rows.some(x=>x.rcNo===no);
+
+  function paintRows(){
+    rowsEl.innerHTML='';
+    if(!rows.length)rowsEl.append(el('<div class="empty" style="padding:18px">ยังไม่ได้เลือกใบเสร็จ — ติ๊กเลือกด้านบน หรือกดเพิ่มรายชื่อเอง</div>'));
+    rows.forEach((v,i)=>{
+      const r=el(`<div class="itrow">
+        <div class="ittop"><span class="itno">ลำดับที่ ${i+1}${v.rcNo?' · '+esc(v.rcNo):''}</span>
+          <button type="button" class="itdel">✕ ลบแถวนี้</button></div>
+        <div class="itl1">
+          <label class="itf"><span>ชนิดสินค้า</span>
+            <input class="nckind" placeholder="เช่น Stretch Film" value="${esc(v.kind||'')}"></label>
+          <label class="itf"><span>รายชื่อลูกค้าที่มีการซื้อขาย</span>
+            <input class="nccust" placeholder="ชื่อบริษัทลูกค้า" value="${esc(v.customer||'')}"></label>
+        </div>
+        <div class="itl2" style="grid-template-columns:minmax(0,1fr) 110px">
+          <label class="itf"><span>ขนาดสินค้า</span>
+            <textarea class="ncsize" rows="2" placeholder="เช่น 15 mic x 50 cm x 570 m">${esc(v.size||'')}</textarea></label>
+          <label class="itf"><span>เกรด</span>
+            <input class="ncgrade" placeholder="A / AB" value="${esc(v.grade||'')}"></label>
+        </div></div>`);
+      const bind=(sel,k)=>{const e=r.querySelector(sel);e.oninput=()=>{v[k]=e.value;};};
+      bind('.nccust','customer');bind('.nckind','kind');bind('.ncsize','size');bind('.ncgrade','grade');
+      r.querySelector('.itdel').onclick=()=>{rows.splice(i,1);paintRows();paintList();};
+      rowsEl.append(r);
+    });
   }
-  (initial&&initial.length?initial:[{}]).forEach(addRow);
-  const add=el('<button type="button" class="btn gh" style="width:100%;border-style:dashed;border-color:#bfd3f5;color:var(--blue-d);background:#f8fbff">+ เพิ่มรายชื่อ</button>');
-  add.onclick=()=>{const r=addRow();r.querySelector('.nccust').focus();r.scrollIntoView({behavior:'smooth',block:'nearest'});};
+  function paintList(){
+    listEl.innerHTML='';
+    const rcs=rcInRange();
+    if(!rcs.length){listEl.append(el('<div class="empty" style="padding:18px">ไม่มีใบเสร็จในช่วงวันที่นี้</div>'));return;}
+    rcs.forEach(r=>{
+      const on=picked(r.no);
+      const row=el(`<div class="lrow" style="cursor:pointer">
+        <div class="lav" style="${on?'background:#dcfce7;color:#15803d':''}">${on?'✓':''}</div>
+        <div class="lmain"><div class="lt">${esc(r.customer||'-')}</div>
+          <div class="lm">${esc(r.no)} · ${fmtDate(r.date)} · ${num0(r.amount||0)} ฿</div></div></div>`);
+      row.onclick=()=>{
+        if(picked(r.no))rows=rows.filter(x=>x.rcNo!==r.no);
+        else rows.push(rowFromRc(r));
+        paintRows();paintList();
+      };
+      listEl.append(row);
+    });
+  }
+  box.querySelector('.ncf').onchange=paintList;
+  box.querySelector('.nct').onchange=paintList;
+  box.querySelector('.ncall').onclick=()=>{rcInRange().forEach(r=>{if(!picked(r.no))rows.push(rowFromRc(r));});paintRows();paintList();};
+  box.querySelector('.ncnone').onclick=()=>{rows=rows.filter(x=>!x.rcNo);paintRows();paintList();};
+  const add=el('<button type="button" class="btn gh" style="width:100%;border-style:dashed;border-color:#bfd3f5;color:var(--blue-d);background:#f8fbff;margin-top:10px">+ เพิ่มรายชื่อเอง</button>');
+  add.onclick=()=>{rows.push({customer:'',kind:'',size:'',grade:''});paintRows();
+    const last=rowsEl.querySelector('.itrow:last-child .nccust');if(last){last.focus();last.scrollIntoView({behavior:'smooth',block:'nearest'});}};
   box.append(add);
-  return {el:box,
-    value:()=>[...rowsEl.querySelectorAll('.itrow')].map(r=>({
-      customer:r.querySelector('.nccust').value.trim(),
-      kind:r.querySelector('.nckind').value.trim(),
-      size:r.querySelector('.ncsize').value.trim(),
-      grade:r.querySelector('.ncgrade').value.trim()
-    })).filter(x=>x.customer||x.kind||x.size)};
+  paintList();paintRows();
+  return {el:box,value:()=>rows.filter(x=>x.customer||x.kind||x.size)};
 }
 function ensureNewCust(d){
   if(!d.rows)d.rows=[];
@@ -3886,7 +3941,7 @@ function ncFields(){return [
   {key:'attn',label:'เรียน',def:'ผู้จัดการฝ่ายบัญชี'},
   {key:'salesName',label:'ชื่อเจ้าหน้าที่ฝ่ายขาย',def:meName()},
   {key:'intro',label:'ข้อความนำ',type:'textarea',full:true,def:NC_INTRO},
-  {group:'รายชื่อลูกค้าที่มีการซื้อขาย',sub:'นับจากใบเสร็จใบแรกของลูกค้ารายนั้น และต้องเป็นลูกค้าที่ติดต่อเข้ามาในรอบนี้ · แก้ไขเพิ่มลดได้'},
+  {group:'รายชื่อลูกค้าที่มีการซื้อขาย',sub:'เลือกช่วงวันที่แล้วติ๊กใบเสร็จที่ต้องการ · ระบบติ๊กลูกค้าใหม่ของรอบให้ก่อนแล้ว แก้ไขเพิ่มลดได้'},
   {key:'rows',type:'ncrows'}
 ];}
 /* ---------- แผ่นพิมพ์ ---------- */
