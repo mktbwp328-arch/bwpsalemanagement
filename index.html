@@ -3847,10 +3847,18 @@ function backBtn(label,fn){
   const b=el(`<button class="btn gh">${svg('back','ic s')}${esc(label)}</button>`);
   b.onclick=fn;$('#topActions').append(b);return b;
 }
+let searchFocus=false,searchCaret=0;
 function searchRow(value,placeholder,onInput){
   const w=el(`<div class="searchwrap">${svg('search','ic s')}<input placeholder="${esc(placeholder)}" value="${esc(value)}"><span class="kbd">/</span></div>`);
   const i=w.querySelector('input');
-  let t;i.oninput=()=>{clearTimeout(t);t=setTimeout(()=>onInput(i.value),160);};
+  let t;i.oninput=()=>{searchCaret=i.selectionStart;clearTimeout(t);t=setTimeout(()=>onInput(i.value),160);};
+  /* กำลังพิมพ์อยู่ก่อนหน้านี้ — คืนโฟกัสและตำแหน่งเคอร์เซอร์ให้พิมพ์ต่อได้เลย */
+  if(searchFocus)setTimeout(()=>{
+    if(!i.isConnected)return;
+    i.focus();
+    const p=Math.min(searchCaret==null?i.value.length:searchCaret,i.value.length);
+    try{i.setSelectionRange(p,p);}catch(e){}
+  },0);
   return w;
 }
 /* ---------- ตัวกรองตามวันที่ (ปี / เดือน / วัน) ----------
@@ -3944,6 +3952,12 @@ function listCard(items,cfg){
 
 /* ================= render ================= */
 function render(){
+  /* หน้าเว็บวาดใหม่ทุกครั้งที่พิมพ์ค้นหา ช่องค้นหาจึงถูกสร้างใหม่และโฟกัสหลุด
+     จำไว้ก่อนว่ากำลังพิมพ์อยู่ตรงไหน แล้วให้ searchRow คืนโฟกัสให้หลังวาดเสร็จ */
+  const _af=document.activeElement;
+  if(_af&&_af.tagName==='INPUT'&&_af.closest&&_af.closest('.searchwrap')){
+    searchFocus=true;searchCaret=_af.selectionStart;
+  }else searchFocus=false;
   /* sidebar */
   const nav=$('#nav');nav.innerHTML='';
   PAGES.filter(p=>!p.mgr||isManager()).forEach(p=>{
