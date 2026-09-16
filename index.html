@@ -5481,6 +5481,19 @@ function nextNo(prefix,type){
   while((DB.docs||[]).some(d=>String(d.no||'').trim().toUpperCase()===no));
   return no;
 }
+/* ---------- ขอเลขที่เอกสารจากส่วนกลาง ----------
+   ข้อมูลของพนักงานขายแต่ละคนแยกกัน ต่างคนจึงเดินเลขของตัวเองและชนกันได้
+   ฟังก์ชันนี้ไปขอเลขจากตัวนับกลางบนคลาวด์ ใครกดสร้างก่อนได้เลขก่อน
+   ถ้าต่อคลาวด์ไม่ได้ ก็ใช้เลขที่คำนวณในเครื่องไปก่อน (ยังใช้งานต่อได้) */
+async function reserveNo(localNo){
+  const m=String(localNo||'').trim().toUpperCase().match(NO_PAT);
+  if(!m||!sbOn()||sbReady===false||!authed())return localNo;
+  try{
+    const n=await sbRpc('next_doc_no',{p_prefix:m[1],p_year:+m[2],p_min:+m[3]});
+    const width=Math.max(4,m[3].length);
+    return `${m[1]}-${m[2]}-${String(n).padStart(width,'0')}`;
+  }catch(e){return localNo;}
+}
 /* ---------- กู้เอกสารจากลิงก์เซ็น ----------
    เอกสารที่เคยส่งลิงก์ให้เซ็น จะมีสำเนาเก็บอยู่บนคลาวด์เสมอ
    ถ้าเอกสารในเครื่องหายไป ดึงกลับมาได้จากลิงก์เดิม พร้อมลายเซ็นที่เซ็นไปแล้ว */
@@ -5530,7 +5543,12 @@ function pgDocuments(v){
   const t=DOC_TYPES.find(x=>x[0]===S.docType);
   header('เอกสารการขาย',[t[1]]);
   const isQ=S.docType==='quotation',isC=S.docType==='credit';
-  actionBtn('สร้าง'+t[1],'plus',()=>openForm('สร้าง'+t[1],docFields(S.docType),{},d=>{
+  /* เลขที่ตั้งต้นที่โชว์ในฟอร์ม — ถ้าไม่ได้แก้เอง ตอนกดสร้างจะไปขอเลขจริงจากส่วนกลาง
+     เพื่อไม่ให้ชนกับของเพื่อนร่วมทีมที่กดสร้างพร้อมกัน */
+  const fields=docFields(S.docType);
+  const noDef=(fields.find(f=>f.key==='no')||{}).def||'';
+  actionBtn('สร้าง'+t[1],'plus',()=>openForm('สร้าง'+t[1],fields,{},async d=>{
+    if(d.no===noDef)d.no=await reserveNo(noDef);
     const doc=Object.assign({id:uid(),type:S.docType},d);
     if(doc.type==='quotation'){ensureQuote(doc);doc.amount=qtTotal(doc);}
     if(doc.type==='credit'){ensureCredit(doc);doc.amount=doc.approvedAmount||0;}
