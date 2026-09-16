@@ -4027,9 +4027,6 @@ function chartYear(){
   const y=s?+String(s).slice(0,4):0;
   return y||new Date().getFullYear();
 }
-function dataYears(){const ys=new Set([new Date().getFullYear()]);
-  [...DB.receipts,...DB.pos,...DB.docs].forEach(x=>{const d=new Date(x.date);if(!isNaN(d))ys.add(d.getFullYear());});
-  return [...ys].sort((a,b)=>b-a);}
 const poTotal=p=>(p.items||[]).reduce((a,i)=>a+i.qty*i.price,0);
 const poGross=p=>poTotal(p)*1.07;
 
