@@ -3805,6 +3805,7 @@ const PAGES=[
 ];
 let S={page:'dashboard',
   custFilter:'ทั้งหมด',custQ:'',
+  dashY:'',dashM:'',dashFrom:'',dashTo:'',   /* ตัวกรองวันที่หน้าแรก */
   custY:'',custM:'',custFrom:'',custTo:'',   /* ตัวกรองวันที่หน้าลูกค้า */
   teamY:'',teamM:'',teamFrom:'',teamTo:'',   /* ตัวกรองวันที่หน้าภาพรวมทีม */
   docY:'',docM:'',docFrom:'',docTo:'',       /* ตัวกรองวันที่หน้าเอกสารการขาย */
@@ -3814,7 +3815,7 @@ let S={page:'dashboard',
   poQ:'',poFilter:'ทั้งหมด',poOpen:null,
   rcQ:'',rcFilter:'ทั้งหมด',rcOpen:null,empQ:'',
   profSel:null,profTab:'info',profQ:'',teamSel:null,prodQ:'',
-  dash:{period:'year',year:new Date().getFullYear(),chart:'line'}};
+  dash:{chart:'line'}};   /* ช่วงเวลาใช้ตัวกรอง dashY/dashM/dashFrom/dashTo */
 /* จำหน้าที่เปิดอยู่ ไม่ให้รีเฟรชแล้วเด้งกลับหน้าแรก */
 const VKEY='bwp_view_v1';
 function saveView(){try{localStorage.setItem(VKEY,JSON.stringify(S));}catch(e){}}
@@ -4014,15 +4015,15 @@ function render(){
 }
 
 /* ---------- 1. DASHBOARD ---------- */
-const PERIODS=[['30','30 วัน'],['90','90 วัน'],['year','รายปี'],['all','ทั้งหมด']];
+/* ช่วงเวลาที่ใช้คิดตัวเลขสรุป — หน้าแรกกับหน้าภาพรวมทีม ต่างคนต่างจำตัวกรองของตัวเอง */
 function inPeriod(iso){
-  /* หน้าภาพรวมทีมใช้ตัวกรอง ปี/เดือน/ช่วงวันที่ แบบเดียวกับหน้าลูกค้า ไม่ใช่ปุ่ม 30/90 วัน */
-  if(S.page==='team')return dateFilterPass({date:iso},'team');
-  const d=new Date(iso);if(isNaN(d))return false;const p=S.dash.period;
-  if(p==='all')return true;if(p==='year')return d.getFullYear()===S.dash.year;
-  return (Date.now()-d.getTime())/86400000<=parseInt(p,10);}
-function teamChartYear(){
-  const s=S.teamFrom||S.teamTo;
+  return dateFilterPass({date:iso},S.page==='team'?'team':'dash');
+}
+/* ปีที่กราฟยอดขายรายเดือนจะแสดง — ตามปีที่เลือกไว้ในตัวกรองของหน้านั้น */
+function chartYear(){
+  const k=S.page==='team'?'team':'dash';
+  if(S[k+'Y'])return +S[k+'Y'];
+  const s=S[k+'From']||S[k+'To'];
   const y=s?+String(s).slice(0,4):0;
   return y||new Date().getFullYear();
 }
@@ -4187,7 +4188,7 @@ function statsOf(db){
     const quotes=DB.docs.filter(d=>d.type==='quotation'&&inPeriod(d.date));
     const pos=DB.pos.filter(p=>p.status!=='ยกเลิก'&&inPeriod(p.date));
     const css=DB.customers.filter(c=>inPeriod(c.date));
-    const yr=S.page==='team'?(+S.teamY||teamChartYear()):(S.dash.period==='year'?S.dash.year:new Date().getFullYear());
+    const yr=chartYear();
     const months=Array(12).fill(0),cnts=Array(12).fill(0);
     liveRc().forEach(r=>{const d=new Date(r.date);
       if(!isNaN(d)&&d.getFullYear()===yr){months[d.getMonth()]+=r.amount;cnts[d.getMonth()]++;}});
@@ -4448,11 +4449,8 @@ function productModal(db,p){
 
 function pgDashboard(v){
   header('หน้าแรก',['ภาพรวมยอดขาย']);
-  $('#topActions').append(seg(PERIODS,S.dash.period,k=>{S.dash.period=k;render();}));
-  if(S.dash.period==='year'){
-    const sel=el(`<select style="border:1px solid #d3ddec;border-radius:10px;height:44px;padding:0 12px;background:#fff;cursor:pointer">${dataYears().map(y=>`<option value="${y}" ${y===S.dash.year?'selected':''}>ปี ${y+543}</option>`).join('')}</select>`);
-    sel.onchange=()=>{S.dash.year=+sel.value;render();};$('#topActions').append(sel);
-  }
+  /* เลือกช่วงเวลาแบบเดียวกับหน้าภาพรวมทีม — ปี / เดือน / กำหนดช่วงวันเอง */
+  $('#topActions').append(dateFilter([...DB.receipts,...DB.pos,...DB.docs,...DB.customers],'dash'));
 
   const rcs=liveRc().filter(r=>inPeriod(r.date)),css=DB.customers.filter(c=>inPeriod(c.date));
   const total=rcs.reduce((a,b)=>a+b.amount,0);
@@ -4523,7 +4521,7 @@ function pgDashboard(v){
   }
   v.append(pc);
 
-  const yr=S.dash.period==='year'?S.dash.year:new Date().getFullYear();
+  const yr=chartYear();
   const months=Array(12).fill(0),cnts=Array(12).fill(0);
   liveRc().forEach(r=>{const d=new Date(r.date);if(!isNaN(d)&&d.getFullYear()===yr){months[d.getMonth()]+=r.amount;cnts[d.getMonth()]++;}});
   const mx=Math.max(...months,100000),X=i=>56+i*53,Y=n=>208-(n/mx)*168;
