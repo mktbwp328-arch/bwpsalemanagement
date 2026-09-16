@@ -5156,16 +5156,67 @@ function customerFields(){return [
   {key:'address',label:'ที่อยู่',type:'textarea',full:true},
   {key:'creditTerm',label:'เครดิตเทอม',def:'30 วัน'},{key:'creditLimit',label:'วงเงินเครดิต (บาท)',type:'number',def:0}
 ];}
+/* หารายชื่อลูกค้าที่ซ้ำกัน (ชื่อเดียวกันแต่คนละรายการ) */
+function dupGroups(){
+  const by={};
+  (DB.customers||[]).forEach(c=>{const k=normName(c.name);if(!k)return;(by[k]=by[k]||[]).push(c);});
+  return Object.values(by).filter(g=>g.length>1);
+}
+/* รวมรายชื่อซ้ำให้เหลือรายเดียว — เก็บรายที่ข้อมูลครบสุดไว้ แล้วย้ายบันทึก/ไฟล์ของรายอื่นมารวม */
+function mergeDupCustomers(){
+  const groups=dupGroups();
+  if(!groups.length){toast('ไม่มีรายชื่อซ้ำ');return;}
+  const n=groups.reduce((a,g)=>a+g.length-1,0);
+  askConfirm('รวมรายชื่อลูกค้าที่ซ้ำ',
+    'พบ '+groups.length+' ชื่อที่ซ้ำกัน รวมเป็นรายละ 1 รายการ (ลดลง '+n+' รายการ) '
+    +'บันทึกการติดต่อ รูป และไฟล์แนบของรายที่ซ้ำจะถูกย้ายมารวมให้ ไม่หาย',
+    'รวมให้เลย',()=>{
+      const backup=DB.customers.slice();
+      const score=c=>[c.phone,c.email,c.address,c.taxId,c.contact].filter(Boolean).length
+        +((c.timeline||[]).length?1:0);
+      const drop=new Set();
+      groups.forEach(g=>{
+        const keep=g.slice().sort((a,b)=>score(b)-score(a))[0];
+        g.forEach(c=>{
+          if(c===keep)return;
+          keep.timeline=(keep.timeline||[]).concat(c.timeline||[]);
+          keep.photos=(keep.photos||[]).concat(c.photos||[]);
+          keep.files=(keep.files||[]).concat(c.files||[]);
+          /* ช่องที่รายหลักยังว่าง เติมจากรายที่ซ้ำให้ */
+          ['contact','contactPos','phone','email','address','shipTo','taxId','biz','website','note','logo']
+            .forEach(k=>{if(!keep[k]&&c[k])keep[k]=c[k];});
+          drop.add(c.id);
+        });
+        keep.timeline.sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
+      });
+      DB.customers=DB.customers.filter(c=>!drop.has(c.id));
+      save(true);render();
+      toast('รวมแล้ว — ลดลง '+drop.size+' รายการ',()=>{DB.customers=backup;save(true);render();});
+    });
+}
 function pgCustomers(v){
   header('ลูกค้าติดต่อเข้ามา',['งานขาย']);
   actionBtn('เพิ่มลูกค้าใหม่','plus',()=>openForm('เพิ่มลูกค้าใหม่',customerFields(),{},d=>{
+    /* มีชื่อนี้อยู่แล้ว ไม่สร้างซ้ำ พาไปที่รายเดิมแทน */
+    const dup=findCustomer(d.name);
+    if(dup){toast('มี "'+dup.name+'" อยู่ในระบบแล้ว — เปิดรายเดิมให้แล้ว');openCustomer(dup);return;}
     const c=Object.assign({id:uid(),logo:null,photos:[],files:[],
       timeline:[{date:d.date||today(),title:'รับการติดต่อผ่าน '+d.channel,note:'',by:d.owner}]},d);
+    c.name=String(c.name||'').replace(/\s+/g,' ').trim();
     DB.customers.unshift(c);save();render();toast('เพิ่มลูกค้าแล้ว');openCustomer(c);}));
   actionBtn('นำเข้า Excel','up',importCustomers,'btn gh');
   if(DB.customers.length)actionBtn('ส่งออก','dl',exportCustomers,'btn gh');
 
   v.append(hint('คลิกที่ชื่อลูกค้าเพื่อดูรายละเอียดและบันทึกว่าดำเนินการถึงไหนแล้ว'));
+  /* เตือนเมื่อมีรายชื่อซ้ำ พร้อมปุ่มรวมให้เหลือรายเดียว จะได้นับจำนวนลูกค้าได้ตรง */
+  const dups=dupGroups();
+  if(dups.length&&!readOnly()){
+    const w=el(`<div class="hint" style="background:#fffbeb;border-color:#fde68a;color:#92400e">
+      <span style="flex:1">พบรายชื่อลูกค้าซ้ำ ${dups.length} ชื่อ (${dups.reduce((a,g)=>a+g.length,0)} รายการ) —
+        ทำให้ยอดนับจำนวนลูกค้าเกินจริง</span></div>`);
+    const b=el('<button class="btn sm" style="flex:0 0 auto">รวมให้เหลือรายเดียว</button>');
+    b.onclick=mergeDupCustomers;w.append(b);v.append(w);
+  }
 
   const bar=el('<div class="toolbar"></div>');
   bar.append(searchRow(S.custQ,'ค้นหาชื่อ เบอร์โทร หรืออีเมล',q=>{S.custQ=q;render();}));
@@ -6024,10 +6075,18 @@ function openDoc(d){
 /* ---------- 4. PO ---------- */
 /* เลขที่ PO ภายใน — ไม่ให้ซ้ำกับที่มีอยู่ */
 /* พิมพ์ชื่อลูกค้าใหม่ในเอกสารได้เลย ระบบเพิ่มเข้าทะเบียนลูกค้าให้อัตโนมัติ */
+/* เทียบชื่อลูกค้าแบบไม่สนช่องว่างเกินและตัวพิมพ์เล็กใหญ่ กันรายชื่อซ้ำ
+   เช่น "บริษัท เอ  จำกัด" กับ "บริษัท เอ จำกัด" ถือเป็นรายเดียวกัน */
+const normName=s=>String(s||'').replace(/\s+/g,' ').trim().toLowerCase();
+function findCustomer(name){
+  const k=normName(name);
+  if(!k)return null;
+  return (DB.customers||[]).find(c=>normName(c.name)===k)||null;
+}
 function ensureCustomer(name){
-  const n=String(name||'').trim();
+  const n=String(name||'').replace(/\s+/g,' ').trim();
   if(!n||readOnly())return null;
-  const found=DB.customers.find(c=>c.name===n);
+  const found=findCustomer(n);
   if(found)return found;
   const c={id:uid(),name:n,status:'ปิดการขาย',channel:'จาก PO',date:today(),
     contact:'',contactPos:'',phone:'',email:'',address:'',shipTo:'',taxId:'',biz:'',website:'',
@@ -6042,11 +6101,14 @@ function ensureCustomer(name){
    ถ้า PO ถูกยกเลิกและลูกค้าไม่มี PO ที่ยังใช้งานเหลือ จะถอยกลับเป็น "รอ PO" ให้ */
 const PO_TO_CUST={'รอตรวจสอบ':'รอตรวจสอบ','อนุมัติแล้ว':'อนุมัติแล้ว',
   'กำลังผลิต':'กำลังผลิต','ส่งมอบแล้ว':'ส่งมอบแล้ว'};
+/* สถานะปลายทาง — ถึงแล้วถือว่าจบ ระบบจะไม่ขยับให้อีก ต้องแก้เองเท่านั้น
+   (ซื้อขายแล้ว = ปิดการขายสำเร็จ ไม่ต้องถอยกลับไปเป็นกำลังผลิต/ส่งมอบแล้วอีก) */
+const LOCKED_ST=['ซื้อขายแล้ว','ปิดการขาย','ราคาไม่ผ่าน','ยกเลิก'];
 function syncCustFromPo(po){
   if(!po||readOnly())return;
-  const c=DB.customers.find(x=>x.name===po.customer);
+  const c=findCustomer(po.customer);
   if(!c)return;
-  if(c.status==='ยกเลิก')return;              /* ลูกค้าที่ปิดไปแล้ว ไม่ไปยุ่ง */
+  if(LOCKED_ST.indexOf(c.status)>=0)return;   /* สถานะปลายทางแล้ว ไม่ไปยุ่ง */
   let next=PO_TO_CUST[po.status]||null;
   if(po.status==='ยกเลิก'){
     /* ยังมี PO ใบอื่นอยู่ ให้ตามสถานะของใบล่าสุดแทน ไม่งั้นถอยกลับเป็นรอ PO */
