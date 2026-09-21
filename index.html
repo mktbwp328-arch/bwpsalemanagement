@@ -1390,7 +1390,9 @@ function sampleSheet(d){
           ${[['ตัวอย่าง',60,' กก.'],['ยอดสั่งซื้อตัวอย่าง',54,'']].map(([k,w,tail])=>{
             /* กรอกตัวเลขเฉพาะแถวที่ถูกเลือก อีกแถวเว้นว่างไว้ */
             const on=d.workType===k;
-            return `<div>${chk(on)} ${k} น้ำหนักต่อม้วน ${dots(on?d.wPerRoll:'',58)} กก. จำนวน ${dots(on?d.rolls:'',52)} ม้วน วันที่กำหนดส่ง ${dots(on?fmtShort(d.dueDate):'',96)} รวม ${dots(on?d.totalKg:'',w)}${tail}</div>`;}).join('')}
+            /* ขนาดผลิตภัณฑ์เป็นถุงคลุม นับเป็นใบ ไม่ใช่ม้วน */
+            const u=isHoodItem({name:d.size})?'ใบ':'ม้วน';
+            return `<div>${chk(on)} ${k} น้ำหนักต่อ${u} ${dots(on?d.wPerRoll:'',58)} กก. จำนวน ${dots(on?d.rolls:'',52)} ${u} วันที่กำหนดส่ง ${dots(on?fmtShort(d.dueDate):'',96)} รวม ${dots(on?d.totalKg:'',w)}${tail}</div>`;}).join('')}
         </div></div>
       <div style="color:#c00;font-size:10.5px">หมายเหตุ : ในกรณีที่เป็นฟิล์มใสระยะเวลาในการเตรียมตัวอย่าง อย่างน้อย 7 วัน ส่วนงานพิมพ์ระยะเวลาในการเตรียมตัวอย่าง อย่างน้อย15 วัน</div>
     </div>
@@ -5796,8 +5798,8 @@ function sampleFields(){return [
   {key:'customer',label:'ชื่อลูกค้า',type:'select',options:DB.customers.map(c=>c.name),req:true,full:true},
   {key:'size',label:'ขนาดผลิตภัณฑ์ที่ต้องการ',full:true},
   {key:'workType',label:'งานที่ต้องการ',type:'radio',full:true,options:['ตัวอย่าง','ยอดสั่งซื้อตัวอย่าง']},
-  {key:'wPerRoll',label:'น้ำหนักต่อม้วน (กก.)',type:'number'},
-  {key:'rolls',label:'จำนวน (ม้วน)',type:'number'},
+  {key:'wPerRoll',label:'น้ำหนักต่อม้วน / ต่อใบ (กก.)',type:'number',hint:'ถ้าขนาดผลิตภัณฑ์เป็นถุงคลุม เอกสารจะพิมพ์เป็น "ต่อใบ" ให้เอง'},
+  {key:'rolls',label:'จำนวน (ม้วน / ใบ)',type:'number'},
   {key:'dueDate',label:'วันที่กำหนดส่ง',type:'date'},
   {key:'totalKg',label:'รวม (กก.)',type:'number'},
   {group:'ประเภทงานที่ต้องการ',sub:'ข้อ 2'},
@@ -6118,7 +6120,7 @@ function formDocDetail(v,d){
       ${fl('ลูกค้า',d.customer)}${fl('เอกสารเลขที่',d.no)}${fl('Rev.',d.rev)}
       ${fl('วันที่',fmtDate(d.date))}
       ${isSample?fl('ขนาดผลิตภัณฑ์',d.size)+fl('งานที่ต้องการ',d.workType)
-        +fl('น้ำหนัก/ม้วน',d.wPerRoll?d.wPerRoll+' กก.':'')+fl('จำนวน',d.rolls?d.rolls+' ม้วน':'')
+        +fl('น้ำหนัก/'+(isHoodItem({name:d.size})?'ใบ':'ม้วน'),d.wPerRoll?d.wPerRoll+' กก.':'')+fl('จำนวน',d.rolls?d.rolls+(isHoodItem({name:d.size})?' ใบ':' ม้วน'):'')
         +fl('กำหนดส่ง',fmtDate(d.dueDate))+fl('ประเภทงาน',(d.kinds||[]).join(', '))
         +fl('ผลพิจารณา R&D',d.canMake)
         :fl('Matcode',d.matcode)+fl('ขนาดผลิตภัณฑ์',d.size)+fl('เกรด',d.grade)
