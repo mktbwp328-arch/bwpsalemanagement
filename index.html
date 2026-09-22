@@ -5703,8 +5703,9 @@ function docFields(type){
     {key:'status',label:'สถานะ',type:'select',options:Object.keys(DOC_ST),def:'ร่าง'}];
   if(type==='quotation')return [
     {group:'เสนอราคาให้ใคร',sub:'ข้อมูลส่วนนี้จะพิมพ์ที่หัวเอกสาร'},
-    {key:'customer',label:'ลูกค้า',type:'select',options:DB.customers.map(c=>c.name),req:true,
-      hint:'ที่อยู่บนเอกสารดึงจากข้อมูลลูกค้าอัตโนมัติ'},
+    {key:'customer',label:'ลูกค้า',type:'combo',options:()=>DB.customers.map(c=>c.name),req:true,
+      ph:'พิมพ์ชื่อลูกค้า หรือเลือกจากรายการ',
+      hint:'พิมพ์ชื่อใหม่ได้ · ถ้าเลือกลูกค้าที่มีในระบบ ที่อยู่บนเอกสารจะดึงจากข้อมูลลูกค้าให้อัตโนมัติ'},
     {key:'contact',label:'ผู้ติดต่อ',def:'ฝ่ายจัดซื้อ'},
     {group:'ข้อมูลเอกสาร'},
     {key:'no',label:'เลขที่ใบเสนอราคา',req:true,def:nextNo('QUO','quotation')},
