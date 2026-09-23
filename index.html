@@ -1453,7 +1453,7 @@ function requirementSheet(d){
       <div class="ln">ชื่อลูกค้า ${dots(d.customer,330)} Matcode ${dots(d.matcode,160)}</div>
       <div class="ln">ขนาดผลิตภัณฑ์ ${dots(d.size,215)} ความหนา (±) ${dots(d.thick,150)} mic</div>
       <div class="ln">ประเภทงาน ${dots(d.workType,235)} เกรด ${bx(d.grade==='A','A')} &nbsp;&nbsp; ${bx(d.grade==='AB'||d.grade==='B','AB')}</div>
-      <div class="ln">น้ำหนักต่อม้วน ${dots(d.weightPerRoll,190)} KG &nbsp; แกน ${bx(d.core==='PVC','PVC')} &nbsp; ${bx(d.core==='แกนกระดาษ','แกนกระดาษ')} ${dots(d.coreThick,60)} มิล</div>
+      <div class="ln">น้ำหนักต่อม้วน ${dots(d.weightPerRoll,190)} KG &nbsp; แกน ${bx(d.core==='PVC','PVC')} &nbsp; ${bx(d.core==='แกนกระดาษ','แกนกระดาษ')} ${dots(d.coreThick,60)} มม.</div>
       <div class="ln">ความยาวต่อม้วน ${dots(d.lengthPerRoll,180)} เมตร &nbsp; จำนวน ${dots(d.qty,140)} ใบ / มัด</div>
       <div class="ln">รอยต่อ ${dots(d.joins,200)} รอย &nbsp; ${bx(d.joinMark.includes('ติดเทปแดง'),'ติดเทปแดง')} &nbsp; ${bx(d.joinMark.includes('ติดจำนวนรอยต่อ'),'ติดจำนวนรอยต่อ')}</div>
       <div class="ln">การบรรจุพาเลท ${bx(d.palletSpec==='ระบุ','ระบุ')} &nbsp; ${bx(d.palletSpec==='ไม่ระบุ','ไม่ระบุ')} &nbsp;&nbsp; จำนวน ${dots(d.perPallet,110)} ม้วน/พาเลท</div>
@@ -5853,7 +5853,7 @@ function requirementFields(){return [
   {key:'grade',label:'เกรด',type:'radio',options:['A','AB']},
   {key:'weightPerRoll',label:'น้ำหนักต่อม้วน (KG)'},
   {key:'core',label:'แกน',type:'radio',options:['PVC','แกนกระดาษ']},
-  {key:'coreThick',label:'ความหนาแกน (มิล)'},
+  {key:'coreThick',label:'ความหนาแกน (มม.)'},
   {key:'lengthPerRoll',label:'ความยาวต่อม้วน (เมตร)'},
   {key:'qty',label:'จำนวน (ใบ/มัด)'},
   {group:'ข้อกำหนดการผลิตและบรรจุ'},
