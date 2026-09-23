@@ -714,16 +714,19 @@ async function cloudSave(tries){
   }
   syncPending=false;
   try{
-    /* เช็คก่อนว่ามีใครบันทึกทับไว้หลังจากที่เครื่องนี้โหลดมา ถ้ามีให้รวมข้อมูลก่อน */
+    /* เช็คก่อนว่ามีใครบันทึกทับไว้หลังจากที่เครื่องนี้โหลดมา ถ้ามีให้รวมข้อมูลก่อน
+       เช็คด้วยเวลาที่แก้ล่าสุดก่อน (เบามาก) จะได้ไม่ต้องโหลดข้อมูลทั้งก้อนทุกครั้งที่บันทึก */
     try{
-      const cur=await cloudRow(dataOwner());
-      const curT=cur&&cur.updated_at?Date.parse(cur.updated_at):0;
-      if(curT&&curT>cloudSeen+2000&&cur.data&&cur.data.customers){
+      const curT=await cloudStamp(dataOwner());
+      if(curT&&curT>cloudSeen+2000){
+        const cur=await cloudRow(dataOwner());
+        if(cur&&cur.data&&cur.data.customers){
         const added=mergeCloud(cur.data);
         if(added){
           try{localStorage.setItem(localKey(),JSON.stringify(DB));}catch(e){}
           render();
           toast('พบงานที่บันทึกจากอีกเครื่อง '+added+' รายการ — รวมเข้าด้วยกันให้แล้ว');
+        }
         }
       }
     }catch(e){}
@@ -771,6 +774,12 @@ window.addEventListener('pagehide',()=>{
 });
 async function cloudLoad(userId){
   const r=await cloudRow(userId);return r?r.data:null;
+}
+/* ถามแค่เวลาที่แก้ล่าสุด — ไม่กี่ไบต์ ใช้เช็คว่าต้องโหลดข้อมูลจริงหรือไม่
+   (ข้อมูลของแต่ละคนก้อนใหญ่ ถ้าโหลดทุกครั้งที่บันทึก จะกินปริมาณเน็ตมหาศาล) */
+async function cloudStamp(userId){
+  const rows=await sbGet('user_data?select=updated_at&user_id=eq.'+userId);
+  return rows&&rows[0]&&rows[0].updated_at?Date.parse(rows[0].updated_at)||0:0;
 }
 async function cloudRow(userId){
   const rows=await sbGet('user_data?select=data,updated_at&user_id=eq.'+userId);
@@ -2932,6 +2941,7 @@ async function productsFile(){
 const prodTableMissing=e=>/relation .*products|does not exist|schema cache/i.test(String(e&&e.message||e));
 
 const PRODPULL_KEY='bwp_prodpull_v1';
+const PRODSTAMP_KEY='bwp_prodstamp_v1';   /* เวลาที่คลังสินค้ากลางถูกแก้ล่าสุดที่เครื่องนี้รับรู้ */
 /* ดึงคลังสินค้ากลาง — ถ้าเพิ่งดึงไปไม่นานและมีข้อมูลอยู่แล้ว ข้ามไปเลยเพื่อให้เปิดเว็บเร็ว
    (กดปุ่ม "โหลดใหม่" ในหน้าข้อมูลสินค้าเพื่อบังคับดึงใหม่ได้ทุกเมื่อ) */
 async function productsPull(force){
@@ -2942,12 +2952,24 @@ async function productsPull(force){
   }
   PRODSYNC.busy=true;PRODSYNC.err=null;
   try{
-    const out=[];let from=0;
+    /* ถามแค่แถวที่แก้ล่าสุดก่อน ถ้าเหมือนเดิมก็ไม่ต้องดึงทั้งตาราง (700+ แถว) */
+    if(!force&&allProducts().length){
+      let seen='';try{seen=localStorage.getItem(PRODSTAMP_KEY)||'';}catch(e){}
+      const top=await sbFetch('products?select=updated_at&order=updated_at.desc&limit=1');
+      const cur=top&&top[0]?String(top[0].updated_at||''):'';
+      if(cur&&cur===seen){
+        try{localStorage.setItem(PRODPULL_KEY,String(Date.now()));}catch(e){}
+        PRODSYNC.busy=false;PRODSYNC.at=new Date().toISOString();PRODSYNC.src='cloud';
+        return false;
+      }
+    }
+    const out=[];let from=0,newStamp='';
     for(;;){                                   /* PostgREST ส่งทีละ 1000 แถว ต้องวนดึงจนครบ */
       const part=await sbFetch('products?select='+PROD_COLS+'&order=code.asc',
         {method:'GET',headers:Object.assign(sbHeaders(),{Range:from+'-'+(from+999)})});
       if(!part||!part.length)break;
       out.push(...part);
+      part.forEach(r=>{const u=String(r.updated_at||'');if(u>newStamp)newStamp=u;});
       if(part.length<1000)break;
       from+=1000;
     }
@@ -2963,6 +2985,8 @@ async function productsPull(force){
       PRODSYNC.pending=DB.products.length;
     }
     PRODSYNC.at=new Date().toISOString();
+    /* จำเวลาแก้ล่าสุดของคลัง ครั้งหน้าถ้าไม่มีใครแก้ จะได้ไม่ต้องดึงทั้งตาราง */
+    try{if(newStamp)localStorage.setItem(PRODSTAMP_KEY,newStamp);}catch(e){}
     try{localStorage.setItem(PRODPULL_KEY,String(Date.now()));}catch(e){}
     try{localStorage.setItem(localKey(),JSON.stringify(DB));}catch(e){}
     return true;
@@ -4967,6 +4991,8 @@ function pgDashboard(v){
 /* ---------- 1b. ภาพรวมทีมขาย (เฉพาะผู้จัดการ/ผู้ดูแล) ----------
    ดึงข้อมูลของเซลทุกคนจากคลาวด์มารวมกัน แล้วกดดูแยกรายคนได้ในหน้าเดียว */
 const TEAM={loaded:false,loading:false,err:null,people:[],at:null,done:0,total:0};
+/* เก็บข้อมูลของเพื่อนร่วมทีมที่เคยโหลดไว้ พร้อมเวลาที่แก้ล่าสุด กันโหลดซ้ำโดยไม่จำเป็น */
+const TEAM_CACHE={};
 async function loadTeam(force){
   if(TEAM.loading)return;
   if(TEAM.loaded&&!force)return;
@@ -4985,7 +5011,15 @@ async function loadTeam(force){
       let db=null;
       /* ใช้ข้อมูลในเครื่องได้เฉพาะตอนดูข้อมูลของตัวเองอยู่
          ถ้ากำลังเปิดดูข้อมูลลูกทีม DB ในเครื่องคือของลูกทีมคนนั้น ต้องดึงของตัวเองจากคลาวด์แทน */
-      try{db=(t.mine&&!viewingOther())?DB:await cloudLoad(t.id);}catch(e){}
+      try{
+        if(t.mine&&!viewingOther())db=DB;
+        else{
+          /* โหลดของใครใหม่เฉพาะคนที่มีการแก้ไขหลังจากที่เคยโหลดไว้ */
+          const st=await cloudStamp(t.id),c=TEAM_CACHE[t.id];
+          if(c&&st&&c.t===st)db=c.db;
+          else{db=await cloudLoad(t.id);TEAM_CACHE[t.id]={t:st,db};}
+        }
+      }catch(e){}
       if(db&&db.customers){try{withDB(db,migrate);}catch(e){}}
       TEAM.done++;
       if(S.page==='team'&&!TEAM.loaded)paintTeamProgress();
@@ -7393,10 +7427,25 @@ async function startApp(){
     if(viewingOther())setSync(readOnly()?'readonly':'editing');
     quick=true;dirtySince=0;
   }
-  let row=null,cloud=null,failed=false;
-  try{row=await cloudRow(owner);cloud=row&&row.data;
-    cloudSeen=(row&&row.updated_at)?Date.parse(row.updated_at):0;   /* จำรุ่นที่โหลดมา ใช้เทียบตอนบันทึก */
+  let row=null,cloud=null,failed=false,stamp=0;
+  try{
+    stamp=await cloudStamp(owner);
+    const lT=(local&&+local._t)||0;
+    /* ข้อมูลในเครื่องใหม่กว่าหรือเท่ากับบนคลาวด์อยู่แล้ว ไม่ต้องโหลดก้อนใหญ่ลงมาซ้ำ */
+    const fresh=!!(local&&local.customers&&stamp&&lT&&lT>=stamp-2000);
+    if(!fresh){
+      row=await cloudRow(owner);cloud=row&&row.data;
+      if(row&&row.updated_at)stamp=Date.parse(row.updated_at)||stamp;
+    }
+    cloudSeen=stamp;   /* จำรุ่นที่รับรู้ ใช้เทียบตอนบันทึก */
   }catch(e){failed=true;}
+  /* ใช้ของในเครื่องได้เลย ไม่ได้โหลดอะไรลงมา */
+  if(quick&&!failed&&!cloud){
+    /* ยังไม่มีข้อมูลบนคลาวด์ หรือในเครื่องใหม่กว่า — อัปขึ้นให้ */
+    if(!stamp||((local&&+local._t)||0)>stamp+2000)save(true);
+    productsPull().then(ok=>{if(ok)render();});
+    sbPing();setTimeout(autoTidy,2500);return;
+  }
   if(quick&&!failed&&cloud&&cloud.customers){
     const lT=(+local._t)||0,cT=row.updated_at?Date.parse(row.updated_at):0;
     if(cT>lT+2000&&!dirtySince){       /* คลาวด์ใหม่กว่า และยังไม่ได้แก้อะไรในหน้านี้ */
