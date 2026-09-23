@@ -3437,7 +3437,9 @@ async function migrateToStorage(onProgress){
 const PAY_BASE=['เงินสด','เครดิต 30 วัน','เครดิต 45 วัน','เครดิต 60 วัน','เครดิต 90 วัน','โอนก่อนส่งของ','เก็บเงินปลายทาง'];
 function PAY_TERMS(){
   const out=PAY_BASE.slice();
-  ((DB&&DB.pos)||[]).forEach(p=>{const v=String(p.payment||'').trim();
+  /* เงื่อนไขที่เคยพิมพ์เองไว้ ทั้งใน PO และใบเสนอราคา เก็บไว้ให้เลือกซ้ำได้ */
+  const seen=[...((DB&&DB.pos)||[]),...((DB&&DB.docs)||[]).filter(d=>d.type==='quotation')];
+  seen.forEach(p=>{const v=String(p.payment||'').trim();
     if(v&&out.indexOf(v)<0)out.push(v);});
   return out;
 }
@@ -5710,7 +5712,8 @@ function docFields(type){
     {group:'ข้อมูลเอกสาร'},
     {key:'no',label:'เลขที่ใบเสนอราคา',req:true,def:nextNo('QUO','quotation')},
     {key:'date',label:'วันที่ออกเอกสาร',type:'date',def:today()},
-    {key:'payment',label:'เงื่อนไขการชำระเงิน',type:'select',options:['เงินสด','เครดิต 30 วัน','เครดิต 45 วัน','เครดิต 60 วัน'],def:'เงินสด'},
+    {key:'payment',label:'เงื่อนไขการชำระเงิน',type:'combo',options:PAY_TERMS,def:'เงินสด',
+     ph:'เลือกจากรายการ หรือพิมพ์เงื่อนไขเอง'},
     {key:'validDays',label:'ยืนราคา (วัน)',type:'number',def:7,hint:'ระบบคำนวณวันหมดอายุให้อัตโนมัติ'},
     {key:'salesperson',label:'พนักงานขาย'},
     {key:'status',label:'สถานะ',type:'select',options:Object.keys(DOC_ST),def:'ร่าง'},
