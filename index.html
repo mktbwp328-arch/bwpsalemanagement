@@ -613,8 +613,14 @@ function offerCompress(bytes){
     'บีบอัดให้เลย',async()=>{
       const before=blobBytes();
       let total=0;
+      /* ลายเซ็นและโลโก้ที่ฝังอยู่ในข้อมูล — ส่วนใหญ่ข้อมูลโตเพราะตรงนี้ */
+      toast('กำลังจัดเก็บลายเซ็นและโลโก้…');
+      total+=dropLegacyBranding();
+      total+=(await shrinkInlineImages()).n;
+      inlineTidyDone=true;
       /* ไล่บีบอัดหลายรอบ แต่ละรอบเข้มขึ้น จนข้อมูลลงมาต่ำกว่า 3.5 MB */
       for(const cap of [200*1024,140*1024,90*1024,60*1024,40*1024]){
+        if(blobBytes()<3.5*1024*1024)break;
         toast('กำลังบีบอัดรูป… ('+Math.round(blobBytes()/1024/1024*10)/10+' MB)');
         const r=await compressAllImages(cap);
         total+=r.n;
@@ -683,8 +689,74 @@ let lastSyncErr='',syncErrShown=false,retryTimer=null;
    เปิดเว็บแล้วถ้ายังมีรูปฝังอยู่ในข้อมูล จะบีบให้เล็กก่อน แล้วย้ายขึ้นที่เก็บไฟล์เอง
    ทำเงียบ ๆ เบื้องหลัง ผู้ใช้ไม่ต้องกดอะไร */
 let autoTidyDone=false;
+/* ---------- บีบรูปที่ฝังอยู่ในข้อมูลโดยตรง ----------
+   ลายเซ็นทุกใบ (ฝ่ายขาย ผู้บริหาร ฝ่ายวิจัย ฯลฯ) และโลโก้ลูกค้า เก็บเป็นรูปอยู่ในก้อนข้อมูล
+   ระบบย้ายไฟล์แนบขึ้นที่เก็บไฟล์ไม่ได้แตะส่วนนี้ ข้อมูลเลยค่อย ๆ โตจนใกล้เต็ม
+   ย่อให้ไม่เกิน 600x300 แล้วเก็บเป็น WebP (ยังคมพอพิมพ์ ลายเซ็นพื้นใสเหมือนเดิม) — ปกติเล็กลง 70-90% */
+function reencodeImage(dataUrl,maxW,maxH){
+  return new Promise(res=>{
+    const img=new Image();
+    img.onload=()=>{
+      try{
+        const k=Math.min(1,maxW/img.naturalWidth,maxH/img.naturalHeight);
+        const w=Math.max(1,Math.round(img.naturalWidth*k)),h=Math.max(1,Math.round(img.naturalHeight*k));
+        const c=document.createElement('canvas');c.width=w;c.height=h;
+        c.getContext('2d').drawImage(img,0,0,w,h);
+        let out=c.toDataURL('image/webp',0.82);
+        if(!/^data:image\/webp/.test(out))out=c.toDataURL('image/png');   /* เบราว์เซอร์ที่ไม่รองรับ WebP */
+        res(out);
+      }catch(e){res(null);}
+    };
+    img.onerror=()=>res(null);
+    img.src=dataUrl;
+  });
+}
+async function shrinkInlineImages(){
+  const jobs=[];
+  const walk=(o,depth)=>{
+    if(!o||typeof o!=='object'||depth>8)return;
+    for(const k of Object.keys(o)){
+      if(k==='products')continue;
+      const v=o[k];
+      if(typeof v==='string'){
+        if(v.length>6000&&/^data:image\/(png|jpe?g|webp|gif)/.test(v))jobs.push([o,k]);
+      }else if(v&&typeof v==='object')walk(v,depth+1);
+    }
+  };
+  walk(DB,0);
+  let n=0,saved=0;
+  for(const [o,k] of jobs){
+    const src=o[k];
+    const out=await reencodeImage(src,600,300);
+    if(out&&out.length<src.length*0.85){saved+=src.length-out.length;o[k]=out;n++;}
+  }
+  return {n,saved};
+}
+/* โลโก้/ตรารับรองของบริษัทเก่าที่เคยอัปโหลดไว้ในข้อมูล — ตอนนี้ใช้ไฟล์ logo.png / cert.png ข้างแอปแล้ว
+   รูปเก่าในข้อมูลไม่ได้ใช้ แต่หนักหลายร้อย KB และติดไปกับลิงก์เซ็นทุกใบ */
+function dropLegacyBranding(){
+  let n=0;
+  if(DB.logo&&/^data:/.test(DB.logo)){DB.logo=null;n++;}
+  if(DB.cert&&/^data:/.test(DB.cert)){DB.cert=null;n++;}
+  return n;
+}
+let inlineTidyDone=false;
+async function tidyInline(){
+  if(inlineTidyDone||readOnly())return;
+  inlineTidyDone=true;
+  const before=blobBytes();
+  const dropped=dropLegacyBranding();
+  const r=await shrinkInlineImages();
+  if(dropped||r.n){
+    save(true);
+    const after=blobBytes();
+    if(before-after>200*1024)toast('จัดเก็บข้อมูลให้เล็กลงแล้ว · '+mbTxt(before)+' → '+mbTxt(after));
+  }
+}
 async function autoTidy(){
-  if(autoTidyDone||!authed()||readOnly()||storageOK===false)return;
+  if(autoTidyDone||!authed()||readOnly())return;
+  try{await tidyInline();}catch(e){}              /* ลายเซ็น/โลโก้ที่ฝังในข้อมูล */
+  if(storageOK===false)return;
   const pend=allAttachments().filter(j=>j.data&&/^data:/.test(j.data));
   if(!pend.length)return;
   autoTidyDone=true;
@@ -1994,7 +2066,7 @@ function approvePayload(d){
   const c=DB.customers.find(x=>x.name===d.customer);
   return {t:'qt',no:d.no,customer:d.customer,address:c&&c.address||'',contact:d.contact,date:d.date,
     payment:d.payment,validDays:d.validDays,items:d.items,notes:d.notes,amount:qtTotal(d)||d.amount,
-    sigSales:d.sigSales||null,company:DB.company,logo:DB.logo,cert:DB.cert};
+    sigSales:d.sigSales||null,company:DB.company,logo:(DB.logo&&!/^data:/.test(DB.logo))?DB.logo:null,cert:DB.cert};
 }
 const baseUrl=()=>location.href.split('#')[0];
 async function shareApproval(d){
@@ -2144,7 +2216,7 @@ async function shareCredit(d){
   if(!sbOn()||sbReady===false){toast('ต้องเชื่อมฐานข้อมูลก่อน — รันไฟล์ supabase-setup-2.sql ใน Supabase');return;}
   const cust=DB.customers.find(c=>c.name===d.customer)||{};
   const payload=Object.assign({},d,{_cust:{address:cust.address,phone:cust.phone,email:cust.email,taxId:cust.taxId},
-    company:DB.company,logo:DB.logo});
+    company:DB.company,logo:(DB.logo&&!/^data:/.test(DB.logo))?DB.logo:null});
   /* ไม่ส่งไฟล์แนบไปกับลิงก์ ให้ลิงก์เบาและเปิดเร็ว ส่งไปแค่จำนวน */
   payload._attachN=(d.photos||[]).length+(d.files||[]).length;
   payload._roleSigs=Object.assign({},DB.roleSigs||{},{rd:lastRdSig()});   /* ลายเซ็นประจำตำแหน่งที่ล็อกไว้ (ฝ่ายวิจัยใช้ของบริษัทเสมอ) */
@@ -2257,7 +2329,7 @@ async function shareCustomerCredit(d){
   if(!sbOn()||sbReady===false){toast('ต้องเชื่อมฐานข้อมูลก่อน — รันไฟล์ supabase-setup-2.sql ใน Supabase');return;}
   const cust=DB.customers.find(c=>c.name===d.customer)||{};
   const payload=Object.assign({},d,{_cust:{address:cust.address,phone:cust.phone,email:cust.email,taxId:cust.taxId},
-    company:DB.company,logo:DB.logo});
+    company:DB.company,logo:(DB.logo&&!/^data:/.test(DB.logo))?DB.logo:null});
   payload._attachN=(d.photos||[]).length+(d.files||[]).length;
   delete payload.photos;delete payload.files;
   try{
@@ -5208,7 +5280,7 @@ function pgTeam(v){
   const row4=el('<div class="split"></div>');
   /* ดูรวมทั้งทีม: ต่อข้อมูลของทุกคนเป็นชุดเดียว จะได้กดดูรายละเอียดสินค้าได้เหมือนกัน */
   const teamDB=cur?cur.p.db:{customers:[],docs:[],pos:[],receipts:[],products:[],
-    company:DB.company,logo:DB.logo};
+    company:DB.company,logo:(DB.logo&&!/^data:/.test(DB.logo))?DB.logo:null};
   if(!cur)ok.forEach(r=>['customers','docs','pos','receipts'].forEach(k=>{
     teamDB[k]=teamDB[k].concat((r.p.db&&r.p.db[k])||[]);}));
   row4.append(productsCard(teamDB,prods,'สินค้าขายดี — '+who,
