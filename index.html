@@ -1681,8 +1681,14 @@ const certSrc=()=>assetCert||(DB&&DB.cert)||null;
   i.src='cert.png';})();
 
 /* ================= เชื่อมต่อ Supabase (ส่งลิงก์เซ็นข้ามเครื่อง) ================= */
-const SB_DEFAULT={url:'https://vltsxzlbflayxnvtnhlv.supabase.co',key:'sb_publishable_3E_qdus9zBSonnfIDk3Nmw_szNB_Kb4'};
-const sbCfg=()=>Object.assign({},SB_DEFAULT,(DB&&DB.sb)||{});
+/* ฐานข้อมูลหลัก — ย้ายมาโปรเจกต์ใหม่แล้ว (โปรเจกต์เก่า vltsxzlbflayxnvtnhlv เลิกใช้) */
+const SB_DEFAULT={url:'https://zjjxmbivkdupfsuzjtoj.supabase.co',
+  key:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpqanhtYml2a2R1cGZzdXpqdG9qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAxOTk0NzUsImV4cCI6MjEwNTc3NTQ3NX0.NW17VIEfnDKvNoza0TACBCpKTNknKZmCBpJzZINeGak'};
+const OLD_SB_REF='vltsxzlbflayxnvtnhlv';
+/* ค่าที่เคยตั้งเองในเครื่อง ถ้ายังชี้ไปโปรเจกต์เก่า ให้เมินทิ้ง ไม่งั้นจะวนกลับไปใช้ที่เก่า */
+const sbCfg=()=>{const o=(DB&&DB.sb)||{};
+  const stale=String(o.url||'').includes(OLD_SB_REF);
+  return Object.assign({},SB_DEFAULT,stale?{}:o);};
 const sbOn=()=>{const c=sbCfg();return !!(c.url&&c.key);};
 let sbReady=null;            /* null=ยังไม่ตรวจ, true=พร้อมใช้, false=ยังตั้งค่าไม่ครบ */
 let sbError='';
