@@ -1,0 +1,7 @@
+{
+  "name": "bwp-migrate",
+  "private": true,
+  "description": "ย้ายฐานข้อมูล BWP Sales ไป Supabase โปรเจกต์ใหม่",
+  "scripts": { "start": "node migrate.js" },
+  "dependencies": { "pg": "8.13.1" }
+}
