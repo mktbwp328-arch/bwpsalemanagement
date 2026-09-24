@@ -2605,9 +2605,26 @@ function applyCreditSigs(no,sigs,status,silent,type){
   save();if(!silent)render();
   return true;
 }
+/* จำสถานะล่าสุดที่เห็น ไว้เทียบว่ามีอะไรเปลี่ยนไหม */
+const PEEK_ST={};
 async function checkCredit(d,silent){
   if(!d.sigDocId||!sbOn())return null;
   const n=rolesOf(d.type).length;
+  /* ตรวจอัตโนมัติ: ถามแค่สถานะกับจำนวนคนที่เซ็นแล้ว (ไม่กี่ไบต์)
+     ถ้าไม่มีอะไรเพิ่ม ก็ไม่ต้องดึงเอกสารและรูปลายเซ็นทั้งหมดลงมา */
+  if(silent){
+    try{
+      const pk=await sbRpc('peek_doc_signature',{p_id:d.sigDocId});
+      const p=Array.isArray(pk)?pk[0]:pk;
+      if(p){
+        const have=Object.keys(d.sigs||{}).length;
+        const key=p.status+'|'+p.signed;
+        if((+p.signed||0)<=have&&PEEK_ST[d.sigDocId]!==undefined&&PEEK_ST[d.sigDocId]===key)return p.status;
+        PEEK_ST[d.sigDocId]=key;
+        if((+p.signed||0)<=have&&p.status==='pending')return p.status;
+      }
+    }catch(e){}   /* ยังไม่ได้ติดตั้งฟังก์ชันนี้ ใช้วิธีเดิมต่อไป */
+  }
   try{
     const rows=await sbRpc('get_doc_signature',{p_id:d.sigDocId});
     const row=Array.isArray(rows)?rows[0]:rows;
@@ -2625,6 +2642,14 @@ async function checkCredit(d,silent){
 /* ---- ฝ่ายขายเช็คผลอนุมัติจากฐานข้อมูล ---- */
 async function checkApproval(d,silent){
   if(!d.approvalId||!sbOn())return null;
+  /* ตรวจอัตโนมัติ: ถามแค่สถานะ ยังไม่อนุมัติก็ไม่ต้องดึงรูปลายเซ็น */
+  if(silent){
+    try{
+      const pk=await sbRpc('peek_quote_approval',{p_id:d.approvalId});
+      const p=Array.isArray(pk)?pk[0]:pk;
+      if(p&&p.status==='pending')return 'pending';
+    }catch(e){}
+  }
   try{
     const rows=await sbRpc('get_quote_approval',{p_id:d.approvalId});
     const row=Array.isArray(rows)?rows[0]:rows;
@@ -2646,7 +2671,7 @@ function startPolling(d){
     if(S.page!=='documents'||S.docOpen!==d.id){clearInterval(pollTimer);return;}
     const st=await checkApproval(d,true);
     if(st&&st!=='pending')clearInterval(pollTimer);
-  },15000);
+  },60000);
 }
 /* ---- เปิดจากลิงก์ ---- */
 async function handleHash(){
@@ -6132,7 +6157,7 @@ function signCard(d,onSigned){
     const rf=el('<button class="btn gh blk" style="margin-top:9px">ตรวจสอบลายเซ็นล่าสุด</button>');
     rf.onclick=()=>checkCredit(d);sg.append(rf);
     if(n<roles.length&&sbReady!==false){clearInterval(pollTimer);
-      pollTimer=setInterval(()=>{if(!document.body.contains(sg)){clearInterval(pollTimer);return;}checkCredit(d,true);},15000);}
+      pollTimer=setInterval(()=>{if(!document.body.contains(sg)){clearInterval(pollTimer);return;}checkCredit(d,true);},60000);}
   }
   sg.append(el(`<div class="tiny" style="margin-top:10px">${sbReady===true?'🟢 พร้อมส่งลิงก์ให้เซ็นข้ามเครื่อง'
     :sbReady===false?'🟠 '+esc(sbError):'⏳ กำลังตรวจสอบการเชื่อมต่อ…'}</div>`));
@@ -6259,7 +6284,7 @@ function creditDetail(v,d){
     const rf=el('<button class="btn gh blk" style="margin-top:9px">ตรวจสอบลายเซ็นล่าสุด</button>');
     rf.onclick=()=>checkCredit(d);sg.append(rf);
     if(n<4&&sbReady!==false){clearInterval(pollTimer);
-      pollTimer=setInterval(()=>{if(S.docOpen!==d.id){clearInterval(pollTimer);return;}checkCredit(d,true);},15000);}
+      pollTimer=setInterval(()=>{if(S.docOpen!==d.id){clearInterval(pollTimer);return;}checkCredit(d,true);},60000);}
   }
   sg.append(el(`<div class="tiny" style="margin-top:10px">${sbReady===true?'🟢 พร้อมส่งลิงก์ให้เซ็นข้ามเครื่อง'
     :sbReady===false?'🟠 '+esc(sbError):'⏳ กำลังตรวจสอบการเชื่อมต่อ…'}</div>`));
