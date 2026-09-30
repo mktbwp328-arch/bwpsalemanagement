@@ -255,6 +255,35 @@ a{color:var(--blue);text-decoration:none}
 .sheet{width:210mm;min-height:297mm;background:#fff;margin:0 auto;padding:12mm 12mm 10mm;
   font-family:'Sarabun','IBM Plex Sans Thai',sans-serif;color:#000;font-size:12px;line-height:1.5;
   box-shadow:0 10px 40px rgba(0,0,0,.35);display:flex;flex-direction:column;position:relative}
+/* ---------- รายงานยอดขายประจำเดือน (พิมพ์ / PDF) ---------- */
+.sheet.rpt{font-size:11.5px;line-height:1.5;gap:3.2mm}
+.sheet.rpt .rh{display:flex;gap:10px;align-items:center;border-bottom:2px solid #1f4e9c;padding-bottom:3mm}
+.sheet.rpt .rlogo{height:15mm}
+.sheet.rpt .rco{font-size:12px;color:#475569}
+.sheet.rpt .rt{font-size:19px;font-weight:700;color:#1f4e9c}
+.sheet.rpt .rsub{font-size:10.5px;color:#64748b}
+.sheet.rpt .rk{display:grid;grid-template-columns:repeat(4,1fr);gap:2.5mm}
+.sheet.rpt .rk>div{border:1px solid #cbd5e1;border-radius:2mm;padding:2mm 3mm;display:flex;flex-direction:column}
+.sheet.rpt .rk span{font-size:10.5px;color:#64748b}
+.sheet.rpt .rk b{font-size:15px}
+.sheet.rpt .rbox{border:1px solid #cbd5e1;border-radius:2mm;padding:2.5mm 3mm;min-width:0}
+.sheet.rpt .rh3{font-weight:700;font-size:12px;color:#1f4e9c;margin-bottom:1.5mm}
+.sheet.rpt .r2{display:grid;grid-template-columns:1fr 1fr;gap:2.5mm}
+.sheet.rpt table{width:100%;border-collapse:collapse;font-size:10.5px}
+.sheet.rpt th{background:#1f4e9c;color:#fff;font-weight:600;padding:1.2mm 1.5mm;text-align:left}
+.sheet.rpt td{border-bottom:1px solid #e2e8f0;padding:1mm 1.5mm}
+/* ชื่อลูกค้ายาว ๆ ให้อยู่บรรทัดเดียว ตารางจะได้ไม่สูงจนต้องย่อหน้ากระดาษมาก */
+.sheet.rpt table{table-layout:fixed}
+.sheet.rpt td,.sheet.rpt th{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sheet.rpt th:first-child,.sheet.rpt td:first-child{width:40%}
+.sheet.rpt .rbox svg[viewBox="0 0 640 230"]{max-height:44mm}
+.sheet.rpt .r{text-align:right}
+.sheet.rpt ol{margin:0;padding-left:5mm}
+.sheet.rpt .sw{display:inline-block;width:2.4mm;height:2.4mm;border-radius:.6mm;margin-right:1.5mm;vertical-align:middle}
+.sheet.rpt .rleg{display:flex;gap:3mm;flex-wrap:wrap;justify-content:center;font-size:10.5px;margin-top:1mm}
+.sheet.rpt .rfoot{background:#f1f5f9;border-radius:2mm;padding:2mm 3mm}
+.sheet.rpt svg,.sheet.rpt .rbox>div{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.sheet.rpt th,.sheet.rpt .rk,.sheet.rpt .sw,.sheet.rpt .rfoot{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 /* ---------- บันทึกข้อความรายชื่อลูกค้าใหม่ ---------- */
 .sheet.nc{font-size:14px;line-height:1.7}
 .sheet.nc .ncline{display:flex;gap:10px;margin-bottom:3mm}
@@ -4242,220 +4271,404 @@ function ncDetail(v,d){
   wrap.append(right);
   v.append(wrap);
 }
-/* ================= รายงานยอดขายประจำเดือน =================
-   ทำตามแบบ Dashboard ใน Excel ของฝ่ายขาย (ไฟล์ "เดือนสิ.ค")
-   ดึงจากใบเสร็จรับเงินอย่างเดียว — ใบเสร็จ 1 ใบ = ใบแจ้งหนี้ 1 ใบ
-   เลือกได้ทั้งเดือน และ (ผู้จัดการ) เลือกดูรายคนหรือรวมทั้งทีม */
-const RPT_OTHER='อื่น ๆ';
-const ymOf=iso=>String(iso||'').slice(0,7);
-const ymLabel=ym=>{const [y,m]=String(ym).split('-');return TH_MON[(+m||1)-1]+' '+((+y||0)+543);};
-const pct=(a,b)=>b?(a/b*100):0;
-
-/* สรุปตัวเลขของเดือนนั้น จากข้อมูลหลายชุด (รายคน หรือทั้งทีม) */
-function reportData(dbs,ym){
-  const R={pre:0,vat:0,total:0,kg:0,noKg:0,lines:0,inv:new Set(),
-    cust:{},days:{},cats:{}};
-  CATS.forEach(c=>{R.cats[c[0]]={cat:c[0],pre:0,total:0,kg:0,noKg:0};});
-  dbs.forEach(db=>{if(!db)return;withDB(db,()=>{
-    liveRc().filter(r=>ymOf(r.date)===ym).forEach(r=>{
-      const items=(r.items||[]).filter(i=>(+i.qty||0)||(+i.price||0));
-      const rawPre=items.reduce((a,i)=>a+(+i.qty||0)*(+i.price||0),0);
-      const total=(+r.amount||0)||rawPre*1.07;
-      const pre=rawPre>0?rawPre:total/1.07;
-      const vat=total-pre;
-      const invNo=String(r.invNo||r.no||'').trim()||('rc-'+Math.random());
-      R.pre+=pre;R.vat+=vat;R.total+=total;R.inv.add(invNo);
-      /* ลูกค้า */
-      const cn=String(r.customer||'').trim()||'(ไม่ระบุลูกค้า)';
-      const c=R.cust[cn]||(R.cust[cn]={name:cn,pre:0,total:0,inv:new Set()});
-      c.pre+=pre;c.total+=total;c.inv.add(invNo);
-      /* รายวัน */
-      const d=String(r.date).slice(0,10);
-      const dd=R.days[d]||(R.days[d]={date:d,pre:0,n:0,cust:new Set()});
-      dd.pre+=pre;dd.n++;dd.cust.add(cn);
-      /* ประเภทสินค้า + น้ำหนัก — ปันยอดรวม VAT ตามสัดส่วนราคาในใบ */
-      const k=rawPre>0?total/rawPre:0;
-      if(!items.length){
-        const o=R.cats[RPT_OTHER]||(R.cats[RPT_OTHER]={cat:RPT_OTHER,pre:0,total:0,kg:0,noKg:0});
-        o.pre+=pre;o.total+=total;R.lines++;return;
-      }
-      items.forEach(it=>{
-        R.lines++;
-        const cat=categoryOf(it.name,it.code);
-        const e=R.cats[cat]||(R.cats[cat]={cat,pre:0,total:0,kg:0,noKg:0});
-        const p=(+it.qty||0)*(+it.price||0);
-        e.pre+=p;e.total+=p*k;
-        const kg=itemKg(it);
-        if(kg===null){e.noKg++;R.noKg++;}else{e.kg+=kg;R.kg+=kg;}
-      });
-    });
-  });});
-  R.custList=Object.values(R.cust).sort((a,b)=>b.pre-a.pre);
-  R.dayList=Object.values(R.days).sort((a,b)=>a.date.localeCompare(b.date));
-  R.catList=Object.values(R.cats).filter(c=>c.pre>0||CATS.some(x=>x[0]===c.cat))
-    .sort((a,b)=>b.pre-a.pre);
-  return R;
-}
-/* เดือนที่มีใบเสร็จอยู่จริง ใหม่สุดขึ้นก่อน */
-function reportMonths(dbs){
-  const s=new Set();
-  dbs.forEach(db=>{if(db)withDB(db,()=>liveRc().forEach(r=>{const m=ymOf(r.date);if(/^\d{4}-\d{2}$/.test(m))s.add(m);}));});
-  return [...s].sort().reverse();
-}
-/* ---------- กราฟ ---------- */
-/* เส้นแนวโน้มรายวัน */
-function rptLine(days){
-  if(!days.length)return '<div class="empty" style="padding:30px">ยังไม่มีข้อมูล</div>';
-  const W=640,H=230,L=64,Rr=14,T=16,B=34;
-  const mx=Math.max(...days.map(d=>d.pre),1);
-  const X=i=>L+(days.length===1?(W-L-Rr)/2:i*(W-L-Rr)/(days.length-1));
-  const Y=v=>T+(H-T-B)*(1-v/mx);
-  const pts=days.map((d,i)=>X(i).toFixed(1)+','+Y(d.pre).toFixed(1)).join(' ');
-  const grid=[0,.25,.5,.75,1].map(f=>{const y=Y(mx*f).toFixed(1);
-    return `<line x1="${L}" x2="${W-Rr}" y1="${y}" y2="${y}" stroke="#e6ebf3"/>
-      <text x="${L-8}" y="${+y+4}" text-anchor="end" font-size="10.5" fill="#94a3b8">${num0(Math.round(mx*f/1000))}k</text>`;}).join('');
-  const every=Math.max(1,Math.ceil(days.length/12));
-  const xl=days.map((d,i)=>i%every?'':`<text x="${X(i).toFixed(1)}" y="${H-12}" text-anchor="middle" font-size="10.5" fill="#94a3b8">${+d.date.slice(8,10)}</text>`).join('');
-  const dots=days.map((d,i)=>`<circle cx="${X(i).toFixed(1)}" cy="${Y(d.pre).toFixed(1)}" r="3.5" fill="#2563eb"><title>${fmtDate(d.date)} · ${num0(Math.round(d.pre))} ฿</title></circle>`).join('');
-  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">${grid}
-    <polyline points="${pts}" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linejoin="round"/>${dots}${xl}</svg>`;
-}
-/* แท่งแนวนอนตามลูกค้า */
-function rptBars(list,total){
-  if(!list.length)return '<div class="empty" style="padding:30px">ยังไม่มีข้อมูล</div>';
-  const mx=Math.max(...list.map(c=>c.pre),1);
-  return list.slice(0,11).map(c=>`<div style="display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,2fr) 90px;gap:10px;align-items:center;padding:5px 0">
-      <span style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.name)}">${esc(c.name)}</span>
-      <div style="height:12px;background:#eef2f8;border-radius:99px;overflow:hidden">
-        <div style="width:${(c.pre/mx*100).toFixed(1)}%;height:100%;background:#2563eb"></div></div>
-      <b style="font-size:13px;text-align:right;white-space:nowrap">${num0(Math.round(c.pre))}</b></div>`).join('');
-}
-/* โดนัทตามประเภทสินค้า */
-function rptDonut(cats,total){
-  const R=64,SW=26,C=2*Math.PI*R;let off=0;
-  const segs=cats.filter(c=>c.pre>0).map(c=>{const len=total?c.pre/total*C:0;
-    const s=`<circle cx="90" cy="90" r="${R}" fill="none" stroke="${catColor(c.cat)}" stroke-width="${SW}"
-      stroke-dasharray="${len.toFixed(2)} ${(C-len).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}"></circle>`;
-    off+=len;return s;}).join('');
-  return `<svg viewBox="0 0 180 180" style="width:170px;height:170px;transform:rotate(-90deg)">${segs||
-    `<circle cx="90" cy="90" r="${R}" fill="none" stroke="#eef2f8" stroke-width="${SW}"></circle>`}</svg>`;
-}
-/* ---------- สรุปเป็นข้อความ แบบในไฟล์ Excel ---------- */
-function reportInsights(R,ym){
-  const out=[];const c=R.custList;
-  if(c[0])out.push(`${c[0].name} สร้างยอดก่อน VAT ${num(c[0].pre)} บาท คิดเป็น ${pct(c[0].pre,R.pre).toFixed(1)}%`);
-  if(c.length>=3){const t3=c.slice(0,3).reduce((a,x)=>a+x.pre,0);
-    out.push(`ลูกค้า Top 3 รวม ${num(t3)} บาท หรือ ${pct(t3,R.pre).toFixed(1)}% ของยอดก่อน VAT`);}
-  const best=R.dayList.slice().sort((a,b)=>b.pre-a.pre)[0];
-  if(best){const d=new Date(best.date);
-    out.push(`วันที่ ${d.getDate()} ${TH_MON[d.getMonth()]} มียอดก่อน VAT สูงสุด ${num(best.pre)} บาท จาก ${best.cust.size} รายลูกค้า`);}
-  out.push(`ยอดรวม VAT ${num(R.total)} บาท โดย VAT เท่ากับ ${num(R.vat)} บาท`);
-  out.push(`มี ${R.inv.size} ใบแจ้งหนี้จาก ${R.lines} รายการขาย ครอบคลุมลูกค้า ${c.length} ราย`);
-  return out;
-}
-function reportSummary(R,ym){
-  if(!R.inv.size)return 'ยังไม่มีใบเสร็จในเดือนนี้';
-  const topCat=R.catList.filter(x=>x.pre>0)[0];
-  const c=R.custList;
-  const t3=c.slice(0,3).reduce((a,x)=>a+x.pre,0);
-  return `ยอดขายเดือน${ymLabel(ym)} ยอดก่อน VAT ${num(R.pre)} บาท`
-    +(R.kg?` น้ำหนักสุทธิรวม ${num(R.kg)} กก.`:'')
-    +` จาก ${R.inv.size} ใบแจ้งหนี้ ลูกค้า ${c.length} ราย`
-    +(c.length>=3?` · ยอดกระจุกตัวที่ลูกค้า Top 3 คิดเป็น ${pct(t3,R.pre).toFixed(1)}%`:'')
-    +(topCat?` · ประเภทสินค้าที่ขายได้มากที่สุดคือ${topCat.cat} (${pct(topCat.pre,R.pre).toFixed(1)}%)`:'')
-    +(R.noKg?` · หมายเหตุ: มี ${R.noKg} รายการยังไม่ได้ใส่ขนาด น้ำหนักจึงยังไม่ครบ`:'');
-}
-/* ---------- หน้าจอ ---------- */
-function pgReport(v){
-  header('รายงานยอดขาย',['สรุปประจำเดือน จากใบเสร็จรับเงิน']);
-  /* เลือกข้อมูลของใคร — ผู้จัดการเลือกได้ทั้งรายคนและรวมทั้งทีม */
-  const mgr=isManager()&&!viewingOther();
-  let sources=[{id:'',name:'ข้อมูลของฉัน',db:DB}];
-  if(mgr){
-    if(!TEAM.loaded){
-      if(!TEAM.loading)loadTeam().then(()=>{if(S.page==='report')render();});
-    }else{
-      const nm=p=>personName(p,EMP_NAMES)||'ไม่ระบุชื่อ';
-      sources=[{id:'__all',name:'รวมทั้งทีม',dbs:TEAM.people.filter(p=>p.db).map(p=>p.db)},
-        ...TEAM.people.filter(p=>p.db).map(p=>({id:p.id,name:nm(p)+(p.mine?' (ฉัน)':''),db:p.db}))];
-    }
-  }
-  const src=sources.find(s=>s.id===S.rptWho)||sources[0];
-  const dbs=src.dbs||[src.db];
-  const months=reportMonths(dbs);
-  const ym=months.includes(S.rptYm)?S.rptYm:(months[0]||ymOf(new Date().toISOString()));
-
-  const bar=el('<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"></div>');
-  const sel=(opts,cur,on)=>{const s=el(`<select style="border:1px solid var(--bd);border-radius:10px;height:42px;padding:0 10px;background:#fff;cursor:pointer;font-size:14px">${
-    opts.map(([v,l])=>`<option value="${esc(v)}" ${v===cur?'selected':''}>${esc(l)}</option>`).join('')}</select>`);
-    s.onchange=()=>on(s.value);return s;};
-  if(sources.length>1)bar.append(sel(sources.map(s=>[s.id,s.name]),src.id,v=>{S.rptWho=v;render();}));
-  bar.append(sel((months.length?months:[ym]).map(m=>[m,'เดือน'+ymLabel(m)]),ym,v=>{S.rptYm=v;render();}));
-  $('#topActions').append(bar);
-  if(mgr&&!TEAM.loaded)v.append(hint('กำลังรวบรวมข้อมูลของทีม… ระหว่างนี้แสดงข้อมูลของคุณก่อน'));
-
-  const R=reportData(dbs,ym);
-  v.append(el(`<div class="h3" style="margin:4px 0 12px;font-size:20px">Dashboard ยอดขายสินค้า ${esc(ymLabel(ym))}
-    <span class="tiny" style="font-weight:400;margin-left:6px">${esc(src.name)}</span></div>`));
-
-  /* 4 ตัวเลขหลัก */
-  const kp=el('<div class="grid g4"></div>');
-  [['ยอดขายก่อน VAT',num(R.pre)+' ฿'],['VAT',num(R.vat)+' ฿'],['ยอดขายรวม VAT',num(R.total)+' ฿'],
-   ['น้ำหนักขายสุทธิ',num(R.kg)+' กก.',R.noKg?'ยังไม่ได้ใส่ขนาด '+R.noKg+' รายการ':'']
-  ].forEach(([t,val,sub])=>kp.append(el(`<div class="card pad"><div class="mut">${esc(t)}</div>
-    <div style="font-size:24px;font-weight:700;margin-top:4px">${esc(val)}</div>
-    ${sub?`<div class="tiny" style="margin-top:6px">${esc(sub)}</div>`:''}</div>`)));
-  v.append(kp);
-
-  /* สรุปสำหรับผู้บริหาร */
-  v.append(el(`<div class="card pad"><div class="h3" style="margin:0 0 8px">สรุปสำหรับผู้บริหาร</div>
-    <div style="font-size:14.5px;line-height:1.8">${esc(reportSummary(R,ym))}</div></div>`));
-
-  /* กราฟ: ยอดตามลูกค้า | แนวโน้มรายวัน */
-  const r1=el('<div class="split"></div>');
-  r1.append(el(`<div class="card pad"><div class="h3" style="margin:0 0 10px">ยอดขายก่อน VAT ตามลูกค้า</div>${rptBars(R.custList,R.pre)}</div>`));
-  r1.append(el(`<div class="card pad"><div class="h3" style="margin:0 0 10px">แนวโน้มยอดขายก่อน VAT รายวัน</div>${rptLine(R.dayList)}</div>`));
-  v.append(r1);
-
-  /* ตารางอันดับลูกค้า | ประเด็นสำคัญ */
-  const r2=el('<div class="split"></div>');
-  const th='style="text-align:left;padding:8px 6px;font-size:12.5px;color:var(--mut);font-weight:600;border-bottom:1px solid var(--bd)"';
-  const td='style="padding:8px 6px;font-size:13.5px;border-bottom:1px solid var(--bd2)"';
-  r2.append(el(`<div class="card pad"><div class="h3" style="margin:0 0 8px">อันดับลูกค้าตามยอดขายก่อน VAT</div>
-    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">
-      <thead><tr><th ${th}>ลูกค้า</th><th ${th} align="right">ยอดก่อน VAT</th><th ${th} align="right">สัดส่วน</th>
-        <th ${th} align="right">ใบแจ้งหนี้</th><th ${th} align="right">อันดับ</th></tr></thead>
-      <tbody>${R.custList.map((c,i)=>`<tr><td ${td}>${esc(c.name)}</td>
-        <td ${td} align="right">${num(c.pre)}</td><td ${td} align="right">${pct(c.pre,R.pre).toFixed(1)}%</td>
-        <td ${td} align="right">${c.inv.size}</td><td ${td} align="right">${i+1}</td></tr>`).join('')
-        ||`<tr><td ${td} colspan="5">ยังไม่มีข้อมูล</td></tr>`}</tbody></table></div></div>`));
-  r2.append(el(`<div class="card pad"><div class="h3" style="margin:0 0 8px">ประเด็นสำคัญสำหรับผู้บริหาร</div>
-    <ol style="margin:0;padding-left:20px;font-size:14px;line-height:1.9">${
-      (R.inv.size?reportInsights(R,ym):['ยังไม่มีใบเสร็จในเดือนนี้']).map(s=>`<li>${esc(s)}</li>`).join('')}</ol></div>`));
-  v.append(r2);
-
-  /* ประเภทสินค้า: ตาราง | โดนัท */
-  const r3=el('<div class="split"></div>');
-  r3.append(el(`<div class="card pad"><div class="h3" style="margin:0 0 8px">ยอดขายแยกตามประเภทสินค้า</div>
-    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">
-      <thead><tr><th ${th}>ประเภทสินค้า</th><th ${th} align="right">ยอดก่อน VAT</th><th ${th} align="right">สัดส่วน</th>
-        <th ${th} align="right">ยอดรวม VAT</th><th ${th} align="right">น้ำหนัก (กก.)</th></tr></thead>
-      <tbody>${R.catList.map(c=>`<tr><td ${td}><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${catColor(c.cat)};margin-right:7px"></span>${esc(c.cat)}</td>
-        <td ${td} align="right">${num(c.pre)}</td><td ${td} align="right">${pct(c.pre,R.pre).toFixed(1)}%</td>
-        <td ${td} align="right">${num(c.total)}</td><td ${td} align="right">${c.kg?num(c.kg):(c.noKg?'ยังไม่ใส่ขนาด':'-')}</td></tr>`).join('')}
-      <tr><td ${td}><b>รวม</b></td><td ${td} align="right"><b>${num(R.pre)}</b></td><td ${td} align="right"><b>100%</b></td>
-        <td ${td} align="right"><b>${num(R.total)}</b></td><td ${td} align="right"><b>${num(R.kg)}</b></td></tr></tbody></table></div></div>`));
-  r3.append(el(`<div class="card pad" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px">
-    <div class="h3" style="margin:0;align-self:flex-start">สัดส่วนยอดขายก่อน VAT ตามประเภทสินค้า</div>
-    ${rptDonut(R.catList,R.pre)}
-    <div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center;font-size:13px">${
-      R.catList.filter(c=>c.pre>0).map(c=>`<span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${catColor(c.cat)};margin-right:5px"></span>${esc(c.cat)} ${pct(c.pre,R.pre).toFixed(1)}%</span>`).join('')}</div></div>`));
-  v.append(r3);
-
-  v.append(el(`<div class="card pad" style="background:#f6f9ff"><b>สรุป:</b> ยอดขายสุทธิรวม ${num(R.total)} บาท
-    (ก่อน VAT ${num(R.pre)} บาท · VAT ${num(R.vat)} บาท) น้ำหนัก ${num(R.kg)} กก.
-    จาก ${R.inv.size} ใบแจ้งหนี้ ลูกค้า ${R.custList.length} ราย</div>`));
-}
+/* ================= รายงานยอดขายประจำเดือน =================
+   ทำตามแบบ Dashboard ใน Excel ของฝ่ายขาย (ไฟล์ "เดือนสิ.ค")
+   ดึงจากใบเสร็จรับเงินอย่างเดียว — ใบเสร็จ 1 ใบ = ใบแจ้งหนี้ 1 ใบ
+   เลือกได้ทั้งเดือน และ (ผู้จัดการ) เลือกดูรายคนหรือรวมทั้งทีม */
+const RPT_OTHER='อื่น ๆ';
+const ymOf=iso=>String(iso||'').slice(0,7);
+const ymLabel=ym=>{const [y,m]=String(ym).split('-');return TH_MON[(+m||1)-1]+' '+((+y||0)+543);};
+const pct=(a,b)=>b?(a/b*100):0;
+
+/* สรุปตัวเลขของเดือนนั้น จากข้อมูลหลายชุด (รายคน หรือทั้งทีม) */
+function reportData(dbs,ym){
+  const R={pre:0,vat:0,total:0,kg:0,noKg:0,lines:0,inv:new Set(),
+    cust:{},days:{},cats:{},rows:[]};   /* rows = รายการขายทีละบรรทัด ใช้ทำชีตข้อมูลใน Excel */
+  CATS.forEach(c=>{R.cats[c[0]]={cat:c[0],pre:0,total:0,kg:0,noKg:0};});
+  dbs.forEach(db=>{if(!db)return;withDB(db,()=>{
+    liveRc().filter(r=>ymOf(r.date)===ym).forEach(r=>{
+      const items=(r.items||[]).filter(i=>(+i.qty||0)||(+i.price||0));
+      const rawPre=items.reduce((a,i)=>a+(+i.qty||0)*(+i.price||0),0);
+      const total=(+r.amount||0)||rawPre*1.07;
+      const pre=rawPre>0?rawPre:total/1.07;
+      const vat=total-pre;
+      const invNo=String(r.invNo||r.no||'').trim()||('rc-'+Math.random());
+      R.pre+=pre;R.vat+=vat;R.total+=total;R.inv.add(invNo);
+      /* ลูกค้า */
+      const cn=String(r.customer||'').trim()||'(ไม่ระบุลูกค้า)';
+      const c=R.cust[cn]||(R.cust[cn]={name:cn,pre:0,total:0,inv:new Set()});
+      c.pre+=pre;c.total+=total;c.inv.add(invNo);
+      /* รายวัน */
+      const d=String(r.date).slice(0,10);
+      const dd=R.days[d]||(R.days[d]={date:d,pre:0,n:0,cust:new Set()});
+      dd.pre+=pre;dd.n++;dd.cust.add(cn);
+      /* ประเภทสินค้า + น้ำหนัก — ปันยอดรวม VAT ตามสัดส่วนราคาในใบ */
+      const k=rawPre>0?total/rawPre:0;
+      if(!items.length){
+        const o=R.cats[RPT_OTHER]||(R.cats[RPT_OTHER]={cat:RPT_OTHER,pre:0,total:0,kg:0,noKg:0});
+        o.pre+=pre;o.total+=total;R.lines++;
+        R.rows.push({date:d,inv:String(r.invNo||r.no||''),cust:cn,name:'(ไม่ได้ระบุรายการสินค้า)',cat:RPT_OTHER,
+          qty:'',unit:'',price:'',pre,vat,total,kg:null});
+        return;
+      }
+      items.forEach(it=>{
+        R.lines++;
+        const cat=categoryOf(it.name,it.code);
+        const e=R.cats[cat]||(R.cats[cat]={cat,pre:0,total:0,kg:0,noKg:0});
+        const p=(+it.qty||0)*(+it.price||0);
+        e.pre+=p;e.total+=p*k;
+        const kg=itemKg(it);
+        if(kg===null){e.noKg++;R.noKg++;}else{e.kg+=kg;R.kg+=kg;}
+        R.rows.push({date:d,inv:String(r.invNo||r.no||''),cust:cn,name:String(it.name||'').replace(/\s+/g,' ').trim(),cat,
+          qty:+it.qty||0,unit:it.unit||'',price:+it.price||0,pre:p,vat:p*k-p,total:p*k,kg});
+      });
+    });
+  });});
+  R.rows.sort((a,b)=>a.date.localeCompare(b.date)||a.inv.localeCompare(b.inv));
+  R.custList=Object.values(R.cust).sort((a,b)=>b.pre-a.pre);
+  R.dayList=Object.values(R.days).sort((a,b)=>a.date.localeCompare(b.date));
+  R.catList=Object.values(R.cats).filter(c=>c.pre>0||CATS.some(x=>x[0]===c.cat))
+    .sort((a,b)=>b.pre-a.pre);
+  return R;
+}
+/* เดือนที่มีใบเสร็จอยู่จริง ใหม่สุดขึ้นก่อน */
+function reportMonths(dbs){
+  const s=new Set();
+  dbs.forEach(db=>{if(db)withDB(db,()=>liveRc().forEach(r=>{const m=ymOf(r.date);if(/^\d{4}-\d{2}$/.test(m))s.add(m);}));});
+  return [...s].sort().reverse();
+}
+/* ---------- กราฟ ---------- */
+/* เส้นแนวโน้มรายวัน */
+function rptLine(days){
+  if(!days.length)return '<div class="empty" style="padding:30px">ยังไม่มีข้อมูล</div>';
+  const W=640,H=230,L=64,Rr=14,T=16,B=34;
+  const mx=Math.max(...days.map(d=>d.pre),1);
+  const X=i=>L+(days.length===1?(W-L-Rr)/2:i*(W-L-Rr)/(days.length-1));
+  const Y=v=>T+(H-T-B)*(1-v/mx);
+  const pts=days.map((d,i)=>X(i).toFixed(1)+','+Y(d.pre).toFixed(1)).join(' ');
+  const grid=[0,.25,.5,.75,1].map(f=>{const y=Y(mx*f).toFixed(1);
+    return `<line x1="${L}" x2="${W-Rr}" y1="${y}" y2="${y}" stroke="#e6ebf3"/>
+      <text x="${L-8}" y="${+y+4}" text-anchor="end" font-size="10.5" fill="#94a3b8">${num0(Math.round(mx*f/1000))}k</text>`;}).join('');
+  const every=Math.max(1,Math.ceil(days.length/12));
+  const xl=days.map((d,i)=>i%every?'':`<text x="${X(i).toFixed(1)}" y="${H-12}" text-anchor="middle" font-size="10.5" fill="#94a3b8">${+d.date.slice(8,10)}</text>`).join('');
+  const dots=days.map((d,i)=>`<circle cx="${X(i).toFixed(1)}" cy="${Y(d.pre).toFixed(1)}" r="3.5" fill="#2563eb"><title>${fmtDate(d.date)} · ${num0(Math.round(d.pre))} ฿</title></circle>`).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">${grid}
+    <polyline points="${pts}" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linejoin="round"/>${dots}${xl}</svg>`;
+}
+/* แท่งแนวนอนตามลูกค้า */
+function rptBars(list,total){
+  if(!list.length)return '<div class="empty" style="padding:30px">ยังไม่มีข้อมูล</div>';
+  const mx=Math.max(...list.map(c=>c.pre),1);
+  return list.slice(0,11).map(c=>`<div style="display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,2fr) 90px;gap:10px;align-items:center;padding:5px 0">
+      <span style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.name)}">${esc(c.name)}</span>
+      <div style="height:12px;background:#eef2f8;border-radius:99px;overflow:hidden">
+        <div style="width:${(c.pre/mx*100).toFixed(1)}%;height:100%;background:#2563eb"></div></div>
+      <b style="font-size:13px;text-align:right;white-space:nowrap">${num0(Math.round(c.pre))}</b></div>`).join('');
+}
+/* โดนัทตามประเภทสินค้า */
+function rptDonut(cats,total){
+  const R=64,SW=26,C=2*Math.PI*R;let off=0;
+  const segs=cats.filter(c=>c.pre>0).map(c=>{const len=total?c.pre/total*C:0;
+    const s=`<circle cx="90" cy="90" r="${R}" fill="none" stroke="${catColor(c.cat)}" stroke-width="${SW}"
+      stroke-dasharray="${len.toFixed(2)} ${(C-len).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}"></circle>`;
+    off+=len;return s;}).join('');
+  return `<svg viewBox="0 0 180 180" style="width:170px;height:170px;transform:rotate(-90deg)">${segs||
+    `<circle cx="90" cy="90" r="${R}" fill="none" stroke="#eef2f8" stroke-width="${SW}"></circle>`}</svg>`;
+}
+/* ---------- สรุปเป็นข้อความ แบบในไฟล์ Excel ---------- */
+function reportInsights(R,ym){
+  const out=[];const c=R.custList;
+  if(c[0])out.push(`${c[0].name} สร้างยอดก่อน VAT ${num(c[0].pre)} บาท คิดเป็น ${pct(c[0].pre,R.pre).toFixed(1)}%`);
+  if(c.length>=3){const t3=c.slice(0,3).reduce((a,x)=>a+x.pre,0);
+    out.push(`ลูกค้า Top 3 รวม ${num(t3)} บาท หรือ ${pct(t3,R.pre).toFixed(1)}% ของยอดก่อน VAT`);}
+  const best=R.dayList.slice().sort((a,b)=>b.pre-a.pre)[0];
+  if(best){const d=new Date(best.date);
+    out.push(`วันที่ ${d.getDate()} ${TH_MON[d.getMonth()]} มียอดก่อน VAT สูงสุด ${num(best.pre)} บาท จาก ${best.cust.size} รายลูกค้า`);}
+  out.push(`ยอดรวม VAT ${num(R.total)} บาท โดย VAT เท่ากับ ${num(R.vat)} บาท`);
+  out.push(`มี ${R.inv.size} ใบแจ้งหนี้จาก ${R.lines} รายการขาย ครอบคลุมลูกค้า ${c.length} ราย`);
+  return out;
+}
+function reportSummary(R,ym){
+  if(!R.inv.size)return 'ยังไม่มีใบเสร็จในเดือนนี้';
+  const topCat=R.catList.filter(x=>x.pre>0)[0];
+  const c=R.custList;
+  const t3=c.slice(0,3).reduce((a,x)=>a+x.pre,0);
+  return `ยอดขายเดือน${ymLabel(ym)} ยอดก่อน VAT ${num(R.pre)} บาท`
+    +(R.kg?` น้ำหนักสุทธิรวม ${num(R.kg)} กก.`:'')
+    +` จาก ${R.inv.size} ใบแจ้งหนี้ ลูกค้า ${c.length} ราย`
+    +(c.length>=3?` · ยอดกระจุกตัวที่ลูกค้า Top 3 คิดเป็น ${pct(t3,R.pre).toFixed(1)}%`:'')
+    +(topCat?` · ประเภทสินค้าที่ขายได้มากที่สุดคือ${topCat.cat} (${pct(topCat.pre,R.pre).toFixed(1)}%)`:'')
+    +(R.noKg?` · หมายเหตุ: มี ${R.noKg} รายการยังไม่ได้ใส่ขนาด น้ำหนักจึงยังไม่ครบ`:'');
+}
+/* ---------- หน้าจอ ---------- */
+function pgReport(v){
+  header('รายงานยอดขาย',['สรุปประจำเดือน จากใบเสร็จรับเงิน']);
+  /* เลือกข้อมูลของใคร — ผู้จัดการเลือกได้ทั้งรายคนและรวมทั้งทีม */
+  const mgr=isManager()&&!viewingOther();
+  let sources=[{id:'',name:'ข้อมูลของฉัน',db:DB}];
+  if(mgr){
+    if(!TEAM.loaded){
+      if(!TEAM.loading)loadTeam().then(()=>{if(S.page==='report')render();});
+    }else{
+      const nm=p=>personName(p,EMP_NAMES)||'ไม่ระบุชื่อ';
+      sources=[{id:'__all',name:'รวมทั้งทีม',dbs:TEAM.people.filter(p=>p.db).map(p=>p.db)},
+        ...TEAM.people.filter(p=>p.db).map(p=>({id:p.id,name:nm(p)+(p.mine?' (ฉัน)':''),db:p.db}))];
+    }
+  }
+  const src=sources.find(s=>s.id===S.rptWho)||sources[0];
+  const dbs=src.dbs||[src.db];
+  const months=reportMonths(dbs);
+  const ym=months.includes(S.rptYm)?S.rptYm:(months[0]||ymOf(new Date().toISOString()));
+
+  const bar=el('<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"></div>');
+  const sel=(opts,cur,on)=>{const s=el(`<select style="border:1px solid var(--bd);border-radius:10px;height:42px;padding:0 10px;background:#fff;cursor:pointer;font-size:14px">${
+    opts.map(([v,l])=>`<option value="${esc(v)}" ${v===cur?'selected':''}>${esc(l)}</option>`).join('')}</select>`);
+    s.onchange=()=>on(s.value);return s;};
+  if(sources.length>1)bar.append(sel(sources.map(s=>[s.id,s.name]),src.id,v=>{S.rptWho=v;render();}));
+  bar.append(sel((months.length?months:[ym]).map(m=>[m,'เดือน'+ymLabel(m)]),ym,v=>{S.rptYm=v;render();}));
+  $('#topActions').append(bar);
+  if(mgr&&!TEAM.loaded)v.append(hint('กำลังรวบรวมข้อมูลของทีม… ระหว่างนี้แสดงข้อมูลของคุณก่อน'));
+
+  const R=reportData(dbs,ym);
+  /* ส่งออกรายงาน */
+  const who=src.name;
+  actionBtn('PDF','print',()=>printReport(R,ym,who),'btn gh');
+  actionBtn('Excel','up',()=>{
+    if(!R.inv.size){toast('เดือนนี้ยังไม่มีใบเสร็จ');return;}
+    exportReportExcel(R,ym,who);},'btn gh');
+  v.append(el(`<div class="h3" style="margin:4px 0 12px;font-size:20px">Dashboard ยอดขายสินค้า ${esc(ymLabel(ym))}
+    <span class="tiny" style="font-weight:400;margin-left:6px">${esc(src.name)}</span></div>`));
+
+  /* 4 ตัวเลขหลัก */
+  const kp=el('<div class="grid g4"></div>');
+  [['ยอดขายก่อน VAT',num(R.pre)+' ฿'],['VAT',num(R.vat)+' ฿'],['ยอดขายรวม VAT',num(R.total)+' ฿'],
+   ['น้ำหนักขายสุทธิ',num(R.kg)+' กก.',R.noKg?'ยังไม่ได้ใส่ขนาด '+R.noKg+' รายการ':'']
+  ].forEach(([t,val,sub])=>kp.append(el(`<div class="card pad"><div class="mut">${esc(t)}</div>
+    <div style="font-size:24px;font-weight:700;margin-top:4px">${esc(val)}</div>
+    ${sub?`<div class="tiny" style="margin-top:6px">${esc(sub)}</div>`:''}</div>`)));
+  v.append(kp);
+
+  /* สรุปสำหรับผู้บริหาร */
+  v.append(el(`<div class="card pad"><div class="h3" style="margin:0 0 8px">สรุปสำหรับผู้บริหาร</div>
+    <div style="font-size:14.5px;line-height:1.8">${esc(reportSummary(R,ym))}</div></div>`));
+
+  /* กราฟ: ยอดตามลูกค้า | แนวโน้มรายวัน */
+  const r1=el('<div class="split"></div>');
+  r1.append(el(`<div class="card pad"><div class="h3" style="margin:0 0 10px">ยอดขายก่อน VAT ตามลูกค้า</div>${rptBars(R.custList,R.pre)}</div>`));
+  r1.append(el(`<div class="card pad"><div class="h3" style="margin:0 0 10px">แนวโน้มยอดขายก่อน VAT รายวัน</div>${rptLine(R.dayList)}</div>`));
+  v.append(r1);
+
+  /* ตารางอันดับลูกค้า | ประเด็นสำคัญ */
+  const r2=el('<div class="split"></div>');
+  const th='style="text-align:left;padding:8px 6px;font-size:12.5px;color:var(--mut);font-weight:600;border-bottom:1px solid var(--bd)"';
+  const td='style="padding:8px 6px;font-size:13.5px;border-bottom:1px solid var(--bd2)"';
+  r2.append(el(`<div class="card pad"><div class="h3" style="margin:0 0 8px">อันดับลูกค้าตามยอดขายก่อน VAT</div>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">
+      <thead><tr><th ${th}>ลูกค้า</th><th ${th} align="right">ยอดก่อน VAT</th><th ${th} align="right">สัดส่วน</th>
+        <th ${th} align="right">ใบแจ้งหนี้</th><th ${th} align="right">อันดับ</th></tr></thead>
+      <tbody>${R.custList.map((c,i)=>`<tr><td ${td}>${esc(c.name)}</td>
+        <td ${td} align="right">${num(c.pre)}</td><td ${td} align="right">${pct(c.pre,R.pre).toFixed(1)}%</td>
+        <td ${td} align="right">${c.inv.size}</td><td ${td} align="right">${i+1}</td></tr>`).join('')
+        ||`<tr><td ${td} colspan="5">ยังไม่มีข้อมูล</td></tr>`}</tbody></table></div></div>`));
+  r2.append(el(`<div class="card pad"><div class="h3" style="margin:0 0 8px">ประเด็นสำคัญสำหรับผู้บริหาร</div>
+    <ol style="margin:0;padding-left:20px;font-size:14px;line-height:1.9">${
+      (R.inv.size?reportInsights(R,ym):['ยังไม่มีใบเสร็จในเดือนนี้']).map(s=>`<li>${esc(s)}</li>`).join('')}</ol></div>`));
+  v.append(r2);
+
+  /* ประเภทสินค้า: ตาราง | โดนัท */
+  const r3=el('<div class="split"></div>');
+  r3.append(el(`<div class="card pad"><div class="h3" style="margin:0 0 8px">ยอดขายแยกตามประเภทสินค้า</div>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">
+      <thead><tr><th ${th}>ประเภทสินค้า</th><th ${th} align="right">ยอดก่อน VAT</th><th ${th} align="right">สัดส่วน</th>
+        <th ${th} align="right">ยอดรวม VAT</th><th ${th} align="right">น้ำหนัก (กก.)</th></tr></thead>
+      <tbody>${R.catList.map(c=>`<tr><td ${td}><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${catColor(c.cat)};margin-right:7px"></span>${esc(c.cat)}</td>
+        <td ${td} align="right">${num(c.pre)}</td><td ${td} align="right">${pct(c.pre,R.pre).toFixed(1)}%</td>
+        <td ${td} align="right">${num(c.total)}</td><td ${td} align="right">${c.kg?num(c.kg):(c.noKg?'ยังไม่ใส่ขนาด':'-')}</td></tr>`).join('')}
+      <tr><td ${td}><b>รวม</b></td><td ${td} align="right"><b>${num(R.pre)}</b></td><td ${td} align="right"><b>100%</b></td>
+        <td ${td} align="right"><b>${num(R.total)}</b></td><td ${td} align="right"><b>${num(R.kg)}</b></td></tr></tbody></table></div></div>`));
+  r3.append(el(`<div class="card pad" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px">
+    <div class="h3" style="margin:0;align-self:flex-start">สัดส่วนยอดขายก่อน VAT ตามประเภทสินค้า</div>
+    ${rptDonut(R.catList,R.pre)}
+    <div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center;font-size:13px">${
+      R.catList.filter(c=>c.pre>0).map(c=>`<span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${catColor(c.cat)};margin-right:5px"></span>${esc(c.cat)} ${pct(c.pre,R.pre).toFixed(1)}%</span>`).join('')}</div></div>`));
+  v.append(r3);
+
+  v.append(el(`<div class="card pad" style="background:#f6f9ff"><b>สรุป:</b> ยอดขายสุทธิรวม ${num(R.total)} บาท
+    (ก่อน VAT ${num(R.pre)} บาท · VAT ${num(R.vat)} บาท) น้ำหนัก ${num(R.kg)} กก.
+    จาก ${R.inv.size} ใบแจ้งหนี้ ลูกค้า ${R.custList.length} ราย</div>`));
+}
+/* ---------- ส่งออกรายงาน: PDF ---------- */
+/* จัดเป็นแผ่น A4 แล้วใช้หน้าพิมพ์ของระบบ (เลือก "บันทึกเป็น PDF" ได้) เหมือนเอกสารอื่น ๆ */
+function reportSheet(R,ym,who){
+  const co=DB.company||COMPANY,lg=logoSrc();
+  const n2=v=>num(v),p1=(a,b)=>pct(a,b).toFixed(1)+'%';
+  const tr=(cells,b)=>'<tr>'+cells.map((c,i)=>`<td${i?' class="r"':''}>${b?'<b>'+c+'</b>':c}</td>`).join('')+'</tr>';
+  const custRows=R.custList.map((c,i)=>tr([esc(c.name),n2(c.pre),p1(c.pre,R.pre),c.inv.size,i+1])).join('')
+    ||'<tr><td colspan="5">ยังไม่มีข้อมูล</td></tr>';
+  const catRows=R.catList.map(c=>tr([
+      `<span class="sw" style="background:${catColor(c.cat)}"></span>${esc(c.cat)}`,
+      n2(c.pre),p1(c.pre,R.pre),n2(c.total),c.kg?n2(c.kg):(c.noKg?'ยังไม่ใส่ขนาด':'-')])).join('')
+    +tr(['รวม',n2(R.pre),'100%',n2(R.total),n2(R.kg)],true);
+  const ins=R.inv.size?reportInsights(R,ym):['ยังไม่มีใบเสร็จในเดือนนี้'];
+  return el(`<div class="sheet rpt">
+    <div class="rh">
+      ${lg?`<img src="${imgSrc(lg)}" class="rlogo">`:''}
+      <div style="flex:1"><div class="rco">${esc(co.nameTh)}</div>
+        <div class="rt">Dashboard ยอดขายสินค้า ${esc(ymLabel(ym))}</div>
+        <div class="rsub">${esc(who)} · ข้อมูลจากใบเสร็จรับเงิน · พิมพ์เมื่อ ${fmtDate(today())}</div></div>
+    </div>
+    <div class="rk">
+      <div><span>ยอดขายก่อน VAT</span><b>${n2(R.pre)}</b></div>
+      <div><span>VAT</span><b>${n2(R.vat)}</b></div>
+      <div><span>ยอดขายรวม VAT</span><b>${n2(R.total)}</b></div>
+      <div><span>น้ำหนักขายสุทธิ (กก.)</span><b>${n2(R.kg)}</b></div>
+    </div>
+    <div class="rbox"><div class="rh3">สรุปสำหรับผู้บริหาร</div><div>${esc(reportSummary(R,ym))}</div></div>
+    <div class="r2">
+      <div class="rbox"><div class="rh3">ยอดขายก่อน VAT ตามลูกค้า (8 อันดับแรก)</div>${rptBars(R.custList.slice(0,8),R.pre)}</div>
+      <div class="rbox"><div class="rh3">แนวโน้มยอดขายก่อน VAT รายวัน</div>${rptLine(R.dayList)}</div>
+    </div>
+    <div class="r2">
+      <div class="rbox"><div class="rh3">อันดับลูกค้าตามยอดขายก่อน VAT</div>
+        <table><thead><tr><th>ลูกค้า</th><th class="r">ยอดก่อน VAT</th><th class="r">สัดส่วน</th><th class="r">ใบแจ้งหนี้</th><th class="r">อันดับ</th></tr></thead>
+        <tbody>${custRows}</tbody></table></div>
+      <div class="rbox"><div class="rh3">ประเด็นสำคัญสำหรับผู้บริหาร</div>
+        <ol>${ins.map(s=>`<li>${esc(s)}</li>`).join('')}</ol></div>
+    </div>
+    <div class="r2">
+      <div class="rbox"><div class="rh3">ยอดขายแยกตามประเภทสินค้า</div>
+        <table><thead><tr><th>ประเภทสินค้า</th><th class="r">ยอดก่อน VAT</th><th class="r">สัดส่วน</th><th class="r">ยอดรวม VAT</th><th class="r">น้ำหนัก (กก.)</th></tr></thead>
+        <tbody>${catRows}</tbody></table></div>
+      <div class="rbox" style="display:flex;flex-direction:column;align-items:center">
+        <div class="rh3" style="align-self:flex-start">สัดส่วนยอดขายก่อน VAT ตามประเภทสินค้า</div>
+        ${rptDonut(R.catList,R.pre)}
+        <div class="rleg">${R.catList.filter(c=>c.pre>0).map(c=>`<span><span class="sw" style="background:${catColor(c.cat)}"></span>${esc(c.cat)} ${p1(c.pre,R.pre)}</span>`).join('')}</div>
+      </div>
+    </div>
+    <div class="rfoot"><b>สรุป:</b> ยอดขายสุทธิรวม ${n2(R.total)} บาท (ก่อน VAT ${n2(R.pre)} บาท · VAT ${n2(R.vat)} บาท)
+      น้ำหนัก ${n2(R.kg)} กก. จาก ${R.inv.size} ใบแจ้งหนี้ ลูกค้า ${R.custList.length} ราย</div>
+  </div>`);
+}
+function printReport(R,ym,who){
+  loadPrintFonts();
+  const ov=el('<div class="prevov"></div>');
+  const bar=el('<div class="prevbar"></div>');
+  const mk=(t,c,fn)=>{const b=el(`<button class="btn ${c}">${esc(t)}</button>`);b.onclick=fn;bar.append(b);};
+  mk('🖨  พิมพ์ / บันทึกเป็น PDF','',()=>doPrint());
+  mk('ปิด','gh',()=>ov.remove());
+  ov.append(bar);ov.append(reportSheet(R,ym,who));
+  $('#layer').append(ov);
+  toast('กดปุ่ม "พิมพ์ / บันทึกเป็น PDF" แล้วเลือกเครื่องพิมพ์เป็น "บันทึกเป็น PDF" (Save as PDF)');
+}
+
+/* ---------- ส่งออกรายงาน: Excel ----------
+   3 ชีต: Dashboard (สรุปแบบในไฟล์เดิม) · ยอดรายวัน · รายการขาย (ข้อมูลดิบทุกบรรทัด)
+   ตัวเลขเก็บเป็นตัวเลขจริง เอาไปคำนวณ/ทำ pivot ต่อใน Excel ได้ */
+function downloadXLSXBook(fname,sheets){
+  /* ค่าในเซลล์: ข้อความ, ตัวเลข หรือ {v, s} — s: 1=ตัวหนา 2=ตัวเลข 3=ตัวเลขหนา 4=เปอร์เซ็นต์ 5=หัวข้อใหญ่ 6=หัวตาราง */
+  const cell=(v,ci,ri)=>{
+    const ref=xCol(ci)+(ri+1);
+    let s=0;if(v&&typeof v==='object'){s=v.s||0;v=v.v;}
+    if(v===null||v===undefined||v==='')return s?`<c r="${ref}" s="${s}"/>`:'';
+    if(typeof v==='number'&&isFinite(v))return `<c r="${ref}"${s?` s="${s}"`:' s="2"'}><v>${v}</v></c>`;
+    return `<c r="${ref}" t="inlineStr"${s?` s="${s}"`:''}><is><t xml:space="preserve">${xEsc(v)}</t></is></c>`;
+  };
+  const sheetXml=sh=>{
+    const cols=sh.widths?`<cols>${sh.widths.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join('')}</cols>`:'';
+    const rows=sh.rows.map((r,ri)=>`<row r="${ri+1}">${(r||[]).map((v,ci)=>cell(v,ci,ri)).join('')}</row>`).join('');
+    const merges=(sh.merges||[]).length?`<mergeCells count="${sh.merges.length}">${sh.merges.map(m=>`<mergeCell ref="${m}"/>`).join('')}</mergeCells>`:'';
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${cols}<sheetData>${rows}</sheetData>${merges}</worksheet>`;
+  };
+  const styles=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<numFmts count="2"><numFmt numFmtId="164" formatCode="#,##0.00"/><numFmt numFmtId="165" formatCode="0.0%"/></numFmts>
+<fonts count="4"><font><sz val="11"/><name val="Tahoma"/></font><font><b/><sz val="11"/><name val="Tahoma"/></font>
+<font><b/><sz val="15"/><color rgb="FF1F4E9C"/><name val="Tahoma"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Tahoma"/></font></fonts>
+<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FF1F4E9C"/><bgColor indexed="64"/></patternFill></fill></fills>
+<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="7">
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
+<xf numFmtId="164" fontId="1" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/>
+<xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
+<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+<xf numFmtId="0" fontId="3" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>
+</cellXfs></styleSheet>`;
+  const files=[
+    {name:'[Content_Types].xml',data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+${sheets.map((s,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}
+</Types>`},
+    {name:'_rels/.rels',data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`},
+    {name:'xl/workbook.xml',data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheets>${sheets.map((s,i)=>`<sheet name="${xEsc(s.name)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join('')}</sheets></workbook>`},
+    {name:'xl/_rels/workbook.xml.rels',data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+${sheets.map((s,i)=>`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join('')}
+<Relationship Id="rId${sheets.length+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>`},
+    {name:'xl/styles.xml',data:styles},
+    ...sheets.map((s,i)=>({name:`xl/worksheets/sheet${i+1}.xml`,data:sheetXml(s)}))
+  ];
+  const blob=makeZip(files);
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;
+  document.body.append(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1500);
+}
+function exportReportExcel(R,ym,who){
+  const H=t=>({v:t,s:6}),B=t=>({v:t,s:1}),BN=n=>({v:Math.round(n*100)/100,s:3});
+  const N=n=>Math.round((+n||0)*100)/100,P=(a,b)=>({v:b?a/b:0,s:4});
+  const dash=[
+    [{v:'Dashboard ยอดขายสินค้า '+ymLabel(ym),s:5}],
+    [who+' · ข้อมูลจากใบเสร็จรับเงิน'],
+    [],
+    [H('ยอดขายก่อน VAT'),H('VAT'),H('ยอดขายรวม VAT'),H('น้ำหนักขายสุทธิ (กก.)')],
+    [BN(R.pre),BN(R.vat),BN(R.total),BN(R.kg)],
+    [],
+    [B('สรุปสำหรับผู้บริหาร')],
+    [reportSummary(R,ym)],
+    [],
+    [H('ลูกค้า'),H('ยอดก่อน VAT'),H('สัดส่วน'),H('ใบแจ้งหนี้'),H('อันดับ')],
+    ...R.custList.map((c,i)=>[c.name,N(c.pre),P(c.pre,R.pre),c.inv.size,i+1]),
+    [],
+    [B('ประเด็นสำคัญสำหรับผู้บริหาร')],
+    ...(R.inv.size?reportInsights(R,ym):['ยังไม่มีใบเสร็จในเดือนนี้']).map((s,i)=>[(i+1)+'. '+s]),
+    [],
+    [H('ประเภทสินค้า'),H('ยอดก่อน VAT'),H('สัดส่วน'),H('ยอดรวม VAT'),H('น้ำหนัก (กก.)')],
+    ...R.catList.map(c=>[c.cat,N(c.pre),P(c.pre,R.pre),N(c.total),c.kg?N(c.kg):(c.noKg?'ยังไม่ใส่ขนาด':0)]),
+    [B('รวม'),BN(R.pre),{v:1,s:4},BN(R.total),BN(R.kg)]
+  ];
+  const daily=[
+    [H('วันที่'),H('ยอดก่อน VAT'),H('จำนวนใบแจ้งหนี้'),H('จำนวนลูกค้า')],
+    ...R.dayList.map(d=>[fmtDate(d.date),N(d.pre),d.n,d.cust.size]),
+    [B('รวม'),BN(R.pre),R.dayList.reduce((a,d)=>a+d.n,0),'']
+  ];
+  const lines=[
+    [H('วันที่'),H('เลขที่ใบแจ้งหนี้'),H('ลูกค้า'),H('สินค้า'),H('ประเภทสินค้า'),H('จำนวน'),H('หน่วย'),
+     H('ราคา/หน่วย'),H('ยอดก่อน VAT'),H('VAT'),H('ยอดรวม VAT'),H('น้ำหนัก (กก.)')],
+    ...R.rows.map(r=>[fmtDate(r.date),r.inv,r.cust,r.name,r.cat,r.qty===''?'':r.qty,r.unit,
+      r.price===''?'':N(r.price),N(r.pre),N(r.vat),N(r.total),r.kg===null?'':N(r.kg)]),
+    ['','','','','','','',B('รวม'),BN(R.pre),BN(R.vat),BN(R.total),BN(R.kg)]
+  ];
+  downloadXLSXBook('รายงานยอดขาย_'+ym+'_'+String(who).replace(/[\\/:*?"<>|()]/g,'').trim().replace(/\s+/g,'_')+'.xlsx',[
+    {name:'Dashboard',rows:dash,widths:[44,18,18,18,16],merges:['A1:E1','A2:E2','A8:E8']},
+    {name:'ยอดรายวัน',rows:daily,widths:[14,18,18,14]},
+    {name:'รายการขาย',rows:lines,widths:[12,16,34,46,20,10,8,12,16,14,16,14]}
+  ]);
+  toast('ดาวน์โหลด Excel แล้ว — 3 ชีต: Dashboard · ยอดรายวัน · รายการขาย');
+}
 /* ================= drawer ================= */
 let drawerOpen=null;
 function closeDrawer(){$('#layer').querySelectorAll('.dr,.drbd').forEach(x=>x.remove());drawerOpen=null;}
