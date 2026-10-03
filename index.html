@@ -274,7 +274,7 @@ a{color:var(--blue);text-decoration:none}
 .sheet.rpt td{border-bottom:1px solid #e2e8f0;padding:1mm 1.5mm}
 /* ชื่อลูกค้ายาว ๆ ให้อยู่บรรทัดเดียว ตารางจะได้ไม่สูงจนต้องย่อหน้ากระดาษมาก */
 .sheet.rpt table{table-layout:fixed}
-.sheet.rpt td,.sheet.rpt th{white-space:nowrap}
+.sheet.rpt td,.sheet.rpt th{white-space:nowrap}
 .sheet.rpt td:first-child{overflow:hidden;text-overflow:ellipsis}
 .sheet.rpt th:first-child,.sheet.rpt td:first-child{width:36%}
 .sheet.rpt .rbox svg[viewBox="0 0 640 230"]{max-height:44mm}
@@ -2148,11 +2148,21 @@ function approveView(p,onlineId){
   const sheet=quoteSheet(doc);
   if(tmp)DB.customers=DB.customers.filter(c=>c.id!=='__tmp');
   DB.company=saveCo;DB.logo=saveLogo;DB.cert=saveCert;
+  /* สร้างแผ่นใหม่ที่มีลายเซ็นผู้อนุมัติแล้ว (ใช้ตอนบันทึกหลังเซ็นเสร็จ) */
+  const signedSheet=sig=>{
+    const s0={co:DB.company,lg:DB.logo,ct:DB.cert};
+    if(p.company)DB.company=p.company;if(p.logo)DB.logo=p.logo;if(p.cert)DB.cert=p.cert;
+    if(tmp)DB.customers.push({id:'__tmp',name:p.customer,address:p.address,timeline:[],photos:[],files:[]});
+    try{return quoteSheet(Object.assign({},doc,{sigApprover:sig}));}
+    finally{if(tmp)DB.customers=DB.customers.filter(c=>c.id!=='__tmp');DB.company=s0.co;DB.logo=s0.lg;DB.cert=s0.ct;}
+  };
+  const qBase='ใบเสนอราคา_'+safeFname(p.no);
 
   const ov=el('<div class="prevov"></div>');
   ov.append(el(`<div style="max-width:210mm;margin:0 auto 18px;background:#fff;border-radius:14px;padding:18px 20px">
     <div style="font-size:19px;font-weight:700">อนุมัติใบเสนอราคา ${esc(p.no)}</div>
     <div class="mut">${esc(p.customer)} · ยอด ${num(p.amount)} บาท · ตรวจสอบเอกสารด้านล่าง แล้วเซ็นชื่อเพื่ออนุมัติ</div></div>`));
+  ov.lastChild.append(saveImgBtn(()=>[sheet],qBase,1));
   ov.append(sheet);
 
   const box=el(`<div style="max-width:210mm;margin:18px auto 0;background:#fff;border-radius:14px;padding:20px">
@@ -2186,7 +2196,8 @@ function approveView(p,onlineId){
           sub:'ส่งกลับให้ฝ่ายขายเรียบร้อย ไม่ต้องคัดลอกอะไรเพิ่ม',
           time:hhmm(now3),dateText:thaiFullDate(now3),
           name:back.name||'',role:'ผู้อนุมัติใบเสนอราคา',
-          line3:'ใบเสนอราคา '+p.no});
+          line3:'ใบเสนอราคา '+p.no,
+          save:ok?{label:saveLabel(1),fn:()=>saveSheetsFile([signedSheet({img,name:back.name,date:back.date})],qBase)}:null});
         applySignature(back,true);
         return;
       }catch(e){
@@ -2331,12 +2342,16 @@ function signResultScreen(o){
       <div style="font-size:16.5px;font-weight:600">${esc(o.name||'ไม่ได้ระบุชื่อ')}</div>
       <div style="font-size:13px;opacity:.75;margin-top:5px">${esc(o.role||'')}</div>
       ${o.line3?`<div style="font-size:13px;opacity:.9;margin-top:9px;padding-top:9px;border-top:1px solid rgba(255,255,255,.15)">${esc(o.line3)}</div>`:''}</div>
-    <button id="fin" style="margin-top:30px;background:#fff;color:${bad?'#991b1b':'#123f9e'};border:0;
+    ${o.save?`<button id="sv" style="margin-top:30px;background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.35);
+      border-radius:14px;font-size:15.5px;font-weight:600;padding:14px 0;width:min(320px,86vw);cursor:pointer;font-family:inherit">${esc(o.save.label)}</button>`:''}
+    <button id="fin" style="margin-top:${o.save?12:30}px;background:#fff;color:${bad?'#991b1b':'#123f9e'};border:0;
       border-radius:14px;font-size:16px;font-weight:700;padding:15px 0;width:min(320px,86vw);cursor:pointer;font-family:inherit">เสร็จสิ้น</button>
   </div>`);
   /* กด "เสร็จสิ้น" แล้วออกจากเว็บเลย ไม่ต้องเข้าหน้าโปรแกรม
      บางเบราว์เซอร์ปิดแท็บให้ไม่ได้ (เปิดจากลิงก์ ไม่ได้เปิดด้วยสคริปต์)
      กรณีนั้นให้เหลือหน้าจอเรียบ ๆ บอกว่าปิดหน้านี้ได้เลย */
+  if(o.save){const sv=sc.querySelector('#sv');
+    sv.onclick=async()=>{sv.disabled=true;sv.style.opacity=.6;try{await o.save.fn();}finally{sv.disabled=false;sv.style.opacity=1;}};}
   sc.querySelector('#fin').onclick=()=>{
     const bye=el(`<div style="position:fixed;inset:0;z-index:950;background:${bad?'#3f0d0d':'#0a2350'};
         color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -2441,6 +2456,8 @@ function customerSignView(row,id){
     <div class="mut">${esc(d.customer)}</div>
     <div style="margin-top:10px;font-size:15px">กรุณากรอก <b style="color:var(--blue-d)">ข้อ 2 การซื้อสินค้า</b> และ <b style="color:var(--blue-d)">ข้อ 3 รายชื่อบุคคลที่ติดต่อกับบริษัท</b></div>
     <div class="tiny" style="margin-top:6px">ช่องไหนไม่มีข้อมูล เว้นว่างไว้ได้ · เซ็นด้วยเมาส์ ปากกา หรือนิ้วก็ได้ · เปิดลิงก์นี้ซ้ำเพื่อกรอกเพิ่มได้</div></div>`));
+  const cBase='ใบขอเครดิต_'+safeFname(d.no);
+  ov.lastChild.append(saveImgBtn(()=>sheets,cBase,sheets.length));
   sheets.forEach(s=>ov.append(s));
 
   /* ข้อ 2) การซื้อสินค้า — ลูกค้ากรอกเอง */
@@ -2535,7 +2552,8 @@ function customerSignView(row,id){
         sub:'ส่งกลับให้ฝ่ายขายเรียบร้อย'+(jobs.length?' · เซ็นแล้ว '+jobs.length+' ท่าน':''),
         time:hhmm(now),dateText:thaiFullDate(now),
         name:jobs.map(j=>j.name).join(' · '),role:'ผู้ติดต่อฝั่งลูกค้า',
-        line3:'ใบขอเครดิต '+d.no+' · '+d.customer});
+        line3:'ใบขอเครดิต '+d.no+' · '+d.customer,
+        save:{label:saveLabel(sheets.length),fn:()=>saveSignedLinkFile(id,cBase,'credit')}});
     }catch(e){bOk.disabled=false;bOk.textContent='บันทึกและส่งกลับ';toast(e.message);}
   };
 }
@@ -2576,6 +2594,8 @@ function creditSignView(row,id,role){
     <div style="margin-top:10px;font-size:15px">คุณกำลังเซ็นในฐานะ <b style="color:var(--blue-d)">${esc(roleName(role,type))}</b></div>
     <div class="tiny" style="margin-top:6px">ลายเซ็นที่ครบแล้ว: ${roles.filter(r=>row.sigs&&row.sigs[r[0]]).map(r=>r[1]).join(' · ')||'ยังไม่มี'}</div>
     ${+d._attachN>0?`<div class="tiny" style="margin-top:4px">📎 มีเอกสารแนบ ${+d._attachN} ไฟล์ในระบบ (ดูได้ที่หน้าเอกสารในโปรแกรม)</div>`:''}</div>`));
+  const fBase=safeFname(title)+'_'+safeFname(d.no);
+  ov.lastChild.append(saveImgBtn(()=>sheets,fBase,sheets.length));
   sheets.forEach(s=>ov.append(s));
 
   if(done){
@@ -2586,7 +2606,8 @@ function creditSignView(row,id,role){
       sub:'ลายเซ็นถูกบันทึกเรียบร้อย ไม่ต้องเซ็นซ้ำ',
       time:hhmm(when),dateText:thaiFullDate(when),
       name:s0.name||'',role:roleName(role,type),
-      line3:title+' '+d.no+' · '+d.customer});
+      line3:title+' '+d.no+' · '+d.customer,
+      save:{label:saveLabel(sheets.length),fn:()=>saveSheetsFile(sheets,fBase)}});
     return;
   }
   /* ใบขอตัวอย่าง: ฝ่ายวิจัยและพัฒนาต้องระบุผลการพิจารณาและข้อเสนอแนะมาด้วย */
@@ -2655,7 +2676,8 @@ function creditSignView(row,id,role){
         time:hhmm(now),dateText:thaiFullDate(now),
         name:box.querySelector('#an').value.trim(),
         role:roleName(role,type),
-        line3:title+' '+d.no+' · '+d.customer+(rd&&rd.canMake?' · '+rd.canMake:'')});
+        line3:title+' '+d.no+' · '+d.customer+(rd&&rd.canMake?' · '+rd.canMake:''),
+        save:{label:saveLabel(sheets.length),fn:()=>saveSignedLinkFile(id,fBase,type)}});
       applyCreditSigs(d.no,res.sigs,st,true,type);
     }catch(e){bOk.disabled=bNo.disabled=false;bOk.textContent=locked?'บันทึกและส่งกลับ':'บันทึกลายเซ็น';toast(e.message);}
   };
@@ -4755,6 +4777,138 @@ ${[1,2,3].map(i=>`<Override PartName="/xl/charts/chart${i}.xml" ContentType="app
   document.body.append(a);a.click();
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1500);
   toast('ดาวน์โหลด Excel แล้ว — Dashboard พร้อมกราฟ และชีตรายการขาย');
+}
+/* ================= บันทึกเอกสารลงเครื่อง (สำหรับคนเปิดลิงก์เซ็น) =================
+   เอกสาร 1 หน้า → รูป JPG · มากกว่า 1 หน้า → ไฟล์ PDF (หน้าละแผ่น)
+   วิธี: คัดลอกแผ่นเอกสาร + สไตล์ของหน้า ห่อเป็น SVG แล้ววาดลงแคนวาส (ไม่ต้องใช้ไลบรารีภายนอก)
+   มือถือ: เปิดเมนูแชร์ให้กด "บันทึกรูปภาพ" / "บันทึกลงไฟล์" ได้เลย · คอม: ดาวน์โหลดเป็นไฟล์ */
+async function urlToDataUrl(src){
+  if(!src||/^data:/.test(src))return src;
+  try{
+    const r=await fetch(src,{cache:'force-cache'});if(!r.ok)return src;
+    const b=await r.blob();
+    return await new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.onerror=()=>res(src);fr.readAsDataURL(b);});
+  }catch(e){return src;}
+}
+let SNAP_CSS=null;
+const snapCss=()=>SNAP_CSS||(SNAP_CSS=[...document.querySelectorAll('style')].map(s=>s.textContent).join('\n'));
+/* แผ่นเอกสารหนึ่งแผ่น -> แคนวาส */
+async function sheetToCanvas(sheet,scale){
+  const rect=sheet.getBoundingClientRect();
+  const w=Math.ceil(rect.width),h=Math.ceil(rect.height);
+  const clone=sheet.cloneNode(true);
+  clone.style.margin='0';clone.style.boxShadow='none';clone.style.zoom='';clone.style.transform='';
+  /* รูปในเอกสาร (โลโก้ ลายเซ็น) ต้องฝังเป็นข้อมูลในตัว ไม่งั้นจะไม่ขึ้นในรูป */
+  const imgs=[...clone.querySelectorAll('img')];
+  await Promise.all(imgs.map(async im=>{im.setAttribute('src',await urlToDataUrl(im.getAttribute('src')));}));
+  const html=new XMLSerializer().serializeToString(clone);
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">
+    <foreignObject x="0" y="0" width="100%" height="100%">
+      <div xmlns="http://www.w3.org/1999/xhtml" style="width:${w}px;height:${h}px;background:#fff">
+        <style>${snapCss().replace(/<\/style/gi,'')}</style>${html}</div></foreignObject></svg>`;
+  const img=new Image();
+  img.decoding='sync';
+  await new Promise((res,rej)=>{img.onload=res;img.onerror=()=>rej(new Error('สร้างรูปไม่สำเร็จ'));
+    img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);});
+  const c=document.createElement('canvas');c.width=Math.round(w*scale);c.height=Math.round(h*scale);
+  const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);
+  g.scale(scale,scale);g.drawImage(img,0,0,w,h);
+  return c;
+}
+const canvasJpeg=c=>new Promise((res,rej)=>{try{c.toBlob(b=>b?res(b):rej(new Error('สร้างรูปไม่สำเร็จ')),'image/jpeg',0.9);}catch(e){rej(e);}});
+/* หลายหน้า -> PDF ขนาด A4 หน้าละแผ่น (ฝังรูป JPG ตรง ๆ ไม่ต้องใช้ไลบรารี) */
+function jpegPdf(pages){
+  const enc=new TextEncoder(),parts=[],offs=[];let len=0;
+  const put=x=>{const b=typeof x==='string'?enc.encode(x):x;parts.push(b);len+=b.length;};
+  const obj=(n,body)=>{offs[n]=len;put(n+' 0 obj\n');body();put('\nendobj\n');};
+  const W=595.28,H=841.89,N=pages.length,total=3+3*N;
+  put('%PDF-1.4\n%âãÏÓ\n');
+  obj(1,()=>put('<< /Type /Catalog /Pages 2 0 R >>'));
+  obj(2,()=>put('<< /Type /Pages /Kids ['+pages.map((_,i)=>(3+3*i)+' 0 R').join(' ')+'] /Count '+N+' >>'));
+  pages.forEach((p,i)=>{
+    const pg=3+3*i,s=Math.min(W/p.w,H/p.h),dw=p.w*s,dh=p.h*s;
+    obj(pg,()=>put(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /XObject << /Im0 ${pg+2} 0 R >> >> /Contents ${pg+1} 0 R >>`));
+    const cs=`q ${dw.toFixed(2)} 0 0 ${dh.toFixed(2)} ${((W-dw)/2).toFixed(2)} ${(H-dh).toFixed(2)} cm /Im0 Do Q`;
+    obj(pg+1,()=>{put(`<< /Length ${cs.length} >>\nstream\n`);put(cs);put('\nendstream');});
+    obj(pg+2,()=>{put(`<< /Type /XObject /Subtype /Image /Width ${p.w} /Height ${p.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${p.bytes.length} >>\nstream\n`);
+      put(p.bytes);put('\nendstream');});
+  });
+  const xref=len;
+  put('xref\n0 '+total+'\n0000000000 65535 f \n'+offs.slice(1).map(o=>String(o).padStart(10,'0')+' 00000 n \n').join(''));
+  put('trailer\n<< /Size '+total+' /Root 1 0 R >>\nstartxref\n'+xref+'\n%%EOF');
+  return new Blob(parts,{type:'application/pdf'});
+}
+/* แผ่นเดียว -> JPG · หลายแผ่น -> PDF */
+async function sheetsToFile(sheets){
+  const scale=Math.min(2,Math.max(1.5,window.devicePixelRatio||1));
+  const cs=[];for(const s of sheets)cs.push(await sheetToCanvas(s,scale));
+  if(cs.length===1)return {blob:await canvasJpeg(cs[0]),ext:'jpg'};
+  const pages=[];
+  for(const c of cs)pages.push({w:c.width,h:c.height,bytes:new Uint8Array(await (await canvasJpeg(c)).arrayBuffer())});
+  return {blob:jpegPdf(pages),ext:'pdf'};
+}
+async function saveBlobAs(blob,fname){
+  const file=new File([blob],fname,{type:blob.type});
+  /* มือถือ: เมนูแชร์มีปุ่ม "บันทึกรูปภาพ" / "บันทึกลงไฟล์" ได้ตรง ๆ */
+  if(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)&&navigator.canShare&&navigator.canShare({files:[file]})){
+    try{await navigator.share({files:[file],title:fname});return 'share';}
+    catch(e){if(e&&e.name==='AbortError')return 'cancel';}
+  }
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;
+  document.body.append(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},2000);
+  return 'download';
+}
+/* แผ่นที่ยังไม่ได้อยู่บนจอ (เช่น หลังเซ็นเสร็จ) ต้องวางไว้นอกจอชั่วคราวเพื่อวัดขนาด */
+async function saveSheetsFile(sheets,base){
+  const stage=el('<div style="position:fixed;left:-10000px;top:0;width:220mm;background:#fff"></div>');
+  const tmp=sheets.filter(s=>!s.isConnected);
+  tmp.forEach(s=>stage.append(s));
+  if(tmp.length)document.body.append(stage);
+  try{
+    toast(sheets.length>1?'กำลังสร้างไฟล์ PDF…':'กำลังสร้างรูปเอกสาร…');
+    if(document.fonts&&document.fonts.ready)await document.fonts.ready;
+    const f=await sheetsToFile(sheets),fname=base+'.'+f.ext;
+    const how=await saveBlobAs(f.blob,fname);
+    if(how==='download')toast('บันทึกลงเครื่องแล้ว ('+fname+')');
+  }catch(e){
+    /* บางเบราว์เซอร์ (เช่น Safari รุ่นเก่า) ไม่ยอมให้แปลงเป็นรูป — ให้บันทึกเป็น PDF จากหน้าพิมพ์แทน */
+    toast('เครื่องนี้สร้างไฟล์เองไม่ได้ — เปิดหน้าพิมพ์ให้แทน เลือก "บันทึกเป็น PDF" ได้');
+    setTimeout(()=>window.print(),600);
+  }finally{stage.remove();}
+}
+const saveLabel=n=>n>1?'💾 บันทึกเอกสารเป็น PDF':'💾 บันทึกเอกสารเป็นรูป';
+/* ปุ่มบันทึก วางในหัวการ์ดของหน้าลิงก์เซ็น */
+function saveImgBtn(getSheets,base,n){
+  const b=el(`<button class="btn gh sm" style="margin-top:12px">${saveLabel(n)}</button>`);
+  b.onclick=async()=>{b.disabled=true;try{await saveSheetsFile(getSheets(),base);}finally{b.disabled=false;}};
+  return b;
+}
+const safeFname=s=>String(s||'เอกสาร').replace(/[\\/:*?"<>|]/g,'').trim().replace(/\s+/g,'_');
+/* สร้างแผ่นเอกสารใหม่จากข้อมูลในลิงก์ (ใช้หลังเซ็นเสร็จ จะได้มีลายเซ็นล่าสุดอยู่ในไฟล์) */
+function linkSheetsFromRow(row,forceType){
+  const type=forceType||row.doc_type||(row.payload&&row.payload.type)||'credit';
+  const d=ensureByType(Object.assign({},row.payload,{type,sigs:row.sigs||{}}));
+  if(type==='sample'&&d.sigs&&d.sigs.rd&&d.sigs.rd.note){
+    try{const o=JSON.parse(d.sigs.rd.note);if(o&&typeof o==='object'){if(o.canMake)d.canMake=o.canMake;if(o.suggestion)d.suggestion=o.suggestion;}}catch(e){}
+  }
+  const saveCo=DB.company,saveLogo=DB.logo;
+  if(d.company)DB.company=d.company;if(d.logo)DB.logo=d.logo;
+  const cust=DB.customers.find(c=>c.name===d.customer);
+  const tmp=!cust&&d._cust?(DB.customers.push(Object.assign({id:'__tmp',name:d.customer,timeline:[],photos:[],files:[]},d._cust)),true):false;
+  let sheets;
+  try{sheets=sheetsFor(d);}
+  finally{if(tmp)DB.customers=DB.customers.filter(c=>c.id!=='__tmp');DB.company=saveCo;DB.logo=saveLogo;}
+  return sheets;
+}
+/* ดึงเอกสารล่าสุดจากลิงก์ แล้วบันทึกลงเครื่อง */
+async function saveSignedLinkFile(id,base,forceType){
+  try{
+    const rows=await sbRpc('get_doc_signature',{p_id:id});
+    const row=Array.isArray(rows)?rows[0]:rows;
+    if(!row){toast('ไม่พบเอกสาร');return;}
+    await saveSheetsFile(linkSheetsFromRow(row,forceType),base);
+  }catch(e){toast(e.message);}
 }
 /* ================= drawer ================= */
 let drawerOpen=null;
