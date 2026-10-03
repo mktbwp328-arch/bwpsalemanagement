@@ -251,6 +251,7 @@ a{color:var(--blue);text-decoration:none}
 }
 /* ---------- แบบฟอร์มพิมพ์ใบเสนอราคา (A4) ---------- */
 .prevov{position:fixed;inset:0;background:#59647a;z-index:150;overflow:auto;padding:24px}
+@media (max-width:820px){.prevov{padding:10px}}
 .prevbar{position:sticky;top:0;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:20px;z-index:2}
 .sheet{width:210mm;min-height:297mm;background:#fff;margin:0 auto;padding:12mm 12mm 10mm;
   font-family:'Sarabun','IBM Plex Sans Thai',sans-serif;color:#000;font-size:12px;line-height:1.5;
@@ -1722,7 +1723,27 @@ function fitSheetsToPage(){
   });
 }
 function unfitSheets(){document.querySelectorAll('.prevov .sheet').forEach(s=>{
-  s.style.zoom='';s.style.removeProperty('height');s.style.removeProperty('max-height');});}
+  s.style.zoom='';s.style.removeProperty('height');s.style.removeProperty('max-height');});
+  screenFitSheets();}
+/* มือถือ: แผ่น A4 กว้างกว่าจอ เลยเห็นแค่ครึ่งหน้า — ย่อทั้งแผ่นให้พอดีจอ เห็นเอกสารเต็มหน้า
+   (ซูมขยายด้วยนิ้วเพื่ออ่านรายละเอียดได้ตามปกติ) */
+function screenFitSheets(){
+  document.querySelectorAll('.prevov').forEach(ov=>{
+    const cs=getComputedStyle(ov);
+    const avail=ov.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight);
+    ov.querySelectorAll('.sheet').forEach(s=>{
+      s.style.zoom='';
+      const w=s.offsetWidth;
+      if(w&&avail>0&&w>avail+1)s.style.zoom=(avail/w).toFixed(4);
+    });
+  });
+}
+window.addEventListener('resize',()=>{if(!window.matchMedia('print').matches)screenFitSheets();});
+/* เปิดหน้าพรีวิว/หน้าลิงก์เซ็นเมื่อไหร่ ย่อให้พอดีจออัตโนมัติ */
+new MutationObserver(ms=>{
+  if(ms.some(m=>[...m.addedNodes].some(n=>n.nodeType===1&&(n.matches('.prevov')||n.querySelector('.prevov')))))
+    setTimeout(screenFitSheets,0);
+}).observe(document.documentElement,{childList:true,subtree:true});
 window.addEventListener('beforeprint',fitSheetsToPage);
 window.addEventListener('afterprint',unfitSheets);
 /* เผื่อเบราว์เซอร์ที่ไม่รองรับ beforeprint (Safari รุ่นเก่า) ให้ย่อก่อนเรียกพิมพ์เลย */
@@ -4794,7 +4815,9 @@ let SNAP_CSS=null;
 const snapCss=()=>SNAP_CSS||(SNAP_CSS=[...document.querySelectorAll('style')].map(s=>s.textContent).join('\n'));
 /* แผ่นเอกสารหนึ่งแผ่น -> แคนวาส */
 async function sheetToCanvas(sheet,scale){
+  const z=sheet.style.zoom;sheet.style.zoom='';
   const rect=sheet.getBoundingClientRect();
+  sheet.style.zoom=z;
   const w=Math.ceil(rect.width),h=Math.ceil(rect.height);
   const clone=sheet.cloneNode(true);
   clone.style.margin='0';clone.style.boxShadow='none';clone.style.zoom='';clone.style.transform='';
