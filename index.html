@@ -2297,6 +2297,11 @@ async function shareCredit(d){
     else try{await sbRpc('update_doc_payload',{p_id:id,p_payload:payload});}
          catch(e){toast('อัปเดตข้อมูลในลิงก์ไม่สำเร็จ — ต้องรันไฟล์ supabase-setup-12.sql ก่อน');}
   }catch(e){toast(e.message);return;}
+  try{
+    const rows=await sbRpc('get_doc_signature',{p_id:d.sigDocId});
+    const row=Array.isArray(rows)?rows[0]:rows;
+    if(row&&await syncLocalSigs(d,row.sigs))toast('ส่งลายเซ็นที่เซ็นในเครื่องขึ้นลิงก์แล้ว');
+  }catch(e){}
   const ov=el('<div class="ov"></div>');
   /* เซ็นแล้วให้เห็นรูปลายเซ็นเลย จะได้รู้ว่าใครเซ็นแล้วบ้างโดยไม่ต้องเปิดเอกสาร */
   const links=roles.map(([k,label],i)=>{
@@ -2712,11 +2717,30 @@ function creditSignView(row,id,role){
 /* เซ็นที่เครื่องนี้หลังส่งลิงก์ไปแล้ว ต้องส่งขึ้นฐานข้อมูลด้วย
    ไม่งั้นรอบถัดไปที่ดึงข้อมูลจากคลาวด์ ลายเซ็นที่เพิ่งเซ็นจะหายไป */
 async function pushLocalSig(d,role,sig){
-  if(!d.sigDocId||!sbOn()||!sig||!sig.img)return;
+  if(!sig||!sig.img)return false;
+  /* ยังไม่มีลิงก์ หรือเน็ต/ฐานข้อมูลมีปัญหา: จดไว้ว่ายังค้างส่ง แล้วส่งให้เองรอบถัดไป */
+  if(!d.sigDocId||!sbOn()){d.sigPending=true;return false;}
   try{
     await sbRpc('add_doc_signature',{p_id:d.sigDocId,p_role:role,p_name:sig.name||'',
       p_sig:sig.img,p_ok:true,p_note:null,p_roles_required:rolesOf(d.type).map(r=>r[0])});
-  }catch(e){/* ส่งไม่ขึ้นก็ยังมีในเครื่อง ไม่ต้องรบกวนผู้ใช้ */}
+    return true;
+  }catch(e){d.sigPending=true;save();return false;}   /* ส่งไม่ขึ้นก็ยังมีในเครื่อง เดี๋ยวส่งซ้ำให้เอง */
+}
+/* ลายเซ็นที่มีในเครื่องแต่ยังไม่ขึ้นคลาวด์ (เซ็นก่อนส่งลิงก์ หรือส่งไม่ขึ้นตอนเน็ต/ระบบมีปัญหา)
+   ส่งขึ้นให้ครบ คนที่เปิดลิงก์จะได้เห็นลายเซ็นเหมือนในโปรแกรม
+   (ฝ่ายวิจัยของใบขอตัวอย่างต้องกดส่งเองพร้อมผลการพิจารณา จึงไม่ส่งแทน) */
+async function syncLocalSigs(d,cloudSigs){
+  if(!d.sigDocId)return 0;
+  const cloud=cloudSigs||{};let n=0,fail=false;
+  for(const k of Object.keys(d.sigs||{})){
+    const s=d.sigs[k];
+    if(!s||!s.img||cloud[k]||/^cust/.test(k))continue;
+    if(d.type==='sample'&&k==='rd')continue;
+    if(!rolesOf(d.type).some(r=>r[0]===k))continue;
+    if(await pushLocalSig(d,k,s))n++;else fail=true;
+  }
+  if(!fail&&d.sigPending){delete d.sigPending;save();}
+  return n;
 }
 function applyCreditSigs(no,sigs,status,silent,type){
   const d=(type==='receipt'?DB.receipts:DB.docs).find(x=>x.no===no&&(type==='receipt'||x.type===(type||'credit')));
@@ -2761,7 +2785,7 @@ function applyCreditSigs(no,sigs,status,silent,type){
   return true;
 }
 /* จำสถานะล่าสุดที่เห็น ไว้เทียบว่ามีอะไรเปลี่ยนไหม */
-const PEEK_ST={};
+const PEEK_ST={},SYNC_TRY={};
 async function checkCredit(d,silent){
   if(!d.sigDocId||!sbOn())return null;
   const n=rolesOf(d.type).length;
@@ -2773,10 +2797,17 @@ async function checkCredit(d,silent){
       const p=Array.isArray(pk)?pk[0]:pk;
       if(p){
         const have=Object.keys(d.sigs||{}).length;
-        const key=p.status+'|'+p.signed;
-        if((+p.signed||0)<=have&&PEEK_ST[d.sigDocId]!==undefined&&PEEK_ST[d.sigDocId]===key)return p.status;
-        PEEK_ST[d.sigDocId]=key;
-        if((+p.signed||0)<=have&&p.status==='pending')return p.status;
+        /* ในเครื่องมีลายเซ็นมากกว่าบนคลาวด์ = มีลายเซ็นค้างส่ง ต้องดึงเต็มแล้วส่งที่ขาดขึ้นไป
+           (ลองครั้งเดียวต่อสถานะ ไม่ดึงซ้ำทุกนาทีถ้ายังส่งไม่ได้) */
+        const extra=have-(+p.signed||0)-(d.type==='sample'&&d.sigs.rd&&!d.sigs.rd.note?1:0);
+        const tryKey=p.signed+'|'+have;
+        if((extra>0||d.sigPending)&&SYNC_TRY[d.sigDocId]!==tryKey)SYNC_TRY[d.sigDocId]=tryKey;
+        else{
+          const key=p.status+'|'+p.signed;
+          if((+p.signed||0)<=have&&PEEK_ST[d.sigDocId]!==undefined&&PEEK_ST[d.sigDocId]===key)return p.status;
+          PEEK_ST[d.sigDocId]=key;
+          if((+p.signed||0)<=have&&p.status==='pending')return p.status;
+        }
       }
     }catch(e){}   /* ยังไม่ได้ติดตั้งฟังก์ชันนี้ ใช้วิธีเดิมต่อไป */
   }
@@ -2785,6 +2816,7 @@ async function checkCredit(d,silent){
     const row=Array.isArray(rows)?rows[0]:rows;
     if(!row){if(!silent)toast('ไม่พบเอกสารนี้ในฐานข้อมูล');return null;}
     const before=Object.keys(d.sigs||{}).length;
+    await syncLocalSigs(d,row.sigs);
     applyCreditSigs(d.no,row.sigs,row.status,true,d.type);
     const after=Object.keys(d.sigs||{}).length;
     render();
@@ -7048,7 +7080,8 @@ function creditDetail(v,d){
       b.onclick=()=>signModal('เซ็นอนุมัติ — '+label,'ใบขอเครดิต '+d.no,'',s2=>{
         d.sigs[k]=s2;
         if(Object.keys(d.sigs).length===4)d.status='อนุมัติแล้ว';else d.status='รออนุมัติ';
-        save();render();toast('บันทึกลายเซ็น '+label+' แล้ว');});
+        save();render();toast('บันทึกลายเซ็น '+label+' แล้ว');
+        pushLocalSig(d,k,s2);});
       row.append(b);
     }
     sg.append(row);});
