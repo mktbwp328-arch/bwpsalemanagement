@@ -1806,11 +1806,11 @@ const certSrc=()=>assetCert||(DB&&DB.cert)||null;
 /* ================= เชื่อมต่อ Supabase (ส่งลิงก์เซ็นข้ามเครื่อง) ================= */
 /* ฐานข้อมูลหลัก — ย้ายมาโปรเจกต์ใหม่แล้ว (โปรเจกต์เก่า vltsxzlbflayxnvtnhlv เลิกใช้) */
 const SB_DEFAULT={url:'https://zjjxmbivkdupfsuzjtoj.supabase.co',
-  key:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpqanhtYml2a2R1cGZzdXpqdG9qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAxOTk0NzUsImV4cCI6MjEwNTc3NTQ3NX0.NW17VIEfnDKvNoza0TACBCpKTNknKZmCBpJzZINeGak'};
+  key:'sb_publishable_8O82T47kbyT_EzadpjSZgw_zD-RK8Cw'};   /* คีย์สาธารณะแบบใหม่ (คีย์ JWT แบบเก่าถูกปิดแล้ว 7 ต.ค. 2569) */
 const OLD_SB_REF='vltsxzlbflayxnvtnhlv';
-/* ค่าที่เคยตั้งเองในเครื่อง ถ้ายังชี้ไปโปรเจกต์เก่า ให้เมินทิ้ง ไม่งั้นจะวนกลับไปใช้ที่เก่า */
+/* ค่าที่เคยตั้งเองในเครื่อง ถ้ายังชี้ไปโปรเจกต์เก่า หรือยังเป็นคีย์ JWT แบบเก่า (ปิดใช้แล้ว) ให้เมินทิ้ง */
 const sbCfg=()=>{const o=(DB&&DB.sb)||{};
-  const stale=String(o.url||'').includes(OLD_SB_REF);
+  const stale=String(o.url||'').includes(OLD_SB_REF)||/^eyJ/.test(String(o.key||''));
   return Object.assign({},SB_DEFAULT,stale?{}:o);};
 const sbOn=()=>{const c=sbCfg();return !!(c.url&&c.key);};
 let sbReady=null;            /* null=ยังไม่ตรวจ, true=พร้อมใช้, false=ยังตั้งค่าไม่ครบ */
@@ -1862,9 +1862,12 @@ const viewingOther=()=>!!(AUTH.viewing&&AUTH.viewing!==(AUTH.user&&AUTH.user.id)
 const readOnly=()=>viewingOther()&&!isManager();
 /* บันทึกลงบัญชีไหน — ผู้จัดการแก้ของคนอื่นได้ ต้องบันทึกกลับไปที่บัญชีนั้น */
 const dataOwner=()=>(viewingOther()?AUTH.viewing:(AUTH.user&&AUTH.user.id))||'';
+/* คีย์แบบใหม่ (sb_publishable_...) ไม่ใช่ JWT ส่งเป็น Bearer ไม่ได้ — ส่งเฉพาะตอนเข้าระบบแล้ว (โทเคนผู้ใช้)
+   คีย์แบบเก่า (JWT) ยังส่งแบบเดิมได้ */
+const bearer=c=>AUTH.token?{Authorization:'Bearer '+AUTH.token}:/^sb_/.test(c.key)?{}:{Authorization:'Bearer '+c.key};
 function sbHeaders(){
   const c=sbCfg();
-  return {apikey:c.key,Authorization:'Bearer '+(AUTH.token||c.key),'Content-Type':'application/json'};
+  return Object.assign({apikey:c.key,'Content-Type':'application/json'},bearer(c));
 }
 function saveSession(){
   /* จำคนที่กำลังเปิดดูข้อมูลไว้ด้วย รีเฟรชแล้วจะได้กลับมาที่เดิม ไม่เด้งกลับบัญชีตัวเอง */
@@ -1881,6 +1884,7 @@ async function sbAuthCall(path,body){
   if(!r.ok){
     const m=j.msg||j.message||j.error_description||j.error||('เข้าสู่ระบบไม่สำเร็จ ('+r.status+')');
     if(/invalid login/i.test(m))throw new Error('PIN ไม่ถูกต้อง');
+    if(/legacy api keys|invalid api key|no api key/i.test(m))throw new Error('คีย์เชื่อมต่อฐานข้อมูลใช้ไม่ได้แล้ว (ถูกปิดหรือเปลี่ยนใน Supabase) — ติดต่อผู้ดูแลระบบ');
     if(/ทะเบียนพนักงาน/.test(m))throw new Error('เบอร์นี้ไม่มีในทะเบียนพนักงาน กรุณาติดต่อผู้ดูแลระบบ');
     if(/database error saving|unexpected_failure/i.test(m))throw new Error('เบอร์นี้ไม่มีในทะเบียนพนักงาน กรุณาติดต่อผู้ดูแลระบบ');
     if(/email not confirmed/i.test(m))throw new Error('ระบบยังบังคับยืนยันอีเมลอยู่ — ให้ผู้ดูแลปิด "Confirm email" ใน Supabase');
@@ -3559,7 +3563,7 @@ let storageOK=null;                 /* null=ยังไม่รู้, true=�
 const signCache={};                 /* path -> {url,exp} */
 const stUrl=p=>sbCfg().url.replace(/\/$/,'')+'/storage/v1'+p;
 const stHead=extra=>{const c=sbCfg();
-  return Object.assign({apikey:c.key,Authorization:'Bearer '+(AUTH.token||c.key)},extra||{});};
+  return Object.assign({apikey:c.key},bearer(c),extra||{});};
 function b64ToBlob(dataUrl){
   const m=/^data:([^;]+);base64,(.*)$/.exec(dataUrl||'');
   if(!m)return null;
@@ -7855,7 +7859,7 @@ function loginScreen(msg){
     try{
       if(adm){
         try{await signIn(ADMIN_USER,pass);}
-        catch(e1){throw new Error('PIN ผู้ดูแลไม่ถูกต้อง');}
+        catch(e1){throw /ไม่ถูกต้อง/.test(e1.message)?new Error('PIN ผู้ดูแลไม่ถูกต้อง'):e1;}
       }else{
         try{
           await signIn(user,pass);                       // มี PIN อยู่แล้ว
