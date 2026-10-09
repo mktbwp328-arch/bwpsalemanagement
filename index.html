@@ -2120,9 +2120,19 @@ async function sbRpc(fn,args,retry){
   if(!r.ok){
     let msg=txt;try{msg=JSON.parse(txt).message||txt;}catch(e){}
     /* เซสชันหมดอายุ: ต่ออายุให้เองแล้วลองใหม่ ผู้ใช้ไม่ต้องเข้าระบบใหม่ */
-    if(!retry&&(r.status===401||/jwt|expired|invalid token/i.test(msg))&&AUTH.refresh){
-      if(await refreshSession())return sbRpc(fn,args,true);
-      throw new Error('เซสชันหมดอายุ — กรุณาเข้าระบบใหม่');
+    if(!retry&&(r.status===401||/jwt|expired|invalid token|invalid signature/i.test(msg))&&AUTH.token){
+      if(AUTH.refresh&&await refreshSession())return sbRpc(fn,args,true);
+      /* เซสชันที่ค้างในเครื่องใช้ไม่ได้แล้ว (หมดอายุ หรือเป็นของฐานข้อมูลเก่าก่อนย้าย)
+         หน้าลิงก์เซ็นไม่ต้องเข้าระบบ — ลองส่งแบบไม่ระบุตัวตนแทน คนเซ็นจะได้บันทึกได้ */
+      const anon=await fetch(c.url.replace(/\/$/,'')+'/rest/v1/rpc/'+fn,{method:'POST',
+        headers:Object.assign({apikey:c.key,'Content-Type':'application/json'},/^sb_/.test(c.key)?{}:{Authorization:'Bearer '+c.key}),
+        body:JSON.stringify(args||{})});
+      const t=await anon.text();
+      if(anon.ok)return t?JSON.parse(t):null;
+      let am=t;try{am=JSON.parse(t).message||t;}catch(e){}
+      /* ฟังก์ชันที่ต้องเข้าระบบ → ให้เข้าระบบใหม่ · อย่างอื่นแจ้งสาเหตุจริงจากฐานข้อมูล */
+      if(anon.status===401||/permission denied|jwt/i.test(am))throw new Error('เซสชันหมดอายุ — กรุณาเข้าระบบใหม่');
+      throw new Error(am||('เชื่อมต่อไม่สำเร็จ ('+anon.status+')'));
     }
     if(/could not find the function|schema cache|does not exist/i.test(msg))
       throw new Error('ยังไม่ได้ติดตั้งส่วนนี้ในฐานข้อมูล — เปิด Supabase แล้วรัน '
@@ -2520,6 +2530,15 @@ async function shareCredit(d){
   m.querySelector('.close').onclick=close;m.querySelector('#dn').onclick=close;
   ov.append(m);$('#layer').append(ov);
 }
+/* บันทึกลายเซ็นจากลิงก์ไม่สำเร็จ: แจ้งเป็นหน้าต่างค้างไว้ (ข้อความแจ้งเตือนสั้น ๆ หายเร็ว คนเซ็นบนมือถือมักไม่ทันเห็น)
+   คนเซ็นถ่ายภาพหน้าจอส่งให้ฝ่ายขายได้ */
+function signSaveError(e){
+  const m=(e&&e.message)||'ไม่ทราบสาเหตุ';
+  askConfirm('บันทึกลายเซ็นไม่สำเร็จ',
+    (/fetch|network|load failed/i.test(m)?'เชื่อมต่ออินเทอร์เน็ตไม่ได้ — ตรวจสอบสัญญาณแล้วกดบันทึกอีกครั้ง':'สาเหตุ: '+m)
+    +String.fromCharCode(10,10)+'ลายเซ็นที่เซ็นไว้ยังอยู่ในกรอบ กดบันทึกใหม่ได้เลย · ถ้ายังไม่ได้ ให้ถ่ายภาพหน้าจอนี้ส่งให้ฝ่ายขาย',
+    'ตกลง',()=>{});
+}
 /* ---------- หน้าจอยืนยันหลังเซ็นเสร็จ ----------
    เต็มจอ อ่านง่ายบนมือถือ ให้ผู้เซ็นมั่นใจว่าลายเซ็นถูกบันทึกแล้วจริง */
 const TH_DAY=['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'];
@@ -2765,7 +2784,7 @@ function customerSignView(row,id){
         name:jobs.map(j=>j.name).join(' · '),role:'ผู้ติดต่อฝั่งลูกค้า',
         line3:'ใบขอเครดิต '+d.no+' · '+d.customer,
         save:{label:saveLabel(sheets.length),fn:()=>saveSignedLinkFile(id,cBase,'credit')}});
-    }catch(e){bOk.disabled=false;bOk.textContent='บันทึกและส่งกลับ';toast(e.message);}
+    }catch(e){bOk.disabled=false;bOk.textContent='บันทึกและส่งกลับ';signSaveError(e);}
   };
 }
 /* หน้าจอผู้เซ็น (เปิดจากลิงก์) */
@@ -2890,7 +2909,7 @@ function creditSignView(row,id,role){
         line3:title+' '+d.no+' · '+d.customer+(rd&&rd.canMake?' · '+rd.canMake:''),
         save:{label:saveLabel(sheets.length),fn:()=>saveSignedLinkFile(id,fBase,type)}});
       applyCreditSigs(d.no,res.sigs,st,true,type);
-    }catch(e){bOk.disabled=bNo.disabled=false;bOk.textContent=locked?'บันทึกและส่งกลับ':'บันทึกลายเซ็น';toast(e.message);}
+    }catch(e){bOk.disabled=bNo.disabled=false;bOk.textContent=locked?'บันทึกและส่งกลับ':'บันทึกลายเซ็น';signSaveError(e);}
   };
   bOk.onclick=()=>finish(true);
   bNo.onclick=()=>askConfirm('ไม่อนุมัติ','บันทึกว่าไม่อนุมัติใบขอเครดิตนี้?','ยืนยัน',()=>finish(false));
