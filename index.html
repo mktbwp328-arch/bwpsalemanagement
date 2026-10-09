@@ -786,6 +786,7 @@ async function tidyInline(){
 async function autoTidy(){
   if(autoTidyDone||!authed()||readOnly())return;
   try{await tidyInline();}catch(e){}              /* ลายเซ็น/โลโก้ที่ฝังในข้อมูล */
+  try{await resolveVault();await vaultSync();}catch(e){}   /* ลายเซ็น/โลโก้ขึ้นที่เก็บไฟล์ */
   if(storageOK===false)return;
   const pend=allAttachments().filter(j=>j.data&&/^data:/.test(j.data));
   if(!pend.length)return;
@@ -843,6 +844,7 @@ async function cloudSave(tries){
       headers:Object.assign(sbHeaders(),{Prefer:'resolution=merge-duplicates,return=minimal'}),body});
     cloudSeen=Date.parse(stamp)||Date.now();   /* จำไว้ว่านี่คือรุ่นล่าสุดที่เครื่องนี้เขียนเอง */
     lastSyncErr='';syncErrShown=false;
+    setTimeout(vaultSync,3000);                  /* รูปใหม่ขึ้นที่เก็บไฟล์ ข้อมูลรอบหน้าจะเล็กลง */
     setSync('saved');setTimeout(()=>{if(syncState==='saved'&&!syncPending)setSync('idle');},2500);
   }catch(e){
     lastSyncErr=e&&e.message||'ไม่ทราบสาเหตุ';
@@ -890,45 +892,153 @@ async function cloudRow(userId){
   if(rows&&rows[0])unpackDB(rows[0].data);
   return rows&&rows[0]?rows[0]:null;
 }
-/* ---------- เก็บรูปที่ซ้ำกันไว้ที่เดียว ----------
-   ลายเซ็นคนเดิมอยู่ในเอกสารทุกใบ ใบละหนึ่งชุด (เช่น 197 ลายเซ็นแต่หน้าตาเหมือนกันไม่กี่แบบ) ข้อมูลเลยโตเร็ว
-   ตอนบันทึก (ลงเครื่อง/ขึ้นคลาวด์): รูปที่เหมือนกันเก็บไว้ใน _imgs แค่ชุดเดียว ตรงที่ใช้เหลือแค่ตัวอ้างอิง
-   ตอนโหลด: แตกกลับเป็นรูปเต็มเหมือนเดิม — หน้าจอ งานพิมพ์ และลิงก์เซ็นทำงานแบบเดิมทุกอย่าง */
-const IMG_REF='@@img:';
+/* ---------- คลังรูปลายเซ็น/โลโก้ ----------
+   ในโปรแกรม (หน้าจอ งานพิมพ์ ลิงก์เซ็น บันทึกเป็นรูป) ยังใช้รูปเต็มเหมือนเดิมทุกอย่าง
+   ต่างแค่ตอนบันทึก (ลงเครื่อง/ขึ้นคลาวด์):
+     1) รูปที่ขึ้นที่เก็บไฟล์แล้ว → เหลือแค่ที่อยู่ไฟล์ "@@v:<เจ้าของ>/img/<รหัสรูป>.<ชนิด>" (ไม่กี่สิบตัวอักษร)
+     2) รูปที่ยังไม่ได้ขึ้น → เก็บในข้อมูลแบบเดิม (รูปที่ซ้ำกันเก็บชุดเดียวใน _imgs) ไม่มีวันหาย
+   ตอนโหลด: เติมรูปกลับจากคลังรูปในเครื่อง (IndexedDB) ถ้าไม่มีค่อยดาวน์โหลดจากที่เก็บไฟล์
+   ถ้าดาวน์โหลดไม่ได้ (ไม่มีเน็ต) จะเก็บที่อยู่ไฟล์ไว้เหมือนเดิม ไม่เขียนทับเป็นค่าว่าง
+   รหัสรูปคิดจากเนื้อรูป รูปเดียวกันได้รหัสเดียวกันเสมอ จึงอัปโหลดครั้งเดียวต่อเจ้าของ */
+const IMG_REF='@@img:',VREF='@@v:';
+const VAULT={byData:new Map(),byPath:new Map()};      /* รูป -> "รหัส.ชนิด" · ที่อยู่ไฟล์ -> รูป */
+const VAULT_EXT=['png','jpeg','jpg','webp','gif','svg+xml'];
+const vaultExtOf=v=>{const m=/^data:image\/([\w+.-]+);base64,/.exec(v);
+  return m&&VAULT_EXT.includes(m[1])?(m[1]==='svg+xml'?'svg':m[1]):null;};
+const vaultable=v=>typeof v==='string'&&v.length>300&&!!vaultExtOf(v);
+const vaultPath=(owner,key)=>owner+'/img/'+key;
 function packDB(db){
   const pool={},ids=new Map();let n=0;
+  const owner=dataOwner(),vset=new Set((DB&&DB._vault)||[]),used=new Set();
   const walk=v=>{
     if(typeof v==='string'){
       if(v.length>300&&v.startsWith('data:image')){
+        const key=VAULT.byData.get(v);
+        if(key&&owner){const p=vaultPath(owner,key);if(vset.has(p)){used.add(p);return VREF+p;}}
         let id=ids.get(v);
         if(!id){id=(n++).toString(36);ids.set(v,id);pool[id]=v;}
         return IMG_REF+id;
       }
+      if(v.startsWith(VREF))used.add(v.slice(VREF.length));     /* ยังโหลดรูปไม่ได้: เก็บที่อยู่ไว้เหมือนเดิม */
       return v;
     }
     if(Array.isArray(v))return v.map(walk);
-    if(v&&typeof v==='object'){const o={};for(const k of Object.keys(v))if(k!=='_imgs')o[k]=walk(v[k]);return o;}
+    if(v&&typeof v==='object'){const o={};for(const k of Object.keys(v))if(k!=='_imgs'&&k!=='_vault')o[k]=walk(v[k]);return o;}
     return v;
   };
   const out=walk(db);
   if(n)out._imgs=pool;
+  if(used.size)out._vault=[...used];
   return out;
 }
 function unpackDB(d){
-  if(!d||typeof d!=='object'||!d._imgs)return d;
-  const pool=d._imgs;delete d._imgs;
+  if(!d||typeof d!=='object')return d;
+  const pool=d._imgs||{};delete d._imgs;
+  let pending=false;
   const walk=o=>{
     for(const k of Object.keys(o)){
       const v=o[k];
-      if(typeof v==='string'){if(v.startsWith(IMG_REF))o[k]=pool[v.slice(IMG_REF.length)]||'';}
-      else if(v&&typeof v==='object')walk(v);
+      if(typeof v==='string'){
+        if(v.startsWith(IMG_REF))o[k]=pool[v.slice(IMG_REF.length)]||'';
+        else if(v.startsWith(VREF)){const img=VAULT.byPath.get(v.slice(VREF.length));if(img)o[k]=img;else pending=true;}
+      }
+      else if(v&&typeof v==='object'&&k!=='_vault')walk(v);
     }
   };
   walk(d);
+  if(pending)setTimeout(resolveVault,0);     /* เติมรูปที่เหลือจากคลังในเครื่อง/ที่เก็บไฟล์ */
   return d;
 }
-/* สำเนาในเครื่อง (แบบบีบรูปซ้ำแล้ว) */
+/* สำเนาในเครื่อง (รูปขึ้นที่เก็บไฟล์แล้วเหลือแค่ที่อยู่ไฟล์) */
 function saveLocalCopy(){localStorage.setItem(localKey(),JSON.stringify(packDB(DB)));}
+/* คลังรูปในเครื่อง (IndexedDB — ไม่มีเพดาน 5 MB เหมือนที่เก็บปกติ) */
+let IDBP=null;
+function idb(){return IDBP||(IDBP=new Promise(res=>{
+  try{const r=indexedDB.open('bwp-img',1);r.onupgradeneeded=()=>r.result.createObjectStore('img');
+    r.onsuccess=()=>res(r.result);r.onerror=()=>res(null);r.onblocked=()=>res(null);}catch(e){res(null);}}));}
+async function idbGet(k){const d=await idb();if(!d)return null;
+  return new Promise(res=>{try{const q=d.transaction('img').objectStore('img').get(k);
+    q.onsuccess=()=>res(q.result||null);q.onerror=()=>res(null);}catch(e){res(null);}});}
+async function idbPut(k,v){const d=await idb();if(!d)return;try{d.transaction('img','readwrite').objectStore('img').put(v,k);}catch(e){}}
+async function vaultKey(v){
+  const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(v));
+  return [...new Uint8Array(buf)].slice(0,12).map(b=>b.toString(16).padStart(2,'0')).join('')+'.'+vaultExtOf(v);
+}
+function u8ToB64(u8){let s='';for(let i=0;i<u8.length;i+=0x8000)s+=String.fromCharCode.apply(null,u8.subarray(i,i+0x8000));return btoa(s);}
+async function vaultDownload(p,retry){
+  try{
+    const r=await fetch(stUrl('/object/authenticated/'+BUCKET+'/'+p),{headers:stHead()});
+    if(r.status===401&&!retry&&AUTH.refresh&&await refreshSession())return vaultDownload(p,true);
+    if(!r.ok)return null;
+    const ext=p.split('.').pop();
+    return 'data:image/'+(ext==='svg'?'svg+xml':ext)+';base64,'+u8ToB64(new Uint8Array(await r.arrayBuffer()));
+  }catch(e){return null;}
+}
+async function stPut(path,blob,retry){
+  const r=await fetch(stUrl('/object/'+BUCKET+'/'+path),{method:'POST',
+    headers:stHead({'Content-Type':blob.type||'application/octet-stream','x-upsert':'true'}),body:blob});
+  if(r.status===401&&!retry&&AUTH.refresh&&await refreshSession())return stPut(path,blob,true);
+  if(!r.ok){const t=await r.text().catch(()=>'');
+    if(/bucket not found/i.test(t))storageOK=false;
+    throw new Error(t||('อัปโหลดไม่สำเร็จ ('+r.status+')'));}
+  storageOK=true;
+}
+const walkStrings=(o,fn,d)=>{if(!o||typeof o!=='object'||(d||0)>12)return;
+  for(const k of Object.keys(o)){const v=o[k];if(typeof v==='string')fn(o,k,v);else if(v&&typeof v==='object'&&k!=='_vault')walkStrings(v,fn,(d||0)+1);}};
+/* เติมรูปจากที่อยู่ไฟล์ */
+let vaultJob=null,vaultAgain=false;
+function resolveVault(){
+  if(vaultJob){vaultAgain=true;return vaultJob;}
+  vaultJob=(async()=>{
+    const db=DB;if(!db)return;
+    const refs=new Set();
+    walkStrings(db,(o,k,v)=>{if(v.startsWith(VREF))refs.add(v.slice(VREF.length));});
+    if(!refs.size)return;
+    for(const p of refs){
+      if(VAULT.byPath.has(p))continue;
+      const key=p.split('/').pop();
+      let img=await idbGet(key);
+      if(!img&&authed())img=await vaultDownload(p);
+      if(img){VAULT.byPath.set(p,img);VAULT.byData.set(img,key);idbPut(key,img);}
+    }
+    if(DB!==db)return;                                   /* ระหว่างนั้นสลับไปดูข้อมูลคนอื่นแล้ว */
+    const vset=new Set(db._vault||[]);let got=0;
+    walkStrings(db,(o,k,v)=>{if(!v.startsWith(VREF))return;const p=v.slice(VREF.length),img=VAULT.byPath.get(p);
+      if(img){o[k]=img;vset.add(p);got++;}});
+    db._vault=[...vset];
+    /* วาดหน้าใหม่ให้เห็นรูป (ถ้ามีหน้าต่างเปิดอยู่ ไม่วาดทับ จะได้ไม่เสียสิ่งที่กำลังกรอก) */
+    if(got&&booted&&!document.querySelector('.ov,.prevov'))render();
+  })().catch(()=>{}).finally(()=>{vaultJob=null;if(vaultAgain){vaultAgain=false;setTimeout(resolveVault,0);}});
+  return vaultJob;
+}
+/* อัปโหลดรูปใหม่ขึ้นที่เก็บไฟล์ (เบื้องหลัง หลังบันทึกขึ้นคลาวด์สำเร็จ) */
+let vaultSyncBusy=false;
+async function vaultSync(){
+  if(vaultSyncBusy||!authed()||readOnly()||storageOK===false||!(window.crypto&&crypto.subtle))return;
+  const owner=dataOwner(),db=DB;if(!owner||!db)return;
+  vaultSyncBusy=true;let up=0;
+  try{
+    db._vault=db._vault||[];
+    const vset=new Set(db._vault),todo=new Set();
+    walkStrings(db,(o,k,v)=>{if(!vaultable(v))return;const key=VAULT.byData.get(v);
+      if(!key||!vset.has(vaultPath(owner,key)))todo.add(v);});
+    for(const v of todo){
+      if(DB!==db||dataOwner()!==owner)break;
+      let key=VAULT.byData.get(v);
+      if(!key){key=await vaultKey(v);VAULT.byData.set(v,key);}
+      const p=vaultPath(owner,key);
+      if(!vset.has(p)){
+        const blob=b64ToBlob(v);if(!blob)continue;
+        await stPut(p,blob);
+        vset.add(p);db._vault.push(p);up++;
+      }
+      VAULT.byPath.set(p,v);idbPut(key,v);
+    }
+  }catch(e){}
+  finally{vaultSyncBusy=false;}
+  if(up&&DB===db&&dataOwner()===owner)save();   /* บันทึกใหม่: รูปที่ขึ้นแล้วเหลือแค่ที่อยู่ไฟล์ */
+}
+window.addEventListener('online',()=>{if(DB)resolveVault();});
 function load(){try{const r=localStorage.getItem(localKey())||localStorage.getItem(KEY);
   if(r)return unpackDB(JSON.parse(r));}catch(e){}return null;}
 
@@ -2166,6 +2276,7 @@ function approvePayload(d){
 }
 const baseUrl=()=>location.href.split('#')[0];
 async function shareApproval(d){
+  await resolveVault();
   if(!d.sigSales){toast('ฝ่ายขายต้องเซ็นก่อน จึงจะส่งให้ผู้บริหารอนุมัติได้');return;}
   const payload=approvePayload(d);
   const code=b64e(payload);
@@ -2319,6 +2430,7 @@ const ensureByType=d=>d.type==='sample'?ensureSample(d):d.type==='requirement'?e
   :d.type==='newcust'?ensureNewCust(d)
   :d.type==='receipt'?(d.sigs=d.sigs||{},d):ensureCredit(d);
 async function shareCredit(d){
+  await resolveVault();
   ensureByType(d);
   if(!sbOn()||sbReady===false){toast('ต้องเชื่อมฐานข้อมูลก่อน — รันไฟล์ supabase-setup-2.sql ใน Supabase');return;}
   const cust=DB.customers.find(c=>c.name===d.customer)||{};
@@ -2441,6 +2553,7 @@ function signResultScreen(o){
 const CUST_ROLE_KEY=i=>'cust'+i;
 /* ฝ่ายขายกดส่งลิงก์ให้ลูกค้า */
 async function shareCustomerCredit(d){
+  await resolveVault();
   ensureByType(d);
   if(!sbOn()||sbReady===false){toast('ต้องเชื่อมฐานข้อมูลก่อน — รันไฟล์ supabase-setup-2.sql ใน Supabase');return;}
   const cust=DB.customers.find(c=>c.name===d.customer)||{};
@@ -2758,7 +2871,7 @@ function creditSignView(row,id,role){
 /* เซ็นที่เครื่องนี้หลังส่งลิงก์ไปแล้ว ต้องส่งขึ้นฐานข้อมูลด้วย
    ไม่งั้นรอบถัดไปที่ดึงข้อมูลจากคลาวด์ ลายเซ็นที่เพิ่งเซ็นจะหายไป */
 async function pushLocalSig(d,role,sig){
-  if(!sig||!sig.img)return false;
+  if(!sig||!sig.img||String(sig.img).startsWith(VREF))return false;   /* รูปยังโหลดไม่เสร็จ ไว้ส่งรอบหน้า */
   /* ยังไม่มีลิงก์ หรือเน็ต/ฐานข้อมูลมีปัญหา: จดไว้ว่ายังค้างส่ง แล้วส่งให้เองรอบถัดไป */
   if(!d.sigDocId||!sbOn()){d.sigPending=true;return false;}
   try{
@@ -5015,7 +5128,8 @@ async function saveSignedLinkFile(id,base,forceType){
 const SIZE_LIMIT=4.5*1024*1024;
 const SIZE_SEC={customers:'ลูกค้า',docs:'เอกสารการขาย',pos:'PO ลูกค้า',receipts:'ใบเสร็จรับเงิน',
   ids:'รายการเลขอ้างอิงที่เคยมี (กันของที่ลบแล้วกลับมา)',roleSigs:'ลายเซ็นประจำตำแหน่ง',mySig:'ลายเซ็นของฉัน',
-  logo:'โลโก้ (แบบเก่า)',cert:'ตรารับรอง (แบบเก่า)',company:'ข้อมูลบริษัท',newcust:'รายชื่อลูกค้าใหม่'};
+  logo:'โลโก้ (แบบเก่า)',cert:'ตรารับรอง (แบบเก่า)',company:'ข้อมูลบริษัท',newcust:'รายชื่อลูกค้าใหม่',
+  _vault:'รายชื่อไฟล์รูปบนที่เก็บไฟล์'};
 const szTxt=n=>n>=1024*1024?(Math.round(n/1024/1024*100)/100)+' MB':n>=1024?Math.round(n/1024)+' KB':n+' B';
 const jsonLen=x=>{try{return JSON.stringify(x).length;}catch(e){return 0;}};
 function sizeReport(){
@@ -5024,7 +5138,9 @@ function sizeReport(){
   const total=jsonLen(m);
   const secs=Object.keys(m).map(k=>({k,name:k==='_imgs'?'รูปทั้งหมด (รูปที่ซ้ำกันเก็บชุดเดียว)':(SIZE_SEC[k]||k),n:jsonLen(m[k])}))
     .filter(s=>s.n>=1024).sort((a,b)=>b.n-a.n);
-  const seenImg=new Set(),uses=new Map();let refs=0;
+  const seenImg=new Set(),uses=new Map();let refs=0,vaulted=0;
+  const vOwner=dataOwner(),vSet=new Set(DB._vault||[]);
+  const inVault=v=>{const key=VAULT.byData.get(v);return !!(key&&vSet.has(vaultPath(vOwner,key)));};
   /* รูปที่ฝังอยู่ในข้อมูล แยกตามชนิด */
   const img={attach:{c:0,n:0,t:'รูป/ไฟล์แนบที่ยังไม่ได้ย้ายขึ้นที่เก็บไฟล์'},sig:{c:0,n:0,t:'ลายเซ็น'},
     logo:{c:0,n:0,t:'โลโก้ลูกค้า / ตรา'},other:{c:0,n:0,t:'รูปอื่น ๆ'}};
@@ -5034,6 +5150,7 @@ function sizeReport(){
     for(const k of Object.keys(o)){
       const v=o[k],p=path+'/'+k;
       if(typeof v==='string'){
+        if(v.startsWith(VREF)||(/^data:/.test(v)&&inVault(v))){vaulted++;continue;}
         if(/^data:/.test(v)){
           refs++;uses.set(v,(uses.get(v)||0)+1);
           if(seenImg.has(v))continue;seenImg.add(v);
@@ -5062,7 +5179,7 @@ function sizeReport(){
     const im=imgIn(x),n=jsonLen(packDB(x))-im.shared;if(n<2048)return;   /* packDB รวมรูปของรายการนี้ไว้ชุดเดียวแล้ว */
     recs.push({k,x,t:label[k](x),n,img:im.own});}));
   recs.sort((a,b)=>b.n-a.n);
-  return {total,secs,img,stored,refs,uniq:seenImg.size,recs:recs.slice(0,15)};
+  return {total,secs,img,stored,refs,vaulted,uniq:seenImg.size,recs:recs.slice(0,15)};
 }
 function dataSizeReport(){
   const R=sizeReport();
@@ -5092,8 +5209,9 @@ function dataSizeReport(){
       ${Object.values(R.img).filter(g=>g.c).map(g=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:14px;margin-top:8px">
         <span>${esc(g.t)} <span class="tiny">· ${g.c} รูป</span></span><b>${szTxt(g.n)}</b></div>`).join('')
         ||'<div class="tiny" style="margin-top:6px">ไม่มีรูปฝังอยู่ในข้อมูลแล้ว</div>'}
-      <div class="tiny" style="margin-top:8px">ใช้รูปทั้งหมด ${R.refs} จุด แต่เก็บจริงแค่ ${R.uniq} รูป (รูปที่ซ้ำกันเก็บชุดเดียว)
-        · รูปแนบที่อยู่บนที่เก็บไฟล์แล้ว ${R.stored} ไฟล์ (ไม่กินพื้นที่ส่วนนี้)</div>
+      <div class="tiny" style="margin-top:8px">ลายเซ็น/รูปที่ย้ายไปที่เก็บไฟล์แล้ว ${R.vaulted} จุด
+        · รูปแนบที่อยู่บนที่เก็บไฟล์แล้ว ${R.stored} ไฟล์ (ทั้งสองอย่างไม่กินพื้นที่ส่วนนี้)
+        ${R.refs?'· ยังอยู่ในข้อมูล '+R.refs+' จุด (เก็บจริง '+R.uniq+' รูป — รูปที่ซ้ำกันเก็บชุดเดียว) ระบบจะย้ายขึ้นให้เองหลังบันทึก':''}</div>
 
       <div class="h3" style="margin-top:22px">รายการที่หนักที่สุด</div>
       ${R.recs.length?R.recs.map(r=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--bd2);font-size:13.5px">
