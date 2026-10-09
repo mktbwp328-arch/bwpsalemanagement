@@ -657,27 +657,31 @@ async function autoCompress(owner,force){
     try{await compressAllImages(IMG_MAX_BYTES);att=await migrateToStorage();total+=att.done||0;}catch(e){STORE_ERR=e.message;}
   }
   /* ลายเซ็น/โลโก้ขึ้นที่เก็บไฟล์ */
+  const msg=[];
   if(force){
     toast('กำลังย้ายลายเซ็นขึ้นที่เก็บไฟล์…');
     await resolveVault();
     const vs=await vaultSync(true);total+=vs.up||0;
-    const msg=[];
     if(att.done)msg.push('ย้ายไฟล์แนบ '+att.done+' ไฟล์');
     if(vs.up)msg.push('ย้ายลายเซ็น/รูป '+vs.up+' รูป');
     if(att.failed)msg.push('ไฟล์แนบย้ายไม่สำเร็จ '+att.failed+' ไฟล์: '+STORE_ERR);
     if(vs.err)msg.push('ย้ายลายเซ็นไม่สำเร็จ: '+vs.err);
-    if(msg.length)askConfirm('ผลการจัดเก็บรูป',msg.join(String.fromCharCode(10)),'ตกลง',()=>{});
+    if(!msg.length)msg.push('ไม่มีรูปที่ย้ายได้เพิ่ม (เข้าระบบ: '+(authed()?'ใช่':'ไม่')
+      +' · ที่เก็บไฟล์: '+(storageOK===false?'ใช้ไม่ได้':storageOK?'ใช้ได้':'ยังไม่ได้ลอง')
+      +' · โหมดดูอย่างเดียว: '+(readOnly()?'ใช่':'ไม่')+')');
   }
   for(const cap of [200*1024,140*1024,90*1024,60*1024,40*1024]){
     if(blobBytes()<LIMIT)break;
     total+=(await compressAllImages(cap)).n;
   }
   /* ระหว่างทำ ถ้าสลับไปดูข้อมูลคนอื่นแล้ว ห้ามบันทึกทับ */
-  if(dataOwner()!==owner)return;
-  if(!total){if(force)toast('ไม่มีรูปที่ย่อหรือย้ายได้เพิ่มแล้ว');return;}
+  if(dataOwner()!==owner)return msg;
+  if(!total)return msg;
   save(true);render();
   const after=blobBytes();
-  if(before-after>300*1024)toast('จัดเก็บรูปให้เล็กลงอัตโนมัติแล้ว · '+mbTxt(before)+' → '+mbTxt(after));
+  if(force)msg.push('ขนาดข้อมูล '+mbTxt(before)+' → '+mbTxt(after));
+  else if(before-after>300*1024)toast('จัดเก็บรูปให้เล็กลงอัตโนมัติแล้ว · '+mbTxt(before)+' → '+mbTxt(after));
+  return msg;
 }
 /* ---------- กันข้อมูลหายเวลาใช้หลายเครื่อง / หลายแท็บ ----------
    เดิม: ตอนบันทึกขึ้นคลาวด์จะเขียนทับทั้งก้อน ถ้าอีกเครื่องเพิ่งบันทึกงานใหม่ไว้
@@ -5254,8 +5258,11 @@ function dataSizeReport(){
   else cp.onclick=async()=>{
     cp.disabled=true;cp.textContent='กำลังจัดเก็บ…';
     compressDone.add(dataOwner());
-    try{await autoCompress(dataOwner(),true);}catch(e){toast(e.message);}
+    let msg=[];
+    try{msg=await autoCompress(dataOwner(),true)||[];}catch(e){msg=['เกิดข้อผิดพลาด: '+e.message];}
     close();dataSizeReport();
+    /* ผลลัพธ์ขึ้นทับหน้าตรวจขนาด (เดิมโดนหน้าตรวจที่เปิดใหม่บังจนมองไม่เห็น) */
+    if(msg.length)askConfirm('ผลการจัดเก็บรูป',msg.join(String.fromCharCode(10)),'ตกลง',()=>{});
   };
   ov.append(m);$('#layer').append(ov);
 }
