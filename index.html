@@ -647,11 +647,26 @@ function offerCompress(){
 async function autoCompress(owner,force){
   const LIMIT=3.5*1024*1024;
   const before=blobBytes();
+  if(force)storageOK=null;                       /* กดเอง: ลองที่เก็บไฟล์ใหม่ทุกครั้ง */
   let total=dropLegacyBranding();
   total+=(await shrinkInlineImages()).n;
   /* รูปแนบที่ยังฝังอยู่ในข้อมูล: ย้ายขึ้นที่เก็บไฟล์ (ข้อมูลเล็กลงมากที่สุด รูปยังคมเท่าเดิม) */
+  let att={done:0,failed:0};
   if((force||blobBytes()>=LIMIT)&&storageOK!==false){
-    try{await compressAllImages(IMG_MAX_BYTES);total+=(await migrateToStorage()).done||0;}catch(e){}
+    STORE_ERR='';
+    try{await compressAllImages(IMG_MAX_BYTES);att=await migrateToStorage();total+=att.done||0;}catch(e){STORE_ERR=e.message;}
+  }
+  /* ลายเซ็น/โลโก้ขึ้นที่เก็บไฟล์ */
+  if(force){
+    toast('กำลังย้ายลายเซ็นขึ้นที่เก็บไฟล์…');
+    await resolveVault();
+    const vs=await vaultSync(true);total+=vs.up||0;
+    const msg=[];
+    if(att.done)msg.push('ย้ายไฟล์แนบ '+att.done+' ไฟล์');
+    if(vs.up)msg.push('ย้ายลายเซ็น/รูป '+vs.up+' รูป');
+    if(att.failed)msg.push('ไฟล์แนบย้ายไม่สำเร็จ '+att.failed+' ไฟล์: '+STORE_ERR);
+    if(vs.err)msg.push('ย้ายลายเซ็นไม่สำเร็จ: '+vs.err);
+    if(msg.length)askConfirm('ผลการจัดเก็บรูป',msg.join(String.fromCharCode(10)),'ตกลง',()=>{});
   }
   for(const cap of [200*1024,140*1024,90*1024,60*1024,40*1024]){
     if(blobBytes()<LIMIT)break;
@@ -1012,11 +1027,16 @@ function resolveVault(){
   return vaultJob;
 }
 /* อัปโหลดรูปใหม่ขึ้นที่เก็บไฟล์ (เบื้องหลัง หลังบันทึกขึ้นคลาวด์สำเร็จ) */
-let vaultSyncBusy=false;
-async function vaultSync(){
-  if(vaultSyncBusy||!authed()||readOnly()||storageOK===false||!(window.crypto&&crypto.subtle))return;
-  const owner=dataOwner(),db=DB;if(!owner||!db)return;
-  vaultSyncBusy=true;let up=0;
+let vaultSyncBusy=false,VAULT_ERR='';
+async function vaultSync(force){
+  if(force)while(vaultSyncBusy)await new Promise(r=>setTimeout(r,300));   /* รอรอบเบื้องหลังที่กำลังทำอยู่ */
+  if(vaultSyncBusy)return {up:0};
+  if(!authed()){VAULT_ERR='ยังไม่ได้เข้าระบบ';return {up:0,err:VAULT_ERR};}
+  if(readOnly())return {up:0};
+  if(!(window.crypto&&crypto.subtle)){VAULT_ERR='เบราว์เซอร์นี้ไม่รองรับ (ต้องเปิดผ่าน https)';return {up:0,err:VAULT_ERR};}
+  if(storageOK===false&&!force)return {up:0,err:VAULT_ERR};
+  const owner=dataOwner(),db=DB;if(!owner||!db)return {up:0};
+  vaultSyncBusy=true;let up=0,left=0;
   try{
     db._vault=db._vault||[];
     const vset=new Set(db._vault),todo=new Set();
@@ -1034,9 +1054,12 @@ async function vaultSync(){
       }
       VAULT.byPath.set(p,v);idbPut(key,v);
     }
-  }catch(e){}
+    left=Math.max(0,todo.size-up);
+    VAULT_ERR='';
+  }catch(e){VAULT_ERR=(e&&e.message)||'อัปโหลดไม่สำเร็จ';}
   finally{vaultSyncBusy=false;}
   if(up&&DB===db&&dataOwner()===owner)save();   /* บันทึกใหม่: รูปที่ขึ้นแล้วเหลือแค่ที่อยู่ไฟล์ */
+  return {up,err:VAULT_ERR};
 }
 window.addEventListener('online',()=>{if(DB)resolveVault();});
 function load(){try{const r=localStorage.getItem(localKey())||localStorage.getItem(KEY);
@@ -3805,6 +3828,7 @@ function allAttachments(){
   (DB.docs||[]).forEach(d=>{add(d.photos);add(d.files);});
   return out;
 }
+let STORE_ERR='';
 async function migrateToStorage(onProgress){
   const todo=allAttachments().filter(j=>j.data&&/^data:/.test(j.data));
   let done=0,failed=0;
@@ -3816,7 +3840,7 @@ async function migrateToStorage(onProgress){
       j.path=await stUpload(blob,ext);
       j.bytes=blob.size;delete j.data;
       done++;
-    }catch(e){failed++;if(storageOK===false)break;}
+    }catch(e){failed++;STORE_ERR=(e&&e.message)||'อัปโหลดไม่สำเร็จ';if(storageOK===false)break;}
     if(onProgress)onProgress(done,todo.length);
   }
   return {done,failed,total:todo.length};
@@ -5212,6 +5236,8 @@ function dataSizeReport(){
       <div class="tiny" style="margin-top:8px">ลายเซ็น/รูปที่ย้ายไปที่เก็บไฟล์แล้ว ${R.vaulted} จุด
         · รูปแนบที่อยู่บนที่เก็บไฟล์แล้ว ${R.stored} ไฟล์ (ทั้งสองอย่างไม่กินพื้นที่ส่วนนี้)
         ${R.refs?'· ยังอยู่ในข้อมูล '+R.refs+' จุด (เก็บจริง '+R.uniq+' รูป — รูปที่ซ้ำกันเก็บชุดเดียว) ระบบจะย้ายขึ้นให้เองหลังบันทึก':''}</div>
+      ${VAULT_ERR||STORE_ERR?`<div class="hint" style="display:block;margin-top:10px;color:#b91c1c;border-color:#fbcaca;background:#fef2f2">
+        ย้ายขึ้นที่เก็บไฟล์ไม่สำเร็จ${VAULT_ERR?'<br>ลายเซ็น: '+esc(VAULT_ERR):''}${STORE_ERR?'<br>ไฟล์แนบ: '+esc(STORE_ERR):''}</div>`:''}
 
       <div class="h3" style="margin-top:22px">รายการที่หนักที่สุด</div>
       ${R.recs.length?R.recs.map(r=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--bd2);font-size:13.5px">
