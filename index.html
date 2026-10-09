@@ -625,7 +625,7 @@ function save(now){
   if(booted&&readOnly()){setSync('readonly');return;}
   DB._t=Date.now();dirtySince=DB._t;                       /* ใช้เทียบว่าข้อมูลในเครื่องใหม่กว่าบนคลาวด์ไหม */
   try{noteIds();}catch(e){}                                /* จำ id ที่มีอยู่ ใช้กันของที่ลบแล้วกลับมา */
-  try{localStorage.setItem(localKey(),JSON.stringify(DB));}
+  try{saveLocalCopy();}
   catch(e){if(booted)toast('พื้นที่ในเครื่องเต็ม — ข้อมูลยังบันทึกขึ้นคลาวด์ตามปกติ');}
   if(!booted)return;
   if(!authed())return;
@@ -825,7 +825,7 @@ async function cloudSave(tries){
         if(cur&&cur.data&&cur.data.customers){
         const added=mergeCloud(cur.data);
         if(added){
-          try{localStorage.setItem(localKey(),JSON.stringify(DB));}catch(e){}
+          try{saveLocalCopy();}catch(e){}
           render();
           toast('พบงานที่บันทึกจากอีกเครื่อง '+added+' รายการ — รวมเข้าด้วยกันให้แล้ว');
         }
@@ -835,7 +835,9 @@ async function cloudSave(tries){
     /* คลังรหัสสินค้าเก็บในตารางกลาง ไม่ต้องใส่มากับข้อมูลส่วนตัวของแต่ละคน */
     const mine=Object.assign({},DB);delete mine.products;
     const stamp=new Date().toISOString();
-    const body=JSON.stringify({user_id:dataOwner(),data:mine,updated_at:stamp});
+    /* รูปที่ซ้ำกันเก็บชุดเดียว (ดู packDB) */
+    const packed=packDB(mine);
+    const body=JSON.stringify({user_id:dataOwner(),data:packed,updated_at:stamp});
     if(body.length>4*1024*1024)offerCompress(body.length);
     await sbFetch('user_data?on_conflict=user_id',{method:'POST',
       headers:Object.assign(sbHeaders(),{Prefer:'resolution=merge-duplicates,return=minimal'}),body});
@@ -885,10 +887,50 @@ async function cloudStamp(userId){
 }
 async function cloudRow(userId){
   const rows=await sbGet('user_data?select=data,updated_at&user_id=eq.'+userId);
+  if(rows&&rows[0])unpackDB(rows[0].data);
   return rows&&rows[0]?rows[0]:null;
 }
+/* ---------- เก็บรูปที่ซ้ำกันไว้ที่เดียว ----------
+   ลายเซ็นคนเดิมอยู่ในเอกสารทุกใบ ใบละหนึ่งชุด (เช่น 197 ลายเซ็นแต่หน้าตาเหมือนกันไม่กี่แบบ) ข้อมูลเลยโตเร็ว
+   ตอนบันทึก (ลงเครื่อง/ขึ้นคลาวด์): รูปที่เหมือนกันเก็บไว้ใน _imgs แค่ชุดเดียว ตรงที่ใช้เหลือแค่ตัวอ้างอิง
+   ตอนโหลด: แตกกลับเป็นรูปเต็มเหมือนเดิม — หน้าจอ งานพิมพ์ และลิงก์เซ็นทำงานแบบเดิมทุกอย่าง */
+const IMG_REF='@@img:';
+function packDB(db){
+  const pool={},ids=new Map();let n=0;
+  const walk=v=>{
+    if(typeof v==='string'){
+      if(v.length>300&&v.startsWith('data:image')){
+        let id=ids.get(v);
+        if(!id){id=(n++).toString(36);ids.set(v,id);pool[id]=v;}
+        return IMG_REF+id;
+      }
+      return v;
+    }
+    if(Array.isArray(v))return v.map(walk);
+    if(v&&typeof v==='object'){const o={};for(const k of Object.keys(v))if(k!=='_imgs')o[k]=walk(v[k]);return o;}
+    return v;
+  };
+  const out=walk(db);
+  if(n)out._imgs=pool;
+  return out;
+}
+function unpackDB(d){
+  if(!d||typeof d!=='object'||!d._imgs)return d;
+  const pool=d._imgs;delete d._imgs;
+  const walk=o=>{
+    for(const k of Object.keys(o)){
+      const v=o[k];
+      if(typeof v==='string'){if(v.startsWith(IMG_REF))o[k]=pool[v.slice(IMG_REF.length)]||'';}
+      else if(v&&typeof v==='object')walk(v);
+    }
+  };
+  walk(d);
+  return d;
+}
+/* สำเนาในเครื่อง (แบบบีบรูปซ้ำแล้ว) */
+function saveLocalCopy(){localStorage.setItem(localKey(),JSON.stringify(packDB(DB)));}
 function load(){try{const r=localStorage.getItem(localKey())||localStorage.getItem(KEY);
-  if(r)return JSON.parse(r);}catch(e){}return null;}
+  if(r)return unpackDB(JSON.parse(r));}catch(e){}return null;}
 
 function seed(){
   /* เริ่มต้นเป็นระบบเปล่า ไม่มีข้อมูลตัวอย่าง — ผู้ใช้ใหม่กรอกของจริงได้เลย */
@@ -1050,7 +1092,7 @@ function recompress(dataUrl,maxBytes){
     img.onerror=()=>res(null);img.src=dataUrl;
   });
 }
-function blobBytes(){const m=Object.assign({},DB);delete m.products;try{return JSON.stringify(m).length;}catch(e){return 0;}}
+function blobBytes(){const m=Object.assign({},DB);delete m.products;try{return JSON.stringify(packDB(m)).length;}catch(e){return 0;}}
 async function compressAllImages(maxBytes){
   const lists=[];
   (DB.customers||[]).forEach(c=>{lists.push(c.photos);if(c.logo)lists.push([{data:c.logo,_c:c}]);});
@@ -3199,7 +3241,7 @@ async function productsPull(force){
     /* จำเวลาแก้ล่าสุดของคลัง ครั้งหน้าถ้าไม่มีใครแก้ จะได้ไม่ต้องดึงทั้งตาราง */
     try{if(newStamp)localStorage.setItem(PRODSTAMP_KEY,newStamp);}catch(e){}
     try{localStorage.setItem(PRODPULL_KEY,String(Date.now()));}catch(e){}
-    try{localStorage.setItem(localKey(),JSON.stringify(DB));}catch(e){}
+    try{saveLocalCopy();}catch(e){}
     return true;
   }catch(e){
     PRODSYNC.err=prodTableMissing(e)
@@ -4977,10 +5019,12 @@ const SIZE_SEC={customers:'ลูกค้า',docs:'เอกสารการ
 const szTxt=n=>n>=1024*1024?(Math.round(n/1024/1024*100)/100)+' MB':n>=1024?Math.round(n/1024)+' KB':n+' B';
 const jsonLen=x=>{try{return JSON.stringify(x).length;}catch(e){return 0;}};
 function sizeReport(){
-  const m=Object.assign({},DB);delete m.products;
+  const raw=Object.assign({},DB);delete raw.products;
+  const m=packDB(raw);
   const total=jsonLen(m);
-  const secs=Object.keys(m).map(k=>({k,name:SIZE_SEC[k]||k,n:jsonLen(m[k])}))
+  const secs=Object.keys(m).map(k=>({k,name:k==='_imgs'?'รูปทั้งหมด (รูปที่ซ้ำกันเก็บชุดเดียว)':(SIZE_SEC[k]||k),n:jsonLen(m[k])}))
     .filter(s=>s.n>=1024).sort((a,b)=>b.n-a.n);
+  const seenImg=new Set(),uses=new Map();let refs=0;
   /* รูปที่ฝังอยู่ในข้อมูล แยกตามชนิด */
   const img={attach:{c:0,n:0,t:'รูป/ไฟล์แนบที่ยังไม่ได้ย้ายขึ้นที่เก็บไฟล์'},sig:{c:0,n:0,t:'ลายเซ็น'},
     logo:{c:0,n:0,t:'โลโก้ลูกค้า / ตรา'},other:{c:0,n:0,t:'รูปอื่น ๆ'}};
@@ -4991,6 +5035,8 @@ function sizeReport(){
       const v=o[k],p=path+'/'+k;
       if(typeof v==='string'){
         if(/^data:/.test(v)){
+          refs++;uses.set(v,(uses.get(v)||0)+1);
+          if(seenImg.has(v))continue;seenImg.add(v);
           const g=/photos|files|attach/i.test(p)?img.attach:/sig|img|approver/i.test(p)?img.sig:/logo|cert/i.test(p)?img.logo:img.other;
           g.c++;g.n+=v.length;
         }
@@ -5000,20 +5046,23 @@ function sizeReport(){
       }
     }
   };
-  walk(m,'',0);
-  /* รายการที่หนักที่สุด */
-  const imgIn=x=>{let n=0;const w=(o,d)=>{if(!o||typeof o!=='object'||d>10)return;
-    for(const k of Object.keys(o)){const v=o[k];if(typeof v==='string'){if(/^data:/.test(v))n+=v.length;}else w(v,d+1);}};w(x,0);return n;};
+  walk(raw,'',0);
+  /* รายการที่หนักที่สุด — นับเฉพาะรูปของรายการนั้นเอง
+     รูปที่ใช้ร่วมกับรายการอื่น (เช่น ลายเซ็นเดียวกันในหลายเอกสาร) เก็บชุดเดียวอยู่แล้ว ไม่นับเป็นภาระของรายการ */
+  const imgIn=x=>{let own=0,shared=0;const s=new Set();const w=(o,d)=>{if(!o||typeof o!=='object'||d>10)return;
+    for(const k of Object.keys(o)){const v=o[k];if(typeof v==='string'){if(/^data:/.test(v)&&!s.has(v)){s.add(v);
+      let inX=0;const c=(q,e)=>{if(!q||typeof q!=='object'||e>10)return;for(const j of Object.keys(q)){const u=q[j];if(u===v)inX++;else if(u&&typeof u==='object')c(u,e+1);}};c(x,0);
+      if((uses.get(v)||0)>inX)shared+=v.length;else own+=v.length;}}else w(v,d+1);}};w(x,0);return {own,shared};};
   const label={customers:c=>'ลูกค้า · '+(c.name||'-'),
     docs:d=>docTypeName(d.type)+' '+(d.no||'')+(d.customer?' · '+d.customer:''),
     pos:p=>'PO '+(p.no||p.poNo||'')+(p.customer?' · '+p.customer:''),
     receipts:r=>'ใบเสร็จ '+(r.no||'')+(r.customer?' · '+r.customer:'')};
   const recs=[];
-  Object.keys(label).forEach(k=>(m[k]||[]).forEach(x=>{if(!x)return;
-    const n=jsonLen(x);if(n<2048)return;
-    recs.push({k,x,t:label[k](x),n,img:imgIn(x)});}));
+  Object.keys(label).forEach(k=>(raw[k]||[]).forEach(x=>{if(!x)return;
+    const im=imgIn(x),n=jsonLen(packDB(x))-im.shared;if(n<2048)return;   /* packDB รวมรูปของรายการนี้ไว้ชุดเดียวแล้ว */
+    recs.push({k,x,t:label[k](x),n,img:im.own});}));
   recs.sort((a,b)=>b.n-a.n);
-  return {total,secs,img,stored,recs:recs.slice(0,15)};
+  return {total,secs,img,stored,refs,uniq:seenImg.size,recs:recs.slice(0,15)};
 }
 function dataSizeReport(){
   const R=sizeReport();
@@ -5043,7 +5092,8 @@ function dataSizeReport(){
       ${Object.values(R.img).filter(g=>g.c).map(g=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:14px;margin-top:8px">
         <span>${esc(g.t)} <span class="tiny">· ${g.c} รูป</span></span><b>${szTxt(g.n)}</b></div>`).join('')
         ||'<div class="tiny" style="margin-top:6px">ไม่มีรูปฝังอยู่ในข้อมูลแล้ว</div>'}
-      <div class="tiny" style="margin-top:8px">รูปแนบที่อยู่บนที่เก็บไฟล์แล้ว ${R.stored} ไฟล์ (ไม่กินพื้นที่ส่วนนี้)</div>
+      <div class="tiny" style="margin-top:8px">ใช้รูปทั้งหมด ${R.refs} จุด แต่เก็บจริงแค่ ${R.uniq} รูป (รูปที่ซ้ำกันเก็บชุดเดียว)
+        · รูปแนบที่อยู่บนที่เก็บไฟล์แล้ว ${R.stored} ไฟล์ (ไม่กินพื้นที่ส่วนนี้)</div>
 
       <div class="h3" style="margin-top:22px">รายการที่หนักที่สุด</div>
       ${R.recs.length?R.recs.map(r=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--bd2);font-size:13.5px">
