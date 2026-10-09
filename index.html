@@ -485,6 +485,7 @@ a{color:var(--blue);text-decoration:none}
     <div style="margin-top:auto;padding:18px 12px 0;display:flex;flex-direction:column;gap:8px">
       <button class="btn sm blk" onclick="pasteCodeModal()" style="background:#1b3f86;border-color:#2a55a8">✍ เซ็นอนุมัติเอกสาร</button>
       <button class="btn gh sm blk admin-only" id="dbBtn" onclick="sbSettings()">ตั้งค่าฐานข้อมูล</button>
+      <button class="btn gh sm blk admin-only" onclick="dataSizeReport()">ตรวจขนาดข้อมูล</button>
       <button class="btn gh sm blk" id="demoBtn" style="display:none" onclick="seedDemo()">สร้างข้อมูลตัวอย่าง</button>
       <button class="btn dg sm blk admin-only" id="clearBtn" onclick="clearAllData()">ล้างข้อมูลทั้งหมด</button>
     </div>
@@ -643,13 +644,13 @@ function offerCompress(){
   compressDone.add(owner);compressBusy=true;
   autoCompress(owner).catch(()=>{}).finally(()=>{compressBusy=false;});
 }
-async function autoCompress(owner){
+async function autoCompress(owner,force){
   const LIMIT=3.5*1024*1024;
   const before=blobBytes();
   let total=dropLegacyBranding();
   total+=(await shrinkInlineImages()).n;
   /* รูปแนบที่ยังฝังอยู่ในข้อมูล: ย้ายขึ้นที่เก็บไฟล์ (ข้อมูลเล็กลงมากที่สุด รูปยังคมเท่าเดิม) */
-  if(blobBytes()>=LIMIT&&storageOK!==false){
+  if((force||blobBytes()>=LIMIT)&&storageOK!==false){
     try{await compressAllImages(IMG_MAX_BYTES);total+=(await migrateToStorage()).done||0;}catch(e){}
   }
   for(const cap of [200*1024,140*1024,90*1024,60*1024,40*1024]){
@@ -657,7 +658,8 @@ async function autoCompress(owner){
     total+=(await compressAllImages(cap)).n;
   }
   /* ระหว่างทำ ถ้าสลับไปดูข้อมูลคนอื่นแล้ว ห้ามบันทึกทับ */
-  if(dataOwner()!==owner||!total)return;
+  if(dataOwner()!==owner)return;
+  if(!total){if(force)toast('ไม่มีรูปที่ย่อหรือย้ายได้เพิ่มแล้ว');return;}
   save(true);render();
   const after=blobBytes();
   if(before-after>300*1024)toast('จัดเก็บรูปให้เล็กลงอัตโนมัติแล้ว · '+mbTxt(before)+' → '+mbTxt(after));
@@ -4965,6 +4967,103 @@ async function saveSignedLinkFile(id,base,forceType){
     if(!row){toast('ไม่พบเอกสาร');return;}
     await saveSheetsFile(linkSheetsFromRow(row,forceType),base);
   }catch(e){toast(e.message);}
+}
+/* ================= ตรวจขนาดข้อมูล =================
+   ดูว่าอะไรกินพื้นที่ในก้อนข้อมูลของบัญชีที่เปิดอยู่มากที่สุด (ขีดจำกัดประมาณ 4.5 MB) */
+const SIZE_LIMIT=4.5*1024*1024;
+const SIZE_SEC={customers:'ลูกค้า',docs:'เอกสารการขาย',pos:'PO ลูกค้า',receipts:'ใบเสร็จรับเงิน',
+  ids:'รายการเลขอ้างอิงที่เคยมี (กันของที่ลบแล้วกลับมา)',roleSigs:'ลายเซ็นประจำตำแหน่ง',mySig:'ลายเซ็นของฉัน',
+  logo:'โลโก้ (แบบเก่า)',cert:'ตรารับรอง (แบบเก่า)',company:'ข้อมูลบริษัท',newcust:'รายชื่อลูกค้าใหม่'};
+const szTxt=n=>n>=1024*1024?(Math.round(n/1024/1024*100)/100)+' MB':n>=1024?Math.round(n/1024)+' KB':n+' B';
+const jsonLen=x=>{try{return JSON.stringify(x).length;}catch(e){return 0;}};
+function sizeReport(){
+  const m=Object.assign({},DB);delete m.products;
+  const total=jsonLen(m);
+  const secs=Object.keys(m).map(k=>({k,name:SIZE_SEC[k]||k,n:jsonLen(m[k])}))
+    .filter(s=>s.n>=1024).sort((a,b)=>b.n-a.n);
+  /* รูปที่ฝังอยู่ในข้อมูล แยกตามชนิด */
+  const img={attach:{c:0,n:0,t:'รูป/ไฟล์แนบที่ยังไม่ได้ย้ายขึ้นที่เก็บไฟล์'},sig:{c:0,n:0,t:'ลายเซ็น'},
+    logo:{c:0,n:0,t:'โลโก้ลูกค้า / ตรา'},other:{c:0,n:0,t:'รูปอื่น ๆ'}};
+  let stored=0;
+  const walk=(o,path,depth)=>{
+    if(!o||typeof o!=='object'||depth>10)return;
+    for(const k of Object.keys(o)){
+      const v=o[k],p=path+'/'+k;
+      if(typeof v==='string'){
+        if(/^data:/.test(v)){
+          const g=/photos|files|attach/i.test(p)?img.attach:/sig|img|approver/i.test(p)?img.sig:/logo|cert/i.test(p)?img.logo:img.other;
+          g.c++;g.n+=v.length;
+        }
+      }else if(v&&typeof v==='object'){
+        if(v.path&&!v.data&&/photos|files/.test(path+'/'+k))stored++;
+        walk(v,p,depth+1);
+      }
+    }
+  };
+  walk(m,'',0);
+  /* รายการที่หนักที่สุด */
+  const imgIn=x=>{let n=0;const w=(o,d)=>{if(!o||typeof o!=='object'||d>10)return;
+    for(const k of Object.keys(o)){const v=o[k];if(typeof v==='string'){if(/^data:/.test(v))n+=v.length;}else w(v,d+1);}};w(x,0);return n;};
+  const label={customers:c=>'ลูกค้า · '+(c.name||'-'),
+    docs:d=>docTypeName(d.type)+' '+(d.no||'')+(d.customer?' · '+d.customer:''),
+    pos:p=>'PO '+(p.no||p.poNo||'')+(p.customer?' · '+p.customer:''),
+    receipts:r=>'ใบเสร็จ '+(r.no||'')+(r.customer?' · '+r.customer:'')};
+  const recs=[];
+  Object.keys(label).forEach(k=>(m[k]||[]).forEach(x=>{if(!x)return;
+    const n=jsonLen(x);if(n<2048)return;
+    recs.push({k,x,t:label[k](x),n,img:imgIn(x)});}));
+  recs.sort((a,b)=>b.n-a.n);
+  return {total,secs,img,stored,recs:recs.slice(0,15)};
+}
+function dataSizeReport(){
+  const R=sizeReport();
+  const pctOf=n=>Math.min(100,Math.round(n/R.total*1000)/10);
+  const full=Math.round(R.total/SIZE_LIMIT*100);
+  const col=full>=90?'#dc2626':full>=75?'#ea580c':'#16a34a';
+  const imgTotal=Object.values(R.img).reduce((a,g)=>a+g.n,0);
+  const bar=(n,of,c)=>`<div style="height:7px;background:#eef2f8;border-radius:4px;overflow:hidden;margin-top:5px">
+    <div style="height:100%;width:${Math.max(1,Math.min(100,n/of*100))}%;background:${c||'var(--blue)'}"></div></div>`;
+  const who=viewingOther()?(AUTH.viewingName||'เพื่อนร่วมทีม'):((AUTH.profile&&AUTH.profile.name)||'บัญชีนี้');
+  const ov=el('<div class="ov"></div>');
+  const m=el(`<div class="modal" style="max-width:680px"><header><div><b>ตรวจขนาดข้อมูล</b>
+      <div class="tiny" style="margin-top:2px">ข้อมูลของ ${esc(who)} · ไม่นับคลังสินค้า (ของกลาง)</div></div>
+      <button class="close">✕</button></header>
+    <div class="mb">
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <div style="font-size:30px;font-weight:700;color:${col}">${szTxt(R.total)}</div>
+        <div class="mut">จากขีดจำกัดประมาณ 4.5 MB · ใช้ไป ${full}%</div></div>
+      ${bar(R.total,SIZE_LIMIT,col)}
+
+      <div class="h3" style="margin-top:22px">แยกตามหมวด</div>
+      ${R.secs.slice(0,10).map(s=>`<div style="margin-top:10px">
+        <div style="display:flex;justify-content:space-between;gap:10px;font-size:14px"><span>${esc(s.name)}</span>
+          <b>${szTxt(s.n)} <span class="tiny" style="font-weight:400">(${pctOf(s.n)}%)</span></b></div>${bar(s.n,R.total)}</div>`).join('')}
+
+      <div class="h3" style="margin-top:22px">รูปที่ฝังอยู่ในข้อมูล — รวม ${szTxt(imgTotal)} (${pctOf(imgTotal)}%)</div>
+      ${Object.values(R.img).filter(g=>g.c).map(g=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:14px;margin-top:8px">
+        <span>${esc(g.t)} <span class="tiny">· ${g.c} รูป</span></span><b>${szTxt(g.n)}</b></div>`).join('')
+        ||'<div class="tiny" style="margin-top:6px">ไม่มีรูปฝังอยู่ในข้อมูลแล้ว</div>'}
+      <div class="tiny" style="margin-top:8px">รูปแนบที่อยู่บนที่เก็บไฟล์แล้ว ${R.stored} ไฟล์ (ไม่กินพื้นที่ส่วนนี้)</div>
+
+      <div class="h3" style="margin-top:22px">รายการที่หนักที่สุด</div>
+      ${R.recs.length?R.recs.map(r=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--bd2);font-size:13.5px">
+        <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.t)}</span>
+        <span style="flex-shrink:0;text-align:right"><b>${szTxt(r.n)}</b>${r.img?`<div class="tiny">เป็นรูป ${szTxt(r.img)}</div>`:''}</span></div>`).join('')
+        :'<div class="tiny">ไม่มีรายการไหนใหญ่เกิน 2 KB</div>'}
+    </div>
+    <footer><button class="btn gh" id="cp">${readOnly()?'':'จัดเก็บรูปให้เล็กลงตอนนี้'}</button>
+      <div style="flex:1"></div><button class="btn" id="dn">ปิด</button></footer></div>`);
+  const close=()=>ov.remove();
+  m.querySelector('.close').onclick=close;m.querySelector('#dn').onclick=close;
+  const cp=m.querySelector('#cp');
+  if(readOnly())cp.remove();
+  else cp.onclick=async()=>{
+    cp.disabled=true;cp.textContent='กำลังจัดเก็บ…';
+    compressDone.add(dataOwner());
+    try{await autoCompress(dataOwner(),true);}catch(e){toast(e.message);}
+    close();dataSizeReport();
+  };
+  ov.append(m);$('#layer').append(ov);
 }
 /* ================= drawer ================= */
 let drawerOpen=null;
