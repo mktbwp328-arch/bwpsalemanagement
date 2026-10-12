@@ -1503,15 +1503,60 @@ function sigCell(label,sig){
     : `<div class="ln"></div><div>${esc(label)}</div><div>(วันที่.../.../...)</div>`;
   return `<div>${sig&&sig.img?line+`<div style="font-size:10px;color:#555">${esc(label)}</div>`:line}</div>`;
 }
-function quoteSheet(d){
+/* ใบเสนอราคาหลายหน้า: รายการยาวเกิน 1 หน้า A4 → แบ่งเป็นหลายแผ่น
+   ทุกแผ่นมีหัวเอกสารครบ รายการเรียงต่อกัน แผ่นสุดท้ายมียอดรวม หมายเหตุ และช่องลายเซ็น
+   วัดความสูงจริงของแต่ละแถว (รายละเอียดหลายบรรทัดก็แบ่งถูก) */
+function quoteSheets(d){
   ensureQuote(d);
+  const all=d.items||[];
+  const stage=el('<div style="position:fixed;left:-10000px;top:0;width:220mm;visibility:hidden"></div>');
+  document.body.append(stage);
+  /* ตารางรายการยังอยู่ในกรอบ ไม่ล้นลงไปทับหมายเหตุ/ลายเซ็น (เผื่อไว้นิดหน่อยเผื่อฟอนต์ยังโหลดไม่เสร็จ) */
+  const fits=opt=>{
+    const s=quoteSheet(d,opt);stage.append(s);
+    s.style.height='297mm';s.style.maxHeight='297mm';
+    /* ตารางถูกยืดเต็มกรอบเสมอ (แถวว่างดูดพื้นที่ที่เหลือ) จึงวัดจากความสูงของแถวจริงแทน */
+    const w=s.querySelector('.itemswrap'),t=s.querySelector('table.items');
+    let need=t.tHead?t.tHead.offsetHeight:0;
+    t.querySelectorAll('tbody tr:not(.fill)').forEach(r=>{need+=r.offsetHeight;});
+    const ok=need<=w.clientHeight-14;
+    s.remove();return ok;
+  };
+  try{
+    if(all.length<=1||fits())return [quoteSheet(d)];
+    const pages=[];let start=0;
+    while(start<all.length){
+      const rest=all.slice(start);
+      if(fits({items:rest,start,last:true})){pages.push({items:rest,start,last:true});start=all.length;break;}
+      let n=1;
+      while(start+n<all.length&&fits({items:all.slice(start,start+n+1),start,last:false}))n++;
+      pages.push({items:all.slice(start,start+n),start,last:false});start+=n;
+    }
+    /* รายการหมดพอดีแผ่นต่อ แต่ไม่มีที่ให้ยอดรวม/ลายเซ็น → เพิ่มแผ่นสุดท้ายไว้สรุป */
+    if(!pages.length||!pages[pages.length-1].last)pages.push({items:[],start:all.length,last:true});
+    /* แผ่นสุดท้ายไม่มีรายการเลย (มีแต่ยอดรวม) ดูแปลก — ย้ายรายการท้ายของแผ่นก่อนหน้ามาไว้ด้วย 1 รายการ */
+    const L=pages[pages.length-1],P=pages[pages.length-2];
+    if(P&&!L.items.length&&P.items.length>1){
+      const moved=P.items[P.items.length-1];
+      if(fits({items:[moved],start:all.length-1,last:true})){
+        P.items=P.items.slice(0,-1);L.items=[moved];L.start=all.length-1;
+      }
+    }
+    return pages.map((p,i)=>quoteSheet(d,Object.assign(p,{page:i+1,pages:pages.length})));
+  }finally{stage.remove();}
+}
+function quoteSheet(d,opt){
+  ensureQuote(d);
+  opt=opt||{};
+  const last=opt.last!==false,start=opt.start||0;
   const co=DB.company,cust=DB.customers.find(c=>c.name===d.customer);
   const adr=(cust&&cust.address||'').split(/\n|,\s*/).filter(Boolean).slice(0,3);
   const sub=qtTotal(d)||(+d.amount||0),vat=sub*.07;
-  const rowsHtml=(d.items.length?d.items:[{name:'',qty:'',unit:'',price:0}]).map((it,i)=>{
+  const list=opt.items?opt.items:(d.items.length?d.items:[{name:'',qty:'',unit:'',price:0}]);
+  const rowsHtml=list.map((it,i)=>{
     const amt=(+it.qty||0)*(+it.price||0);
     const detail=[it.code,it.name].filter(Boolean).join('\n');
-    return `<tr><td class="no">${detail?i+1:''}</td>
+    return `<tr><td class="no">${detail?start+i+1:''}</td>
       <td class="dt">${esc(detail)}</td>
       <td class="qt">${it.qty!==''&&it.qty!=null?num(it.qty)+' '+esc(it.unit||''):''}</td>
       <td class="pr">${it.price?Number(it.price).toLocaleString('th-TH',{minimumFractionDigits:3,maximumFractionDigits:3}):''}</td>
@@ -1531,7 +1576,7 @@ function quoteSheet(d){
       </div>
       <div class="sh-cert">${cert}</div>
     </div>
-    <div class="sh-title">ใบเสนอราคา/Quotation</div>
+    <div class="sh-title" style="position:relative">ใบเสนอราคา/Quotation${opt.pages>1?`<span style="position:absolute;right:0;bottom:2px;font-size:11px;font-weight:400">หน้า ${opt.page}/${opt.pages}</span>`:''}</div>
     <div class="sh-info">
       <div class="col">
         <div class="kv"><span class="k">เรียน</span><span>${esc(d.customer)}</span></div>
@@ -1549,22 +1594,23 @@ function quoteSheet(d){
     <div class="itemswrap"><table class="items">
       <thead><tr><th>No.</th><th>รหัสสินค้า/รายละเอียด</th><th>จำนวน</th><th>ราคา/หน่วย</th><th>จำนวนเงิน</th></tr></thead>
       <tbody>${rowsHtml}<tr class="fill"><td class="no"></td><td></td><td></td><td></td><td></td></tr>
-        <tr class="sum"><td colspan="2" class="nt"></td>
+        ${last?`<tr class="sum"><td colspan="2" class="nt"></td>
           <td colspan="2" class="lb">มูลค่า</td><td class="am">${num(sub)}</td></tr>
         <tr class="sum"><td colspan="2" class="nt"></td>
           <td colspan="2" class="lb">ภาษีมูลค่าเพิ่ม 7%</td><td class="am">${num(vat)}</td></tr>
         <tr class="sum tot"><td colspan="2" class="nt"></td>
-          <td colspan="2" class="lb">รวมมูลค่าทั้งสิ้น</td><td class="am">${num(sub+vat)}</td></tr>
+          <td colspan="2" class="lb">รวมมูลค่าทั้งสิ้น</td><td class="am">${num(sub+vat)}</td></tr>`
+        :`<tr class="sum"><td colspan="5" class="nt" style="text-align:right">มีต่อหน้าถัดไป</td></tr>`}
       </tbody>
     </table></div>
-    <div class="notes"><div class="lbl">หมายเหตุ</div>
+    ${last?`<div class="notes"><div class="lbl">หมายเหตุ</div>
       <div class="body">${noteLines.map(l=>`<div><span>:</span><span>${esc(l)}</span></div>`).join('')}<div><span>:</span><span></span></div></div></div>
     <div style="margin-top:10px">ต้องการสินค้าตามรายการดังกล่าว</div>
     <div class="sign">
       ${sigCell('ผู้อนุมัติสั่งซื้อ',null)}
       ${sigCell('พนักงานขาย',d.sigSales)}
       ${sigCell('ผู้อนุมัติ',d.sigApprover)}
-    </div>
+    </div>`:''}
     <div class="sh-foot">${esc(co.docCode)}</div>
   </div>`);
 }
@@ -1871,7 +1917,7 @@ function sheetsFor(d){
   if(d.type==='requirement')return [requirementSheet(d)];
   if(d.type==='receipt')return [receiptSheet(d)];
   if(d.type==='newcust')return [newCustSheet(d)];
-  return [quoteSheet(d)];
+  return quoteSheets(d);
 }
 /* โหลดฟอนต์เอกสารเมื่อเปิดหน้าพิมพ์ครั้งแรก (ไม่ถ่วงตอนเปิดแอป) */
 let printFontsLoaded=false;
@@ -2359,7 +2405,7 @@ function approveView(p,onlineId){
   if(p.company)DB.company=p.company;if(p.logo)DB.logo=p.logo;if(p.cert)DB.cert=p.cert;
   const cust=DB.customers.find(c=>c.name===p.customer);
   const tmp=!cust&&p.address?(DB.customers.push({id:'__tmp',name:p.customer,address:p.address,timeline:[],photos:[],files:[]}),true):false;
-  const sheet=quoteSheet(doc);
+  const sheets=quoteSheets(doc);
   if(tmp)DB.customers=DB.customers.filter(c=>c.id!=='__tmp');
   DB.company=saveCo;DB.logo=saveLogo;DB.cert=saveCert;
   /* สร้างแผ่นใหม่ที่มีลายเซ็นผู้อนุมัติแล้ว (ใช้ตอนบันทึกหลังเซ็นเสร็จ) */
@@ -2367,7 +2413,7 @@ function approveView(p,onlineId){
     const s0={co:DB.company,lg:DB.logo,ct:DB.cert};
     if(p.company)DB.company=p.company;if(p.logo)DB.logo=p.logo;if(p.cert)DB.cert=p.cert;
     if(tmp)DB.customers.push({id:'__tmp',name:p.customer,address:p.address,timeline:[],photos:[],files:[]});
-    try{return quoteSheet(Object.assign({},doc,{sigApprover:sig}));}
+    try{return quoteSheets(Object.assign({},doc,{sigApprover:sig}));}
     finally{if(tmp)DB.customers=DB.customers.filter(c=>c.id!=='__tmp');DB.company=s0.co;DB.logo=s0.lg;DB.cert=s0.ct;}
   };
   const qBase='ใบเสนอราคา_'+safeFname(p.no);
@@ -2376,8 +2422,8 @@ function approveView(p,onlineId){
   ov.append(el(`<div style="max-width:210mm;margin:0 auto 18px;background:#fff;border-radius:14px;padding:18px 20px">
     <div style="font-size:19px;font-weight:700">อนุมัติใบเสนอราคา ${esc(p.no)}</div>
     <div class="mut">${esc(p.customer)} · ยอด ${num(p.amount)} บาท · ตรวจสอบเอกสารด้านล่าง แล้วเซ็นชื่อเพื่ออนุมัติ</div></div>`));
-  ov.lastChild.append(saveImgBtn(()=>[sheet],qBase,1));
-  ov.append(sheet);
+  ov.lastChild.append(saveImgBtn(()=>sheets,qBase,sheets.length));
+  sheets.forEach(s=>ov.append(s));
 
   const box=el(`<div style="max-width:210mm;margin:18px auto 0;background:#fff;border-radius:14px;padding:20px">
     <div class="h3">ลายเซ็นผู้อนุมัติ</div>
@@ -2411,7 +2457,7 @@ function approveView(p,onlineId){
           time:hhmm(now3),dateText:thaiFullDate(now3),
           name:back.name||'',role:'ผู้อนุมัติใบเสนอราคา',
           line3:'ใบเสนอราคา '+p.no,
-          save:ok?{label:saveLabel(1),fn:()=>saveSheetsFile([signedSheet({img,name:back.name,date:back.date})],qBase)}:null});
+          save:ok?{label:saveLabel(sheets.length),fn:()=>saveSheetsFile(signedSheet({img,name:back.name,date:back.date}),qBase)}:null});
         applySignature(back,true);
         return;
       }catch(e){
