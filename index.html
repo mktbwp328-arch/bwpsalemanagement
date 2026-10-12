@@ -488,6 +488,7 @@ a{color:var(--blue);text-decoration:none}
       <button class="btn gh sm blk admin-only" onclick="dataSizeReport()">ตรวจขนาดข้อมูล</button>
       <button class="btn gh sm blk" id="demoBtn" style="display:none" onclick="seedDemo()">สร้างข้อมูลตัวอย่าง</button>
       <button class="btn dg sm blk admin-only" id="clearBtn" onclick="clearAllData()">ล้างข้อมูลทั้งหมด</button>
+      <div id="appVer" style="text-align:center;font-size:11px;color:#8ea3c7;padding:2px 0 4px"></div>
     </div>
   </aside>
 
@@ -521,6 +522,30 @@ a{color:var(--blue);text-decoration:none}
 <div class="toast" id="toast"></div>
 
 <script>
+/* ================= เวอร์ชันของโปรแกรม =================
+   แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะขึ้นแถบให้กดอัปเดตเอง
+   (ไม่ต้องบอกทุกคนให้กด Ctrl+F5) */
+const APP_VER='2569.10.12-2';
+function checkNewVersion(){
+  fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():'').then(t=>{
+    const m=/const APP_VER='([^']+)'/.exec(t||'');
+    if(!m||m[1]===APP_VER||document.getElementById('verBar'))return;
+    const b=document.createElement('div');b.id='verBar';
+    b.style.cssText='position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:2000;background:#0b2a63;color:#fff;'
+      +'border-radius:14px;padding:12px 16px;display:flex;gap:12px;align-items:center;box-shadow:0 10px 30px rgba(0,0,0,.3);font-size:14px;max-width:92vw';
+    b.innerHTML='<span>มีโปรแกรมเวอร์ชันใหม่</span>';
+    const go=document.createElement('button');go.textContent='อัปเดตเลย';
+    go.style.cssText='background:#fff;color:#0b2a63;border:0;border-radius:10px;padding:8px 14px;font-weight:700;cursor:pointer;font-family:inherit';
+    /* รอให้งานที่ค้างบันทึกขึ้นคลาวด์ก่อน แล้วค่อยโหลดใหม่ */
+    go.onclick=()=>{go.disabled=true;go.textContent='กำลังอัปเดต…';
+      Promise.resolve(typeof syncPending!=='undefined'&&syncPending&&typeof cloudSave==='function'?cloudSave():null)
+        .catch(()=>{}).finally(()=>location.reload());};
+    b.append(go);document.body.append(b);
+  }).catch(()=>{});
+}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkNewVersion();});
+setInterval(checkNewVersion,30*60*1000);
+document.addEventListener('DOMContentLoaded',()=>{const v=document.getElementById('appVer');if(v)v.textContent='เวอร์ชัน '+APP_VER;});
 /* ================= utils ================= */
 const $=(s,r=document)=>r.querySelector(s);
 const el=h=>{const t=document.createElement('template');t.innerHTML=h.trim();return t.content.firstElementChild;};
