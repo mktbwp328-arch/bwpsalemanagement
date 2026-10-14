@@ -525,7 +525,7 @@ a{color:var(--blue);text-decoration:none}
 /* ================= เวอร์ชันของโปรแกรม =================
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะขึ้นแถบให้กดอัปเดตเอง
    (ไม่ต้องบอกทุกคนให้กด Ctrl+F5) */
-const APP_VER='2569.10.12-2';
+const APP_VER='2569.10.14-1';
 function checkNewVersion(){
   fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():'').then(t=>{
     const m=/const APP_VER='([^']+)'/.exec(t||'');
@@ -2391,9 +2391,21 @@ async function shareApproval(d){
   let link=baseUrl()+'#approve='+encodeURIComponent(code),online=false,err='';
   if(sbOn()){
     try{
-      const id=await sbRpc('create_quote_approval',{p_payload:payload});
-      d.approvalId=typeof id==='string'?id:(id&&id.id)||id;
-      save();link=baseUrl()+'#a='+d.approvalId;online=true;
+      /* เคยส่งลิงก์ไปแล้ว เอกสารไม่ได้แก้ และผู้บริหารยังไม่ได้เซ็น → ใช้ลิงก์เดิม
+         (เดิมกดทีไรได้ลิงก์ใหม่ ถ้าผู้บริหารเซ็นลิงก์เก่า ลายเซ็นจะไม่เข้าใบเสนอราคา) */
+      const fp=strHash(JSON.stringify(payload));
+      let reuse=false;
+      if(d.approvalId&&d.approvalFp===fp){
+        try{const pk=await sbRpc('peek_quote_approval',{p_id:d.approvalId});
+          const p=Array.isArray(pk)?pk[0]:pk;reuse=!!(p&&p.status==='pending');}catch(e){}
+      }
+      if(!reuse){
+        const id=await sbRpc('create_quote_approval',{p_payload:payload});
+        d.approvalId=typeof id==='string'?id:(id&&id.id)||id;d.approvalFp=fp;
+        d.approvalSince=new Date().toISOString();   /* ผลอนุมัติ/ไม่อนุมัติที่ตัดสินก่อนส่งลิงก์นี้ ไม่นับแล้ว */
+        save();
+      }
+      link=baseUrl()+'#a='+d.approvalId;online=true;
     }catch(e){err=e.message;}
   }
   const ov=el('<div class="ov"></div>');
@@ -3105,14 +3117,20 @@ async function checkApproval(d,silent){
     try{
       const pk=await sbRpc('peek_quote_approval',{p_id:d.approvalId});
       const p=Array.isArray(pk)?pk[0]:pk;
-      if(p&&p.status==='pending')return 'pending';
+      /* ลิงก์ล่าสุดยังรออยู่ — แต่ลิงก์เก่าอาจเซ็นแล้ว (ค้นครั้งเดียวต่อการเปิดเว็บ) */
+      if(p&&p.status==='pending')return (await findOtherApproval(d,true))||'pending';
     }catch(e){}
   }
   try{
     const rows=await sbRpc('get_quote_approval',{p_id:d.approvalId});
     const row=Array.isArray(rows)?rows[0]:rows;
-    if(!row){if(!silent)toast('ไม่พบคำขออนุมัตินี้ในฐานข้อมูล');return null;}
-    if(row.status==='pending'){if(!silent)toast('ยังรอผู้บริหารเซ็นอยู่');return 'pending';}
+    if(!row||row.status==='pending'){
+      /* ลิงก์ล่าสุดยังไม่มีคนเซ็น — ผู้บริหารอาจเซ็นลิงก์เก่าของเลขที่เดียวกันไว้ */
+      const old=await findOtherApproval(d,silent);
+      if(old)return old;
+      if(!row){if(!silent)toast('ไม่พบคำขออนุมัตินี้ในฐานข้อมูล');return null;}
+      if(!silent)toast('ยังรอผู้บริหารเซ็นอยู่');return 'pending';
+    }
     if(d.sigApprover&&row.status==='approved')return row.status;
     applySignature({no:d.no,ok:row.status==='approved',name:row.approver_name,
       date:(row.decided_at||'').slice(0,10)||today(),img:row.approver_sig},true);
@@ -3121,10 +3139,36 @@ async function checkApproval(d,silent){
     return row.status;
   }catch(e){if(!silent)toast(e.message);return null;}
 }
+/* ค้นทุกลิงก์อนุมัติของเลขที่เอกสารนี้ (ต้องรัน supabase-setup-17.sql)
+   เจอที่ผู้บริหารเซ็นแล้ว → ใช้ลิงก์นั้นแทน แล้วดึงลายเซ็นเข้าใบเสนอราคา
+   ตรวจอัตโนมัติทำครั้งเดียวต่อเอกสารต่อการเปิดเว็บ (ไม่ดึงซ้ำทุกนาที) */
+const FIND_TRIED=new Set();
+async function findOtherApproval(d,silent){
+  if(!authed()||!d.no)return null;
+  if(silent){if(FIND_TRIED.has(d.id))return null;FIND_TRIED.add(d.id);}
+  try{
+    const rows=await sbRpc('find_quote_approvals',{p_doc_no:d.no})||[];
+    const since=d.approvalSince?Date.parse(d.approvalSince):0;
+    const hit=rows.find(r=>r.status!=='pending'&&r.id!==d.approvalId
+      &&(!r.customer||!d.customer||r.customer===d.customer)
+      &&(!since||(r.decided_at&&Date.parse(r.decided_at)>since)));
+    if(!hit)return null;
+    d.approvalId=hit.id;
+    applySignature({no:d.no,ok:hit.status==='approved',name:hit.approver_name,
+      date:(hit.decided_at||'').slice(0,10)||today(),img:hit.approver_sig},true);
+    render();
+    toast(hit.status==='approved'?'พบลายเซ็นผู้บริหารจากลิงก์ที่ส่งไปก่อนหน้า — ใส่ให้แล้ว ✓':'ผู้บริหารไม่อนุมัติเอกสารนี้ (จากลิงก์ที่ส่งไปก่อนหน้า)');
+    return hit.status;
+  }catch(e){return null;}    /* ยังไม่ได้รัน supabase-setup-17.sql ก็ทำงานแบบเดิมต่อไป */
+}
+/* ค่าแฮชสั้น ๆ ของข้อความ ใช้เทียบว่าเอกสารเปลี่ยนไปจากตอนส่งลิงก์หรือยัง */
+function strHash(s){let h=5381;for(let i=0;i<s.length;i++)h=((h<<5)+h+s.charCodeAt(i))|0;return (h>>>0).toString(36)+'.'+s.length;}
 let pollTimer=null;
 function startPolling(d){
   clearInterval(pollTimer);
   if(!d.approvalId||d.sigApprover||!sbOn())return;
+  /* เปิดเอกสารแล้วตรวจทันที ไม่ต้องรอรอบแรก 1 นาที */
+  setTimeout(()=>{if(S.docOpen===d.id&&!d.sigApprover)checkApproval(d,true);},800);
   pollTimer=setInterval(async()=>{
     if(S.page!=='documents'||S.docOpen!==d.id){clearInterval(pollTimer);return;}
     const st=await checkApproval(d,true);
@@ -7600,6 +7644,7 @@ function quoteDetail(v,d){
       async()=>{
         const keep=d.sigApprover;
         d.sigApprover=null;
+        d.approvalSince=new Date().toISOString();   /* ลายเซ็นเก่าจากลิงก์อื่นห้ามกลับมาเอง */
         if(d.status==='อนุมัติแล้ว'||d.status==='ยกเลิก')d.status='ส่งแล้ว';
         d.rejectNote='';
         save(true);render();
@@ -7620,7 +7665,7 @@ function quoteDetail(v,d){
   if(d.approvalId&&!d.sigApprover){
     const w=el(`<div style="margin-top:10px;background:#fff8ee;border:1px solid #fde3bd;border-radius:10px;padding:11px 13px">
       <div style="font-size:13.5px;font-weight:600;color:#b45309">⏳ ส่งให้ผู้บริหารแล้ว รอเซ็นอนุมัติ</div>
-      <div class="tiny" style="margin-top:2px">ระบบเช็คผลให้อัตโนมัติทุก 15 วินาที</div></div>`);
+      <div class="tiny" style="margin-top:2px">ระบบเช็คผลให้อัตโนมัติทุก 1 นาที</div></div>`);
     const rf=el('<button class="btn gh blk" style="margin-top:9px">ตรวจสอบผลอนุมัติเดี๋ยวนี้</button>');
     rf.onclick=()=>checkApproval(d);
     sg.append(w,rf);
