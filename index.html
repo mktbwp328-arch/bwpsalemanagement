@@ -525,11 +525,12 @@ a{color:var(--blue);text-decoration:none}
 /* ================= เวอร์ชันของโปรแกรม =================
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะขึ้นแถบให้กดอัปเดตเอง
    (ไม่ต้องบอกทุกคนให้กด Ctrl+F5) */
-const APP_VER='2569.10.14-1';
+const APP_VER='2569.10.14-2';
 function checkNewVersion(){
   fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():'').then(t=>{
     const m=/const APP_VER='([^']+)'/.exec(t||'');
     if(!m||m[1]===APP_VER||document.getElementById('verBar'))return;
+    if(typeof LINK_MODE!=='undefined'&&LINK_MODE)return;     /* หน้าเซ็นจากลิงก์ ไม่ต้องกวนคนเซ็น */
     const b=document.createElement('div');b.id='verBar';
     b.style.cssText='position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:2000;background:#0b2a63;color:#fff;'
       +'border-radius:14px;padding:12px 16px;display:flex;gap:12px;align-items:center;box-shadow:0 10px 30px rgba(0,0,0,.3);font-size:14px;max-width:92vw';
@@ -725,8 +726,28 @@ function noteIds(){
   DB.ids=[...set];
 }
 const knownIds=()=>new Set(DB.ids||[]);
+/* เอกสารใบเดียวกันอยู่ทั้งสองฝั่ง: ลายเซ็นที่อีกเครื่องได้รับมา แต่เครื่องนี้ยังไม่มี → เติมให้ ไม่ทิ้ง
+   (เดิมใช้ของเครื่องนี้ทั้งใบ ลายเซ็นที่อีกเครื่องเพิ่งได้จากลิงก์จะหายเมื่อเครื่องนี้บันทึกทับ)
+   ยกเว้นลายเซ็นที่เครื่องนี้ตั้งใจลบไปเอง (จดไว้ใน sigDel) */
+function mergeSigsInto(mine,theirs){
+  if(!mine||!theirs||mine===theirs)return;
+  const del=mine.sigDel||{};
+  if(theirs.sigs&&typeof theirs.sigs==='object'){
+    for(const k of Object.keys(theirs.sigs)){
+      const t=theirs.sigs[k];
+      if(!t||del[k]||(mine.sigs&&mine.sigs[k]))continue;
+      mine.sigs=Object.assign({},mine.sigs||{},{[k]:t});
+    }
+  }
+  for(const f of ['sigApprover','sigSales'])
+    if(!mine[f]&&theirs[f]&&theirs[f].img&&!del[f])mine[f]=theirs[f];
+}
+const sigDelMark=(d,k)=>{d.sigDel=Object.assign({},d.sigDel||{},{[k]:Date.now()});};
+const sigDelClear=(d,k)=>{if(d.sigDel&&d.sigDel[k]){d.sigDel=Object.assign({},d.sigDel);delete d.sigDel[k];}};
 function mergeList(mine,theirs,known){
   const out=(mine||[]).slice();
+  const byId=new Map(out.filter(x=>x&&x.id).map(x=>[x.id,x]));
+  (theirs||[]).forEach(x=>{if(x&&x.id&&byId.has(x.id))mergeSigsInto(byId.get(x.id),x);});
   const seen=new Set(out.map(x=>x&&x.id).filter(Boolean));
   /* กันซ้ำอีกชั้นด้วยเลขที่เอกสาร เผื่อ id คนละตัวแต่เป็นใบเดียวกัน */
   const noKey=x=>x&&x.no?String(x.type||'')+'|'+x.no:null;
@@ -2484,7 +2505,15 @@ function approveView(p,onlineId){
     if(onlineId){
       bOk.disabled=bNo.disabled=true;bOk.textContent='กำลังบันทึก…';
       try{
-        await sbRpc('sign_quote_approval',{p_id:onlineId,p_name:back.name,p_sig:img,p_ok:ok});
+        const st=await sbRpc('sign_quote_approval',{p_id:onlineId,p_name:back.name,p_sig:img,p_ok:ok});
+        /* ลิงก์นี้ถูกตัดสินไปก่อนแล้ว ฐานข้อมูลจะไม่บันทึกทับ — บอกตามจริง ไม่ขึ้นว่าเซ็นสำเร็จ */
+        const want=ok?'approved':'rejected';
+        if(typeof st==='string'&&st!==want){
+          bOk.disabled=bNo.disabled=false;bOk.textContent='บันทึกและส่งกลับฝ่ายขาย';
+          askConfirm('ลิงก์นี้ถูกตัดสินไปแล้ว',st==='approved'?'ใบเสนอราคานี้อนุมัติไปแล้ว ไม่ต้องเซ็นซ้ำ'
+            :'ใบเสนอราคานี้ถูกตีกลับไปแล้ว ลายเซ็นจึงยังไม่ถูกบันทึก — ให้ฝ่ายขายส่งลิงก์ใหม่','ตกลง',()=>{});
+          return;
+        }
         ov.remove();
         const now3=new Date();
         signResultScreen({
@@ -2528,8 +2557,8 @@ function approveView(p,onlineId){
 function applySignature(b,silent){
   const d=DB.docs.find(x=>x.no===b.no&&x.type==='quotation');
   if(!d){if(!silent)toast('ไม่พบใบเสนอราคาเลขที่ '+b.no+' ในระบบนี้');return false;}
-  if(b.ok){d.sigApprover={img:b.img,name:b.name,date:b.date};d.status='อนุมัติแล้ว';}
-  else{d.sigApprover=null;d.status='ยกเลิก';d.rejectNote='ผู้บริหารไม่อนุมัติ '+fmtDate(b.date);}
+  if(b.ok){d.sigApprover={img:b.img,name:b.name,date:b.date};d.status='อนุมัติแล้ว';sigDelClear(d,'sigApprover');}
+  else{d.sigApprover=null;sigDelMark(d,'sigApprover');d.status='ยกเลิก';d.rejectNote='ผู้บริหารไม่อนุมัติ '+fmtDate(b.date);}
   save();
   if(!silent){render();toast(b.ok?'รับลายเซ็นผู้บริหารแล้ว — อนุมัติเรียบร้อย':'บันทึกผล: ไม่อนุมัติ');}
   return true;
@@ -2850,8 +2879,11 @@ function customerSignView(row,id){
     bOk.disabled=true;bOk.textContent='กำลังบันทึก…';
     try{
       for(const j of jobs){
-        await sbRpc('add_doc_signature',{p_id:id,p_role:CUST_ROLE_KEY(j.i),p_name:j.name,
+        const res=await sbRpc('add_doc_signature',{p_id:id,p_role:CUST_ROLE_KEY(j.i),p_name:j.name,
           p_sig:j.img,p_ok:true,p_note:j.pos||null,p_roles_required:rolesOf('credit').map(r=>r[0])});
+        /* เช็กว่าลายเซ็นเข้าจริง (ฐานข้อมูลไม่บันทึกให้ถ้าเอกสารถูกตีกลับ หรือช่องนี้มีคนเซ็นแล้ว) */
+        if(res&&res.status==='rejected')throw new Error('เอกสารนี้ถูกตีกลับแล้ว ลายเซ็นยังไม่ถูกบันทึก — แจ้งฝ่ายขาย');
+        if(!(res&&res.sigs&&res.sigs[CUST_ROLE_KEY(j.i)]))throw new Error('ฐานข้อมูลยังไม่ได้รับลายเซ็นของ '+(j.name||'ตำแหน่งที่ '+(j.i+1)));
       }
       /* ข้อ 2 เก็บเป็นข้อมูลแนบ ไม่นับเป็นลายเซ็น */
       if(hasSec2){
@@ -2977,6 +3009,21 @@ function creditSignView(row,id,role){
         p_name:box.querySelector('#an').value.trim()||(locked&&locked.name)||'',p_sig:img,p_ok:ok,
         p_note:rd?JSON.stringify(rd):null,
         p_roles_required:roles.map(r=>r[0])});
+      /* ฐานข้อมูลไม่บันทึกให้ในบางกรณีโดยไม่ขึ้นข้อผิดพลาด — ต้องเช็กเองว่าลายเซ็นเข้าจริง
+         (เดิมขึ้น "เซ็นเรียบร้อยแล้ว" ทั้งที่ลายเซ็นไม่ได้ถูกบันทึก) */
+      const mine=res&&res.sigs&&res.sigs[role];
+      if(ok&&res&&res.already){
+        bOk.disabled=bNo.disabled=false;bOk.textContent=locked?'บันทึกและส่งกลับ':'บันทึกลายเซ็น';
+        askConfirm('ตำแหน่งนี้มีผู้เซ็นไว้แล้ว','"'+roleName(role,type)+'" มีลายเซ็นของ '+((mine&&mine.name)||'ผู้อื่น')
+          +' อยู่แล้ว ระบบจึงไม่ได้บันทึกลายเซ็นนี้ซ้ำ — ถ้าต้องการเซ็นใหม่ ให้ฝ่ายขายลบลายเซ็นเดิมก่อน','ตกลง',()=>{});
+        return;
+      }
+      if(ok&&res&&res.status==='rejected'){
+        bOk.disabled=bNo.disabled=false;bOk.textContent=locked?'บันทึกและส่งกลับ':'บันทึกลายเซ็น';
+        askConfirm('ยังบันทึกลายเซ็นไม่ได้','เอกสารนี้มีผู้กด "ไม่อนุมัติ" ไว้แล้ว ลายเซ็นของท่านจึงยังไม่ถูกบันทึก — แจ้งฝ่ายขายให้แก้ไขแล้วเปิดให้เซ็นใหม่','ตกลง',()=>{});
+        return;
+      }
+      if(ok&&!mine)throw new Error('ฐานข้อมูลยังไม่ได้รับลายเซ็น');
       ov.remove();
       const st=res&&res.status,now=new Date();
       const left=roles.length-Object.keys(res.sigs||{}).length;
@@ -3031,6 +3078,7 @@ function applyCreditSigs(no,sigs,status,silent,type){
   ensureByType(Object.assign(d,{type:d.type||type}));
   /* รวมกับลายเซ็นที่เซ็นไว้ในเครื่อง ไม่ให้ของที่ยังไม่ทันขึ้นคลาวด์หายไป */
   d.sigs=Object.assign({},d.sigs||{},sigs||{});
+  Object.keys(sigs||{}).forEach(k=>sigDelClear(d,k));   /* เซ็นใหม่มาแล้ว ยกเลิกเครื่องหมาย "ลบแล้ว" */
   /* ใบขอตัวอย่าง: ดึงผลการพิจารณา/ข้อเสนอแนะที่ฝ่ายวิจัยกรอกมากับลายเซ็น */
   /* ใบขอเครดิต: ข้อมูลข้อ 2 ที่ลูกค้ากรอกผ่านลิงก์ */
   const ciKey=Object.keys(d.sigs||{}).filter(k=>/^custInfo/.test(k))
@@ -3084,13 +3132,11 @@ async function checkCredit(d,silent){
            (ลองครั้งเดียวต่อสถานะ ไม่ดึงซ้ำทุกนาทีถ้ายังส่งไม่ได้) */
         const extra=have-(+p.signed||0)-(d.type==='sample'&&d.sigs.rd&&!d.sigs.rd.note?1:0);
         const tryKey=p.signed+'|'+have;
-        if((extra>0||d.sigPending)&&SYNC_TRY[d.sigDocId]!==tryKey)SYNC_TRY[d.sigDocId]=tryKey;
-        else{
-          const key=p.status+'|'+p.signed;
-          if((+p.signed||0)<=have&&PEEK_ST[d.sigDocId]!==undefined&&PEEK_ST[d.sigDocId]===key)return p.status;
-          PEEK_ST[d.sigDocId]=key;
-          if((+p.signed||0)<=have&&p.status==='pending')return p.status;
-        }
+        const needPush=(extra>0||d.sigPending)&&SYNC_TRY[d.sigDocId]!==tryKey;
+        if(needPush)SYNC_TRY[d.sigDocId]=tryKey;
+        /* เทียบกับสิ่งที่ดึงลงมาครั้งล่าสุด (สถานะ + จำนวน + เวลาแก้บนคลาวด์)
+           เดิมเทียบจำนวนลายเซ็นในเครื่อง — ถ้าในเครื่องมีลายเซ็นที่คลาวด์ไม่มี ลายเซ็นใหม่จากลิงก์จะถูกข้ามไปตลอด */
+        else if(PEEK_ST[d.sigDocId]===p.status+'|'+p.signed+'|'+(p.updated_at||''))return p.status;
       }
     }catch(e){}   /* ยังไม่ได้ติดตั้งฟังก์ชันนี้ ใช้วิธีเดิมต่อไป */
   }
@@ -3098,6 +3144,10 @@ async function checkCredit(d,silent){
     const rows=await sbRpc('get_doc_signature',{p_id:d.sigDocId});
     const row=Array.isArray(rows)?rows[0]:rows;
     if(!row){if(!silent)toast('ไม่พบเอกสารนี้ในฐานข้อมูล');return null;}
+    PEEK_ST[d.sigDocId]=row.status+'|'+Object.keys(row.sigs||{}).length+'|'+(row.updated_at||'');
+    /* จำว่าใครกดไม่อนุมัติ ไว้แสดงในหน้าเอกสาร */
+    if(row.status==='rejected'){d.rejectBy=row.reject_by||'';d.rejectNote=row.reject_note||'';}
+    else if(d.rejectBy){delete d.rejectBy;}
     const before=Object.keys(d.sigs||{}).length;
     await syncLocalSigs(d,row.sigs);
     applyCreditSigs(d.no,row.sigs,row.status,true,d.type);
@@ -3109,6 +3159,60 @@ async function checkCredit(d,silent){
   }catch(e){if(!silent)toast(e.message);return null;}
 }
 
+/* ---- เอกสารถูก "ไม่อนุมัติ" → เปิดให้เซ็นต่อได้ ----
+   เดิมไม่มีทางแก้: คนที่กดไม่อนุมัติไม่มีลายเซ็นให้ลบ ลิงก์ทุกอันขึ้นว่าถูกปฏิเสธ และลายเซ็นใหม่ไม่ถูกบันทึก
+   ใช้ remove_doc_signature (ลบช่องที่ไม่มีอยู่ = ไม่ลบอะไร แต่รีเซ็ตสถานะกลับเป็นรอเซ็น) ลายเซ็นเดิมอยู่ครบ */
+function rejectedBox(d){
+  if(!d.sigDocId||d.status!=='ยกเลิก'||readOnly())return null;
+  const who=d.rejectBy?roleName(d.rejectBy,d.type):'';
+  const w=el(`<div style="margin-top:12px;background:#fef2f2;border:1px solid #fbcaca;border-radius:10px;padding:11px 13px">
+    <div style="font-size:13.5px;font-weight:600;color:#b91c1c">มีผู้กด "ไม่อนุมัติ" เอกสารนี้${who?' ('+esc(who)+')':''}</div>
+    ${d.rejectNote?`<div class="tiny" style="margin-top:3px">หมายเหตุ: ${esc(d.rejectNote)}</div>`:''}
+    <div class="tiny" style="margin-top:3px">ระหว่างนี้ลิงก์ทุกอันจะเซ็นไม่ได้ — แก้ไขแล้วกดเปิดให้เซ็นต่อ ลายเซ็นที่มีอยู่แล้วไม่หาย</div></div>`);
+  const b=el('<button class="btn blk" style="margin-top:9px">เปิดให้เซ็นต่อ</button>');
+  b.onclick=()=>askConfirm('เปิดให้เซ็นต่อ','ยกเลิกสถานะ "ไม่อนุมัติ" แล้วเปิดให้ทุกลิงก์เซ็นได้อีกครั้ง?','เปิดให้เซ็นต่อ',async()=>{
+    try{
+      const res=await sbRpc('remove_doc_signature',{p_id:d.sigDocId,p_role:'__reopen'});
+      if(res)applyCreditSigs(d.no,res.sigs,res.status,true,d.type);
+      d.status='รออนุมัติ';delete d.rejectBy;delete d.rejectNote;
+      save(true);render();toast('เปิดให้เซ็นต่อแล้ว — ลิงก์เดิมใช้ได้ทันที');
+    }catch(e){toast(/could not find|schema cache|does not exist|ยังไม่ได้ติดตั้ง/i.test(e.message)
+      ?'ยังไม่ได้ติดตั้งส่วนนี้ — ให้ผู้ดูแลรันไฟล์ supabase-setup-10.sql ก่อน':e.message);}
+  });
+  w.append(b);
+  return w;
+}
+/* ---- ตรวจลายเซ็นจากลิงก์ของ "ทุกเอกสารที่ยังรออยู่" เบื้องหลัง ----
+   เดิมลายเซ็นจากลิงก์จะเข้าก็ต่อเมื่อเปิดเอกสารใบนั้นค้างไว้เกิน 1 นาทีเท่านั้น
+   ฝ่ายขายเลยเห็นว่า "เซ็นแล้วไม่ขึ้น" — ตอนนี้ตรวจให้ตอนเปิดโปรแกรม ทุก 5 นาที และตอนกลับมาที่หน้าเว็บ
+   ถามแค่สถานะ (ไม่กี่ไบต์) ดึงเอกสารเต็มเฉพาะใบที่มีอะไรเปลี่ยน */
+let sweepBusy=false,lastSweep=0;
+const sigDone=d=>{const rs=rolesOf(d.type||'credit');return rs.length&&rs.every(r=>d.sigs&&d.sigs[r[0]]&&d.sigs[r[0]].img);};
+async function sweepSignatures(force){
+  if(sweepBusy||!authed()||!sbOn()||!DB||LINK_MODE||readOnly())return;
+  if(!force&&Date.now()-lastSweep<4*60*1000)return;
+  sweepBusy=true;lastSweep=Date.now();
+  const db=DB;
+  try{
+    for(const d of [...(db.docs||[]),...(db.receipts||[])]){
+      if(DB!==db)break;                          /* สลับไปดูข้อมูลคนอื่นแล้ว หยุด */
+      if(!d)continue;
+      if(d.sigDocId&&!sigDone(d))await checkCredit(d,true);
+      if(d.type==='quotation'&&d.approvalId&&!d.sigApprover&&d.status!=='ยกเลิก')await checkApproval(d,true);
+    }
+  }catch(e){}
+  finally{sweepBusy=false;}
+}
+setInterval(()=>sweepSignatures(),5*60*1000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')sweepSignatures();});
+/* เปิดหน้าเอกสาร: ตรวจทันที (กันยิงซ้ำตอนหน้าวาดใหม่บ่อย ๆ — ไม่เกินครั้งละ 20 วินาทีต่อใบ) */
+const OPEN_CHECK={};
+function checkOnOpen(d){
+  const k=d.id||d.no,now=Date.now();
+  if(OPEN_CHECK[k]&&now-OPEN_CHECK[k]<20000)return;
+  OPEN_CHECK[k]=now;
+  setTimeout(()=>{if(d.sigDocId&&!sigDone(d))checkCredit(d,true);},600);
+}
 /* ---- ฝ่ายขายเช็คผลอนุมัติจากฐานข้อมูล ---- */
 async function checkApproval(d,silent){
   if(!d.approvalId||!sbOn())return null;
@@ -3183,18 +3287,22 @@ async function handleHash(){
   const mc=h.match(/^#cc=([0-9a-fA-F-]{36})$/);   /* ลิงก์ให้ลูกค้าเซ็นข้อ 3 */
   const m1=h.match(/^#approve=(.+)$/),m2=h.match(/^#signed=(.+)$/);
   if(!ms&&!mo&&!mc&&!m1&&!m2)return false;
-  history.replaceState(null,'',baseUrl());
+  /* ไม่ลบลิงก์ออกจากแถบที่อยู่แล้ว — เดิมลบทันที ถ้าโหลดไม่ขึ้น/รีเฟรช/กดอัปเดต คนเซ็นจะหลุดไปหน้าเข้าระบบ
+     และลิงก์หายไปเลย ตอนนี้รีเฟรชกี่ครั้งก็กลับมาที่เอกสารเดิม (เซ็นแล้วจะขึ้นว่าเซ็นไปแล้ว) */
+  if(m2)history.replaceState(null,'',baseUrl());
+  LINK_MODE=true;
   if(ms){
     const [,id,role]=ms;
-    if(!Object.values(SIGN_ROLES).some(rs=>rs.some(r=>r[0]===role))){toast('ลิงก์ไม่ถูกต้อง');return false;}
+    if(!Object.values(SIGN_ROLES).some(rs=>rs.some(r=>r[0]===role))){linkErrorScreen('ลิงก์ไม่ถูกต้อง','ลิงก์อาจคัดลอกมาไม่ครบ — ขอลิงก์ใหม่จากฝ่ายขาย',false);return true;}
     toast('กำลังโหลดเอกสาร…');
     try{
       const rows=await sbRpc('get_doc_signature',{p_id:id});
       const row=Array.isArray(rows)?rows[0]:rows;
-      if(!row){toast('ไม่พบเอกสารนี้ หรือลิงก์หมดอายุแล้ว');return false;}
-      if(row.status==='rejected'){toast('เอกสารนี้ถูกปฏิเสธไปแล้ว');return false;}
+      if(!row){linkErrorScreen('ไม่พบเอกสารนี้','ลิงก์อาจถูกยกเลิกไปแล้ว — ขอลิงก์ใหม่จากฝ่ายขาย',false);return true;}
+      if(row.status==='rejected'&&!(row.sigs&&row.sigs[role])){
+        linkErrorScreen('เอกสารนี้ถูกตีกลับแล้ว','มีผู้กด "ไม่อนุมัติ" เอกสารนี้ไว้ จึงยังเซ็นไม่ได้ — แจ้งฝ่ายขายให้แก้ไขแล้วเปิดให้เซ็นใหม่',true);return true;}
       creditSignView(row,id,role);return true;
-    }catch(e){toast(e.message);return false;}
+    }catch(e){linkErrorScreen('โหลดเอกสารไม่สำเร็จ',linkErrText(e),true);return true;}
   }
   if(mc){
     const id=mc[1];
@@ -3202,9 +3310,9 @@ async function handleHash(){
     try{
       const rows=await sbRpc('get_doc_signature',{p_id:id});
       const row=Array.isArray(rows)?rows[0]:rows;
-      if(!row){toast('ไม่พบเอกสารนี้ หรือลิงก์หมดอายุแล้ว');return false;}
+      if(!row){linkErrorScreen('ไม่พบเอกสารนี้','ลิงก์อาจถูกยกเลิกไปแล้ว — ขอลิงก์ใหม่จากฝ่ายขาย',false);return true;}
       customerSignView(row,id);return true;
-    }catch(e){toast(e.message);return false;}
+    }catch(e){linkErrorScreen('โหลดเอกสารไม่สำเร็จ',linkErrText(e),true);return true;}
   }
   if(mo){
     const id=mo[1];
@@ -3212,11 +3320,16 @@ async function handleHash(){
     try{
       const rows=await sbRpc('get_quote_approval',{p_id:id});
       const row=Array.isArray(rows)?rows[0]:rows;
-      if(!row){toast('ไม่พบเอกสารนี้ หรือลิงก์หมดอายุแล้ว');return false;}
+      if(!row){linkErrorScreen('ไม่พบเอกสารนี้','ลิงก์อาจถูกยกเลิกไปแล้ว — ขอลิงก์ใหม่จากฝ่ายขาย',false);return true;}
       if(row.status!=='pending'){
-        toast(row.status==='approved'?'เอกสารนี้อนุมัติไปแล้ว':'เอกสารนี้ถูกปฏิเสธไปแล้ว');return false;}
+        const ok=row.status==='approved',when=new Date(row.decided_at||Date.now());
+        signResultScreen({tone:ok?'ok':'bad',title:ok?'เอกสารนี้อนุมัติไปแล้ว':'เอกสารนี้ถูกตีกลับแล้ว',
+          sub:ok?'ลายเซ็นถูกบันทึกเรียบร้อย ไม่ต้องเซ็นซ้ำ':'ถ้าต้องการอนุมัติ ให้ฝ่ายขายส่งลิงก์ใหม่',
+          time:hhmm(when),dateText:thaiFullDate(when),name:row.approver_name||'',role:'ผู้อนุมัติใบเสนอราคา',
+          line3:'ใบเสนอราคา '+(row.doc_no||'')});
+        return true;}
       approveView(row.payload,id);return true;
-    }catch(e){toast(e.message);return false;}
+    }catch(e){linkErrorScreen('โหลดเอกสารไม่สำเร็จ',linkErrText(e),true);return true;}
   }
   try{
     const p=b64d(decodeURIComponent((m1||m2)[1]));
@@ -3224,6 +3337,24 @@ async function handleHash(){
     applySignature(p);
   }catch(e){toast('ลิงก์ไม่ถูกต้องหรือข้อมูลเสียหาย');}
   return false;
+}
+/* เปิดจากลิงก์เซ็น (ไม่ได้เข้าระบบ) — ไม่ขึ้นแถบอัปเดตเวอร์ชันมากวน */
+let LINK_MODE=false;
+const linkErrText=e=>{const m=(e&&e.message)||'';
+  return /fetch|network|load failed|timeout/i.test(m)?'เชื่อมต่ออินเทอร์เน็ตไม่ได้ — ตรวจสอบสัญญาณแล้วกด "ลองใหม่"'
+    :'สาเหตุ: '+m+' — กด "ลองใหม่" ถ้ายังไม่ได้ ให้ถ่ายภาพหน้าจอนี้ส่งให้ฝ่ายขาย';};
+/* โหลดลิงก์ไม่ได้: แจ้งเต็มจอพร้อมปุ่มลองใหม่ (เดิมขึ้นข้อความสั้น ๆ แล้วตกไปหน้าโปรแกรมว่าง ๆ) */
+function linkErrorScreen(title,msg,canRetry){
+  document.querySelectorAll('.prevov,.ov').forEach(x=>x.remove());
+  const sc=el(`<div style="position:fixed;inset:0;z-index:900;background:linear-gradient(165deg,#14428f,#0a2350);color:#fff;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:28px 22px;text-align:center;font-family:inherit">
+    <div style="font-size:40px">!</div>
+    <div style="font-size:22px;font-weight:700">${esc(title)}</div>
+    <div style="font-size:14.5px;opacity:.8;max-width:420px;line-height:1.6">${esc(msg)}</div>
+    ${canRetry?`<button id="rt" style="margin-top:14px;background:#fff;color:#123f9e;border:0;border-radius:14px;font-size:16px;font-weight:700;
+      padding:14px 0;width:min(300px,86vw);cursor:pointer;font-family:inherit">ลองใหม่</button>`:''}</div>`);
+  if(canRetry)sc.querySelector('#rt').onclick=()=>location.reload();
+  $('#layer').append(sc);
 }
 
 /* ================= อ่านไฟล์ Excel / CSV ================= */
@@ -7338,6 +7469,7 @@ function sigRemoveBtn(d,k,label,s){
     'ลบและขอเซ็นใหม่',async()=>{
       const keep=d.sigs[k];
       delete d.sigs[k];
+      sigDelMark(d,k);                  /* อีกเครื่องที่ยังมีลายเซ็นนี้ จะไม่เติมกลับมา */
       if(d.status==='อนุมัติแล้ว'||d.status==='ยกเลิก')d.status='รออนุมัติ';
       save(true);render();
       if(!d.sigDocId||!sbOn()){toast('ลบลายเซ็นแล้ว');return;}
@@ -7380,7 +7512,7 @@ function signCard(d,onSigned){
       const b=el('<button class="btn gh sm">เซ็นที่เครื่องนี้</button>');
       b.onclick=()=>signModal('เซ็น — '+label,d.no,
         k==='sales'?((mySig()&&mySig().name)||(AUTH.profile&&AUTH.profile.name)||''):'',s2=>{
-        d.sigs=d.sigs||{};d.sigs[k]=s2;
+        d.sigs=d.sigs||{};d.sigs[k]=s2;sigDelClear(d,k);
         if(k==='sales')saveMySig(s2);        /* จำลายเซ็นฝ่ายขายไว้ใช้ครั้งต่อไป */
         if(d.type==='sample'&&k==='rd')saveRoleSig('rd',s2);   /* และของฝ่ายวิจัย */
         if(onSigned)onSigned();
@@ -7394,7 +7526,8 @@ function signCard(d,onSigned){
   if(d.sigDocId){
     const rf=el('<button class="btn gh blk" style="margin-top:9px">ตรวจสอบลายเซ็นล่าสุด</button>');
     rf.onclick=()=>checkCredit(d);sg.append(rf);
-    if(n<roles.length&&sbReady!==false){clearInterval(pollTimer);
+    const rj=rejectedBox(d);if(rj)sg.append(rj);
+    if(n<roles.length&&sbReady!==false){clearInterval(pollTimer);checkOnOpen(d);
       pollTimer=setInterval(()=>{if(!document.body.contains(sg)){clearInterval(pollTimer);return;}checkCredit(d,true);},60000);}
   }
   sg.append(el(`<div class="tiny" style="margin-top:10px">${sbReady===true?'🟢 พร้อมส่งลิงก์ให้เซ็นข้ามเครื่อง'
@@ -7509,7 +7642,7 @@ function creditDetail(v,d){
     if(!done){
       const b=el('<button class="btn gh sm">เซ็นที่เครื่องนี้</button>');
       b.onclick=()=>signModal('เซ็นอนุมัติ — '+label,'ใบขอเครดิต '+d.no,'',s2=>{
-        d.sigs[k]=s2;
+        d.sigs[k]=s2;sigDelClear(d,k);
         if(Object.keys(d.sigs).length===4)d.status='อนุมัติแล้ว';else d.status='รออนุมัติ';
         save();render();toast('บันทึกลายเซ็น '+label+' แล้ว');
         pushLocalSig(d,k,s2);});
@@ -7522,7 +7655,8 @@ function creditDetail(v,d){
   if(d.sigDocId){
     const rf=el('<button class="btn gh blk" style="margin-top:9px">ตรวจสอบลายเซ็นล่าสุด</button>');
     rf.onclick=()=>checkCredit(d);sg.append(rf);
-    if(n<4&&sbReady!==false){clearInterval(pollTimer);
+    const rj=rejectedBox(d);if(rj)sg.append(rj);
+    if(n<4&&sbReady!==false){clearInterval(pollTimer);checkOnOpen(d);
       pollTimer=setInterval(()=>{if(S.docOpen!==d.id){clearInterval(pollTimer);return;}checkCredit(d,true);},60000);}
   }
   sg.append(el(`<div class="tiny" style="margin-top:10px">${sbReady===true?'🟢 พร้อมส่งลิงก์ให้เซ็นข้ามเครื่อง'
@@ -7632,19 +7766,20 @@ function quoteDetail(v,d){
   sg.append(step(1,'ฝ่ายขายเซ็น',d.sigSales,'เซ็นชื่อ',
     ()=>signModal('เซ็นชื่อ — พนักงานขาย','ใบเสนอราคา '+d.no,
       d.salesperson||(mySig()&&mySig().name)||(AUTH.profile&&AUTH.profile.name)||'',s=>{
-      d.sigSales=s;if(!d.salesperson)d.salesperson=s.name;saveMySig(s);
+      d.sigSales=s;sigDelClear(d,'sigSales');if(!d.salesperson)d.salesperson=s.name;saveMySig(s);
       if(d.status==='ร่าง')d.status='ส่งแล้ว';save();render();toast('บันทึกลายเซ็นแล้ว');}),false,
     ()=>askConfirm('ลบลายเซ็นฝ่ายขาย','ลบลายเซ็นของ "'+((d.sigSales&&d.sigSales.name)||'ฝ่ายขาย')+'" ออก?','ลบลายเซ็น',
-      ()=>{d.sigSales=null;save(true);render();toast('ลบลายเซ็นแล้ว');})));
+      ()=>{d.sigSales=null;sigDelMark(d,'sigSales');save(true);render();toast('ลบลายเซ็นแล้ว');})));
   sg.append(step(2,'ผู้บริหารอนุมัติ',d.sigApprover,'เซ็นที่เครื่องนี้',
     ()=>signModal('เซ็นอนุมัติ — ผู้บริหาร','ใบเสนอราคา '+d.no,d.sigApprover&&d.sigApprover.name,s=>{
-      d.sigApprover=s;d.status='อนุมัติแล้ว';save();render();toast('อนุมัติเรียบร้อย');}),!d.sigSales,
+      d.sigApprover=s;d.status='อนุมัติแล้ว';sigDelClear(d,'sigApprover');save();render();toast('อนุมัติเรียบร้อย');}),!d.sigSales,
     ()=>askConfirm('ลบลายเซ็นผู้บริหาร',
       'ลบลายเซ็นอนุมัติออก เพื่อส่งลิงก์ให้ผู้บริหารเซ็นใหม่?\n\nลิงก์เดิมจะกลับมาใช้ได้ทันที ไม่ต้องสร้างใหม่','ลบและขอเซ็นใหม่',
       async()=>{
         const keep=d.sigApprover;
         d.sigApprover=null;
         d.approvalSince=new Date().toISOString();   /* ลายเซ็นเก่าจากลิงก์อื่นห้ามกลับมาเอง */
+        sigDelMark(d,'sigApprover');
         if(d.status==='อนุมัติแล้ว'||d.status==='ยกเลิก')d.status='ส่งแล้ว';
         d.rejectNote='';
         save(true);render();
@@ -8345,6 +8480,7 @@ function loginScreen(msg){
       }
       w.remove();document.querySelector('.app').style.display='';
       await startApp();
+      setTimeout(()=>sweepSignatures(true),4000);
     }catch(e){b.disabled=false;syncMode();err(e.message);}
   };
   w.querySelector('#lgGo').onclick=go;
@@ -8633,6 +8769,7 @@ async function viewUser(id,name,mine){
     S.page='dashboard';S.docOpen=S.poOpen=S.rcOpen=S.profSel=null;
     setSync(readOnly()?'readonly':viewingOther()?'editing':'idle');render();
     autoTidyDone=false;inlineTidyDone=false;setTimeout(autoTidy,2000);
+    setTimeout(()=>sweepSignatures(true),3000);   /* ลายเซ็นจากลิงก์ของเอกสารบัญชีนี้ */
     toast(mine?'กลับมาที่ข้อมูลของคุณแล้ว':'กำลังดูข้อมูลของ '+name+' (แก้ไขไม่ได้)');
   }catch(e){toast(e.message);}
 }
@@ -8755,7 +8892,7 @@ async function boot(){
     DB=load()||seed();migrate();booted=true;
     document.querySelector('.app').style.display='none';
     await handleHash();
-    if(!document.querySelector('.prevov,.ov')){document.querySelector('.app').style.display='';render();}
+    if(!document.querySelector('#layer > *')){document.querySelector('.app').style.display='';render();}
     return;
   }
   try{const s=JSON.parse(localStorage.getItem(AKEY)||'null');
@@ -8766,6 +8903,7 @@ async function boot(){
     try{await sbGet('profiles?select=id&limit=1');}
     catch(e){if(!await refreshSession()){clearSession();loginScreen('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่');return;}}
     await startApp();
+    setTimeout(()=>sweepSignatures(true),4000);   /* ลายเซ็นที่เซ็นผ่านลิงก์ระหว่างปิดโปรแกรม */
   }else loginScreen();
 }
 window.addEventListener('hashchange',handleHash);
