@@ -525,7 +525,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.16-22';
+const APP_VER='2569.10.16-23';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof LINK_MODE!=='undefined'&&LINK_MODE)return false;          /* หน้าเซ็นจากลิงก์ ไม่รีโหลดใส่คนเซ็น */
@@ -4589,10 +4589,7 @@ function ncFindRows(period){
   return Object.values(first)
     /* ใบเสร็จใบแรกของลูกค้ารายนั้นต้องอยู่ในรอบนี้ */
     .filter(x=>x.date>=period.start&&x.date<=period.end)
-    /* และต้องเป็นลูกค้าที่เพิ่งติดต่อเข้ามาในรอบนี้ด้วย — ถ้าติดต่อกันมาก่อนหน้านี้แล้ว
-       ถือว่าเป็นลูกค้าเก่าที่เพิ่งมาซื้อ ไม่ใช่ลูกค้าใหม่ของรอบ */
-    .filter(x=>{const c=findCustomer(x.customer)||(DB.customers||[]).find(y=>custKey(y.name)===custKey(x.customer));
-      return !listOld(custKey(x.customer),x.date)&&!(c&&(c.oldFlag||[]).length)&&(!c||!c.date||c.date>=period.start);})
+    /* ลูกค้าใหม่ = ใบเสร็จใบแรกกับระบบนี้อยู่ในรอบนี้ (ไม่ดูรายชื่อลูกค้าเก่าหรือวันที่ติดต่อ) */
     .sort((a,b)=>String(a.date).localeCompare(String(b.date)))
     .map(x=>{
       const it=(x.items||[])[0]||{};
@@ -6005,15 +6002,12 @@ function buyerSplit(rcs,detail){
   rcs.forEach(r=>{
     const k=custKey(r.customer);if(!k||seen.has(k))return;seen.add(k);
     const b=bi[k]||{n:1,first:r.date};
-    const c=(DB.customers||[]).find(x=>custKey(x.name)===k);
-    /* เหตุผลที่นับเป็นลูกค้าเก่า (ไว้แสดงในรายชื่อ) */
-    const why=listOld(k,b.first)?'อยู่ในรายชื่อลูกค้าเก่าของบริษัท'
-      :(c&&(c.oldFlag||[]).length)?'ติ๊กว่าเป็นลูกค้าเก่า'
-      :on?(!inPeriod(b.first)?'เคยซื้อก่อนช่วงนี้ (ครั้งแรก '+fmtDate(b.first)+')'
-          :(c&&c.date&&!inPeriod(c.date)&&c.date<b.first)?'ติดต่อกันมาก่อนช่วงนี้ ('+fmtDate(c.date)+')':'')
-      :(b.n>=2?'สั่งซื้อซ้ำ '+b.n+' ครั้ง':'');
+    /* ลูกค้าใหม่ = ออกใบเสร็จใบแรกกับระบบนี้ในช่วงนี้ · ลูกค้าเก่า = เคยมีใบเสร็จในระบบก่อนช่วงนี้
+       (ไม่ได้เลือกช่วงวันที่: ซื้อครั้งเดียว = ใหม่ · ซื้อซ้ำ = เก่า) */
+    const why=on?(!inPeriod(b.first)?'เคยออกใบเสร็จก่อนช่วงนี้ (ใบแรก '+fmtDate(b.first)+')':'')
+      :(b.n>=2?'สั่งซื้อซ้ำ '+b.n+' ครั้ง (ใบแรก '+fmtDate(b.first)+')':'');
     why?od++:nw++;
-    if(detail)rows.push({name:r.customer,old:!!why,why:why||('ซื้อครั้งแรก '+fmtDate(b.first)+(r.no?' · ใบเสร็จ '+r.no:''))});
+    if(detail)rows.push({name:r.customer,old:!!why,why:why||('ออกใบเสร็จใบแรก '+fmtDate(b.first)+(r.no?' · ใบเสร็จ '+r.no:''))});
   });
   return detail?rows:{custNew:nw,custOld:od};
 }
@@ -7063,10 +7057,12 @@ function listOld(k,sysFirst){
 }
 function custKind(c,idx){
   const k=custKey(c.name),b=(idx||buyIndex())[k],n=b?b.n:0;
-  if(n>=2)return {kind:'old',old:true,label:'ลูกค้าเก่า',sub:'สั่งซื้อซ้ำ '+n+' ครั้ง · ครั้งแรก '+fmtDate(b.first)};
-  if(listOld(k,b&&b.first))return {kind:'old',old:true,label:'ลูกค้าเก่า',sub:'อยู่ในรายชื่อลูกค้าเก่าของบริษัท'};
+  /* มีใบเสร็จในระบบ: ใบเดียว = ลูกค้าใหม่ · 2 ใบขึ้นไป = ลูกค้าเก่า (สั่งซื้อซ้ำ) */
+  if(n>=2)return {kind:'old',old:true,label:'ลูกค้าเก่า',sub:'สั่งซื้อซ้ำ '+n+' ครั้ง · ใบแรก '+fmtDate(b.first)};
+  if(n===1)return {kind:'new',old:false,label:'ลูกค้าใหม่',sub:'ออกใบเสร็จใบแรก '+fmtDate(b.first)};
+  /* ยังไม่มีใบเสร็จในระบบ: ดูรายชื่อลูกค้าเก่าของบริษัท / ติ๊กเอง */
+  if(listOld(k,''))return {kind:'old',old:true,label:'ลูกค้าเก่า',sub:'อยู่ในรายชื่อลูกค้าเก่าของบริษัท'};
   if((c.oldFlag||[]).length)return {kind:'old',old:true,label:'ลูกค้าเก่า',sub:'ซื้อก่อนเริ่มใช้โปรแกรม'};
-  if(n===1)return {kind:'new',old:false,label:'ลูกค้าใหม่',sub:'ซื้อครั้งแรก '+fmtDate(b.first)};
   if(WON_ST.includes(c.status)||c.status==='ซื้อขายแล้ว')return {kind:'new',old:false,label:'ลูกค้าใหม่',sub:'สถานะ '+c.status};
   return {kind:'lead',old:false,label:'ยังไม่ซื้อ',sub:''};
 }
