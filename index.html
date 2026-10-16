@@ -524,7 +524,7 @@ a{color:var(--blue);text-decoration:none}
 /* ================= เวอร์ชันของโปรแกรม =================
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะขึ้นแถบให้กดอัปเดตเอง
    (ไม่ต้องบอกทุกคนให้กด Ctrl+F5) */
-const APP_VER='2569.10.16-8';
+const APP_VER='2569.10.16-9';
 function checkNewVersion(){
   fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():'').then(t=>{
     const m=/const APP_VER='([^']+)'/.exec(t||'');
@@ -7386,6 +7386,100 @@ function restoreFromLink(){
     }catch(e){toast(e.message);}
   },{okLabel:'กู้เอกสาร'});
 }
+/* ---------- กู้เอกสารทั้งหมดจากคลาวด์ (ผู้ดูแล) ----------
+   ใช้ตอนข้อมูลในบัญชีหาย: ดึงสำเนาเอกสารทุกใบที่เคยส่งลิงก์เซ็น/ส่งอนุมัติ (ต้องรัน supabase-setup-18.sql)
+   เลือกแล้วกู้เข้าบัญชีที่กำลังเปิดอยู่ — เอกสารที่มีอยู่แล้ว (เลขที่+ประเภทเดียวกัน) จะไม่ซ้ำ */
+const recType=r=>r.src==='quote'?'quotation':(r.doc_type||(r.payload&&r.payload.type)||'credit');
+const recSeller=r=>{const p=r.payload||{};
+  return String((p.sigSales&&p.sigSales.name)||p.salesperson||(p.sigs&&p.sigs.sales&&p.sigs.sales.name)
+    ||(r.sigs&&r.sigs.sales&&r.sigs.sales.name)||'').trim();};
+const recTypeName=t=>t==='receipt'?'ใบกำกับภาษี':docTypeName(t);
+function recExists(r){const t=recType(r),no=(r.payload&&r.payload.no)||r.doc_no;
+  return (t==='receipt'?DB.receipts:DB.docs).some(x=>x.no===no&&(t==='receipt'||(x.type||'credit')===t));}
+function recToDoc(r){
+  const p=Object.assign({},r.payload||{}),t=recType(r),no=p.no||r.doc_no||'';
+  if(r.src==='quote'){
+    const d={id:uid(),type:'quotation',no,customer:p.customer||'',contact:p.contact||'',date:p.date||today(),
+      payment:p.payment||'',validDays:p.validDays,items:p.items||[],notes:p.notes||'',amount:+p.amount||0,
+      sigSales:p.sigSales||null,approvalId:r.id,photos:[],files:[],
+      status:r.status==='approved'?'อนุมัติแล้ว':r.status==='rejected'?'ยกเลิก':'ส่งแล้ว'};
+    if(r.status==='approved'&&r.approver_sig)d.sigApprover={img:r.approver_sig,name:r.approver_name||'',date:String(r.decided_at||'').slice(0,10)||today()};
+    ensureQuote(d);return {d,cust:{address:p.address||''}};
+  }
+  const d=Object.assign(p,{id:uid(),type:t,no,sigs:Object.assign({},p.sigs||{},r.sigs||{}),sigDocId:r.id,photos:[],files:[]});
+  const cust=d._cust||{};
+  delete d._cust;delete d._attachN;delete d._roleSigs;delete d.company;delete d.logo;delete d.t;
+  if(t!=='receipt')ensureByType(d);
+  d.status=r.status==='complete'?(t==='receipt'?(d.status||'ออกแล้ว'):'อนุมัติแล้ว'):r.status==='rejected'?'ยกเลิก':(d.status||'รออนุมัติ');
+  return {d,cust};
+}
+async function recoverFromCloud(){
+  if(!isManager()){toast('เฉพาะผู้ดูแลระบบเท่านั้น');return;}
+  if(readOnly()){toast('โหมดดูอย่างเดียว');return;}
+  toast('กำลังดึงรายการเอกสารจากคลาวด์…');
+  let rows;
+  try{rows=await sbRpc('recovery_list_docs',{})||[];}
+  catch(e){toast(/could not find|schema cache|does not exist|ยังไม่ได้ติดตั้ง/i.test(e.message)
+    ?'ยังไม่ได้ติดตั้งส่วนนี้ — ให้ผู้ดูแลรันไฟล์ supabase-setup-18.sql ก่อน':e.message);return;}
+  /* เลขที่+ประเภทเดียวกันมีหลายลิงก์ → ใช้ใบที่เซ็นครบ/อนุมัติแล้วก่อน ไม่งั้นใช้ใบล่าสุด */
+  const best={};
+  rows.forEach(r=>{const k=recType(r)+'|'+((r.payload&&r.payload.no)||r.doc_no);
+    const score=x=>(/approved|complete/.test(x.status)?2:x.status==='pending'?1:0);
+    if(!best[k]||score(r)>score(best[k])||(score(r)===score(best[k])&&String(r.created_at)>String(best[k].created_at)))best[k]=r;});
+  const list=Object.values(best).sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));
+  const who=viewingOther()?(AUTH.viewingName||'บัญชีที่เปิดอยู่'):'บัญชีของฉัน';
+  const ov=el('<div class="ov"></div>');
+  const m=el(`<div class="modal" style="max-width:860px"><header><div><b>กู้เอกสารจากคลาวด์</b>
+      <div class="tiny" style="margin-top:2px">เอกสารที่เคยส่งลิงก์เซ็น/ส่งอนุมัติ ${list.length} ใบ · กู้เข้า <b>${esc(who)}</b></div></div>
+      <button class="close">✕</button></header>
+    <div class="mb">
+      <input id="q" placeholder="ค้นหา ชื่อผู้ขาย / ลูกค้า / เลขที่เอกสาร" style="margin-bottom:10px">
+      <label class="tiny" style="display:flex;gap:6px;align-items:center;margin-bottom:8px"><input type="checkbox" id="all" style="width:auto"> เลือกทั้งหมดที่แสดง (ยกเว้นใบที่มีในบัญชีแล้ว)</label>
+      <div id="rows" style="max-height:52vh;overflow:auto;border:1px solid var(--bd2);border-radius:10px"></div></div>
+    <footer><div class="tiny" id="cnt"></div><div style="flex:1"></div><button class="btn gh" id="c">ปิด</button><button class="btn" id="ok">กู้ที่เลือก</button></footer></div>`);
+  const sel=new Set();
+  const box=m.querySelector('#rows'),q=m.querySelector('#q');
+  const shown=()=>{const s=q.value.trim().toLowerCase();
+    return list.filter(r=>!s||[recSeller(r),(r.payload&&r.payload.customer)||'',r.doc_no||'',recTypeName(recType(r))].join(' ').toLowerCase().includes(s));};
+  const paint=()=>{
+    const sh=shown();
+    box.innerHTML=sh.map((r,i)=>{const t=recType(r),ex=recExists(r),p=r.payload||{};
+      return `<label style="display:flex;gap:10px;align-items:flex-start;padding:9px 12px;border-bottom:1px solid var(--bd2);${ex?'opacity:.5':''}">
+        <input type="checkbox" data-i="${list.indexOf(r)}" ${sel.has(r)?'checked':''} ${ex?'disabled':''} style="width:auto;margin-top:3px">
+        <div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600">${esc(recTypeName(t))} ${esc(p.no||r.doc_no||'')}
+          <span class="tiny" style="font-weight:400">· ${esc(p.customer||'-')}</span></div>
+          <div class="tiny">ผู้ขาย: ${esc(recSeller(r)||'ไม่ระบุ')} · ${esc(fmtDate(p.date||String(r.created_at).slice(0,10)))}
+            · ${r.status==='approved'||r.status==='complete'?'เซ็นครบ/อนุมัติแล้ว':r.status==='rejected'?'ไม่อนุมัติ':'รอเซ็น'}${ex?' · <b>มีในบัญชีแล้ว</b>':''}</div></div></label>`;}).join('')
+      ||'<div class="empty">ไม่พบเอกสาร</div>';
+    box.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.onchange=()=>{const r=list[+cb.dataset.i];cb.checked?sel.add(r):sel.delete(r);count();});
+    count();
+  };
+  const count=()=>{m.querySelector('#cnt').textContent='เลือกแล้ว '+sel.size+' ใบ';};
+  q.oninput=paint;
+  m.querySelector('#all').onchange=e=>{shown().forEach(r=>{if(!recExists(r)){e.target.checked?sel.add(r):sel.delete(r);}});paint();};
+  const close=()=>ov.remove();
+  m.querySelector('.close').onclick=close;m.querySelector('#c').onclick=close;
+  m.querySelector('#ok').onclick=()=>{
+    if(!sel.size){toast('ยังไม่ได้เลือกเอกสาร');return;}
+    askConfirm('กู้เอกสาร','กู้เอกสาร '+sel.size+' ใบเข้า '+who+'?','กู้เอกสาร',()=>{
+      let n=0,nc=0;
+      [...sel].forEach(r=>{
+        if(recExists(r))return;
+        const {d,cust}=recToDoc(r);
+        (d.type==='receipt'?DB.receipts:DB.docs).unshift(d);n++;
+        if(d.customer&&!findCustomer(d.customer)){
+          const c=ensureCustomer(d.customer);
+          if(c){nc++;['address','phone','email','taxId'].forEach(k=>{if(!c[k]&&cust[k])c[k]=cust[k];});
+            if(c.timeline&&c.timeline[0])c.timeline[0].title='กู้จากเอกสารบนคลาวด์';}
+        }
+      });
+      save(true);render();close();
+      toast('กู้เอกสาร '+n+' ใบ'+(nc?' และลูกค้า '+nc+' ราย':'')+' แล้ว');
+    });
+  };
+  paint();
+  ov.append(m);$('#layer').append(ov);
+}
 function openDocSmart(d){go('documents',{docType:d.type,docOpen:d.id});}
 function pgDocuments(v){
   if(S.docOpen){const d=DB.docs.find(x=>x.id===S.docOpen);
@@ -7417,6 +7511,7 @@ function pgDocuments(v){
   });
 
   actionBtn('กู้เอกสารจากลิงก์','up',restoreFromLink,'btn gh');
+  if(isManager()&&!readOnly())actionBtn('กู้เอกสารทั้งหมดจากคลาวด์','up',recoverFromCloud,'btn gh');
   v.append(hint('เลือกประเภทเอกสารได้จากหัวข้อย่อยใต้ "เอกสารการขาย" ในเมนูซ้าย · คลิกที่รายการเพื่อดูหรือแก้ไข'));
 
   const bar=el('<div class="toolbar"></div>');
