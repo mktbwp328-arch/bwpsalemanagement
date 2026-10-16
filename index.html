@@ -525,7 +525,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.16-37';
+const APP_VER='2569.10.16-39';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof LINK_MODE!=='undefined'&&LINK_MODE)return false;          /* หน้าเซ็นจากลิงก์ ไม่รีโหลดใส่คนเซ็น */
@@ -4584,6 +4584,12 @@ function ncSize(it){
   if(w&&t)return cm(w)+' cm x '+t+' mic';
   return String(it.name||'').replace(/\s+/g,' ').trim();
 }
+/* ชนิดสินค้าตามใบเสร็จ: ชื่อสินค้าส่วนหน้าก่อนตัวเลขขนาด เช่น "Plastic Shrink Film 130 CM X 50 MC" → "Plastic Shrink Film" */
+function ncKind(it){
+  const s=String(it.name||'').split('\n')[0].replace(/เกรด\s*\S+/g,'').split(/\d/)[0]
+    .replace(/(ขนาด|size|หน้ากว้าง|กว้าง)\s*[:：]?\s*$/i,'').replace(/[\s,(:\-–]+$/,'').trim();
+  return s||NC_KIND[categoryOf(it.name,it.code)]||'';
+}
 const ncGrade=name=>((String(name||'').match(/เกรด\s*(AB|A|B)/i)||[])[1]||'').toUpperCase();
 /* ลูกค้าที่เพิ่งเริ่มซื้อขายในรอบนี้ — ดูจาก PO และใบเสร็จ ถ้าเคยซื้อก่อนรอบนี้ถือว่าไม่ใช่รายใหม่ */
 /* แถวในบันทึก 1 แถว = ลูกค้า 1 ราย — รวมสินค้าจากใบเสร็จทุกใบของลูกค้ารายนั้นในรอบ
@@ -4592,12 +4598,12 @@ function ncRowFor(customer,rcs){
   const items=[];rcs.forEach(r=>(r.items||[]).forEach(it=>items.push(it)));
   const uniq=a=>[...new Set(a.filter(Boolean))];
   const first=rcs[0]||{};
-  /* ขนาดกับเกรดเป็นคู่กัน — บรรทัดที่ n ของเกรดคือเกรดของขนาดบรรทัดที่ n */
+  /* ชนิด/ขนาด/เกรด เป็นชุดเดียวกัน — บรรทัดที่ n ของแต่ละช่องคือสินค้ารายการเดียวกัน */
   const seen=new Set(),pairs=[];
-  items.forEach(it=>{const s=ncSize(it),g=ncGrade(it.name),k=s.toLowerCase().replace(/\s+/g,'')+'|'+g;
-    if(!s||seen.has(k))return;seen.add(k);pairs.push([s,g]);});
-  return {rcNo:first.no||'',ck:custKey(customer),customer,
-    kind:uniq(items.map(it=>NC_KIND[categoryOf(it.name,it.code)]||'')).join(', '),
+  items.forEach(it=>{const s=ncSize(it),g=ncGrade(it.name),kd=ncKind(it),k=(kd+'|'+s).toLowerCase().replace(/\s+/g,'')+'|'+g;
+    if(!s||seen.has(k))return;seen.add(k);pairs.push([s,g,kd]);});
+  return {rcNo:first.no||'',ck:custKey(customer),customer,kv:2,
+    kind:pairs.map(p=>p[2]).join('\n'),
     size:pairs.map(p=>p[0]).join('\n'),
     grade:pairs.map(p=>p[1]).join('\n')};
 }
@@ -4668,7 +4674,7 @@ function ncRowsEditor(initial){
           <button type="button" class="itdel">✕ ลบแถวนี้</button></div>
         <div class="itl1">
           <label class="itf"><span>ชนิดสินค้า</span>
-            <input class="nckind" placeholder="เช่น Stretch Film" value="${esc(v.kind||'')}"></label>
+            <textarea class="nckind" rows="2" placeholder="เช่น Stretch Film">${esc(v.kind||'')}</textarea></label>
           <label class="itf"><span>รายชื่อลูกค้าที่มีการซื้อขาย</span>
             <input class="nccust" placeholder="ชื่อบริษัทลูกค้า" value="${esc(v.customer||'')}"></label>
         </div>
@@ -4725,14 +4731,19 @@ function ncFillRows(d){
   const lines=s=>String(s||'').split('\n').map(x=>x.trim());
   /* จับคู่ขนาด/เกรดใหม่: ขนาดเดิมคงไว้ เติมเกรดของแต่ละขนาด แล้วต่อด้วยขนาดที่ยังขาด */
   const pairUp=(r,f)=>{
-    const S=lines(r.size).filter(Boolean),G0=lines(r.grade);
-    const fp=lines(f.size).map((s,i)=>[s,lines(f.grade)[i]||'']).filter(p=>p[0]);
+    const S=lines(r.size).filter(Boolean),G0=lines(r.grade),K0=lines(r.kind);
+    const fg=lines(f.grade),fk=lines(f.kind);
+    const fp=lines(f.size).map((s,i)=>[s,fg[i]||'',fk[i]||'']).filter(p=>p[0]);
     const one=G0.length===1&&!/[\/,]/.test(G0[0])?G0[0]:'';
+    /* ชนิดสินค้า: บันทึกเก่า (ยังไม่เคยแยกบรรทัด) ใช้ชื่อตามใบเสร็จ */
+    const keepK=r.kv===2&&K0.length===S.length;
     const out=S.map((s,i)=>{let g=G0.length===S.length?G0[i]:null;
-      if(g==null){const m=fp.find(p=>sk(p[0])===sk(s));g=m?m[1]:one;}
-      return [s,g];});
+      const m=fp.find(p=>sk(p[0])===sk(s)&&(g==null||p[1]===g))||fp.find(p=>sk(p[0])===sk(s));
+      if(g==null)g=m?m[1]:one;
+      const kd=keepK?K0[i]:(m?m[2]:(K0.length===1?K0[0]:''));
+      return [s,g,kd];});
     fp.forEach(p=>{if(!out.some(o=>sk(o[0])===sk(p[0])&&(o[1]===p[1]||!p[1])))out.push(p);});
-    return {size:out.map(o=>o[0]).join('\n'),grade:out.map(o=>o[1]).join('\n')};
+    return {size:out.map(o=>o[0]).join('\n'),grade:out.map(o=>o[1]).join('\n'),kind:out.map(o=>o[2]).join('\n')};
   };
   const addTo=(cur,more,sep)=>{
     const have=String(cur||'').split(sep==='\n'?/\n/:/\s*[,\/]\s*/).map(s=>s.trim()).filter(Boolean);
@@ -4745,9 +4756,10 @@ function ncFillRows(d){
     const k=r.ck||custKey(r.customer);if(!k)return;
     const mine=rcs.filter(x=>custKey(x.customer)===k);if(!mine.length)return;
     const f=ncRowFor(r.customer,mine);
-    const pr=pairUp(r,f),kd=addTo(r.kind,f.kind,', ');
-    if(pr.size!==String(r.size||'')||pr.grade!==String(r.grade||'')){r.size=pr.size;r.grade=pr.grade;changed=true;}
-    if(kd!=null){r.kind=kd;changed=true;}
+    const pr=pairUp(r,f);
+    if(pr.size!==String(r.size||'')||pr.grade!==String(r.grade||'')||pr.kind!==String(r.kind||'')){
+      r.size=pr.size;r.grade=pr.grade;r.kind=pr.kind;changed=true;}
+    if(r.kv!==2){r.kv=2;changed=true;}
     if(!r.ck){r.ck=k;changed=true;}
   });
   return changed;
@@ -4797,7 +4809,7 @@ function newCustSheet(d){
       </tr></thead>
       <tbody>${rows.map((r,i)=>`<tr>
         <td class="c">${i+1}</td><td class="c">${esc(r.customer||'')}</td>
-        <td class="c">${esc(r.kind||'')}</td><td class="c pre">${esc(r.size||'')}</td>
+        <td class="c pre">${esc(r.kind||'')}</td><td class="c pre">${esc(r.size||'')}</td>
         <td class="c pre">${esc(r.grade||'')}</td></tr>`).join('')}</tbody>
     </table>
     <div style="margin:8mm 0 0;text-indent:15mm">จึงเรียนมาเพื่อทราบและโปรดดำเนินการ</div>
@@ -8746,6 +8758,20 @@ function purchaseSummary(c){
   const fmtQ=(q,u)=>q?num(q)+' '+esc(u||''):'-';
   const fmtL=(q,u)=>num(q||0)+' '+esc(u||'');   /* คงเหลือ: 0 ก็แสดง 0.00 */
   const td='padding:6px 8px;border-bottom:1px solid var(--bd2);font-size:13px;white-space:nowrap';
+  /* ตัวกรอง: ค้นหา (รหัส/ชื่อสินค้า/เลขที่ PO/ใบเสร็จ), ช่วงวันที่, สถานะคงเหลือ — จำค่าไว้ใน S.psF */
+  if(!S.psF||S.psF.ck!==ck)S.psF={ck,q:'',from:'',to:'',st:''};const F=S.psF;
+  const fbar=el(`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
+    <input class="psq" placeholder="ค้นหา รหัส / ชื่อสินค้า / เลขที่ PO / ใบเสร็จ" value="${esc(F.q)}" style="flex:1;min-width:200px;border:1px solid var(--bd);border-radius:10px;height:38px;padding:0 10px;font-family:inherit">
+    <input class="psf" type="date" value="${esc(F.from)}" style="border:1px solid var(--bd);border-radius:10px;height:38px;padding:0 10px;font-family:inherit">
+    <span class="tiny">ถึง</span>
+    <input class="pst" type="date" value="${esc(F.to)}" style="border:1px solid var(--bd);border-radius:10px;height:38px;padding:0 10px;font-family:inherit">
+    <select class="pss" style="border:1px solid var(--bd);border-radius:10px;height:38px;padding:0 10px;font-family:inherit">
+      <option value="">ทุกสถานะ</option><option value="left">ยังส่งไม่ครบ (มีคงเหลือ)</option><option value="done">ส่งครบแล้ว</option></select>
+    <button type="button" class="btn gh sm psclr">ล้างตัวกรอง</button>
+    <span class="tiny pscnt"></span></div>`);
+  fbar.querySelector('.pss').value=F.st;
+  card.append(fbar);
+  const boxes=[];
   [...prods.values()].forEach(g=>{
     g.lines.sort((a,b)=>(a.free?1:0)-(b.free?1:0)||String(a.date).localeCompare(String(b.date)));
     let rows='',tOrder=0,tDel=0,tLeft=0,sameUnit=true;const u0=(g.lines.find(l=>!l.free)||{}).unit||'';
@@ -8753,7 +8779,7 @@ function purchaseSummary(c){
       l.dels.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
       let left=l.order;
       if(!l.free){tOrder+=l.order;if(l.unit!==u0)sameUnit=false;
-        rows+='<tr style="background:#f8fbff"><td style="'+td+';color:#b91c1c">'+esc(fmtDate(l.date))+'</td><td style="'+td+'">'+esc(l.no)+'</td><td style="'+td+';text-align:right">'+fmtQ(l.order,l.unit)
+        rows+='<tr data-d="'+esc(l.date)+'" data-t="'+esc(l.no.toLowerCase())+'" style="background:#f8fbff"><td style="'+td+';color:#b91c1c">'+esc(fmtDate(l.date))+'</td><td style="'+td+'">'+esc(l.no)+'</td><td style="'+td+';text-align:right">'+fmtQ(l.order,l.unit)
           +'</td><td style="'+td+';text-align:right">-</td><td style="'+td+';text-align:right">'+fmtQ(l.order,l.unit)+'</td><td style="'+td+';text-align:right">'+(l.price?num(l.price):'')+'</td><td style="'+td+'"></td></tr>';}
       else rows+='<tr><td colspan="7" style="'+td+';color:var(--mut)">ใบเสร็จที่ไม่ได้อ้างอิง PO</td></tr>';
       l.dels.forEach(d=>{
@@ -8763,21 +8789,48 @@ function purchaseSummary(c){
           if(a.kg!=null&&b.kg!=null&&b.kg>0&&isKgUnit(l.unit))sent=a.kg;else ok=false;}
         if(!l.free&&ok)left=Math.max(0,left-sent);
         tDel+=ok?sent:0;
-        rows+='<tr><td style="'+td+'">'+esc(fmtDate(d.date))+'</td><td style="'+td+'">ใบเสร็จ '+esc(d.no)+'</td><td style="'+td+';text-align:right">'
+        rows+='<tr data-d="'+esc(d.date)+'" data-t="'+esc((d.no+' '+d.inv).toLowerCase())+'"><td style="'+td+'">'+esc(fmtDate(d.date))+'</td><td style="'+td+'">ใบเสร็จ '+esc(d.no)+'</td><td style="'+td+';text-align:right">'
           +(d.unit!==l.unit&&!l.free?fmtQ(d.qty,d.unit):'')+'</td><td style="'+td+';text-align:right">'+(ok?fmtQ(sent,l.free?d.unit:l.unit):fmtQ(d.qty,d.unit))
           +'</td><td style="'+td+';text-align:right">'+(l.free?'':(ok?fmtL(left,l.unit):'-'))+'</td><td style="'+td+';text-align:right">'+(d.price?num(d.price):'')
           +'</td><td style="'+td+';font-weight:600">'+esc(d.inv&&d.inv!==d.no?d.inv:'')+(d.auto?'<span class="tiny" style="font-weight:400;margin-left:6px">(จับคู่ PO ให้อัตโนมัติ)</span>':'')+'</td></tr>';
       });
       if(!l.free)tLeft+=left;
     });
-    card.append(el(`<div style="margin-top:14px;border:1px solid var(--bd);border-radius:12px;overflow:hidden">
+    const hasPo=g.lines.some(l=>!l.free);
+    const bx=el(`<div style="margin-top:14px;border:1px solid var(--bd);border-radius:12px;overflow:hidden">
       <div style="display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;padding:10px 12px;background:#eef4ff;border-bottom:1px solid var(--bd)">
         <b style="font-size:15px">${esc(g.code||'-')}</b><span style="font-size:14px">${esc(String(g.name).split('\n')[0])}</span>
         ${sameUnit&&u0?`<span class="tiny" style="margin-left:auto">สั่งรวม ${fmtQ(tOrder,u0)} · ส่งแล้ว ${fmtQ(tDel,u0)} · <b style="color:${tLeft>0?'#b45309':'#15803d'}">คงเหลือ ${fmtL(tLeft,u0)}</b></span>`:''}</div>
       <div style="overflow:auto"><table style="width:100%;border-collapse:collapse">
         <thead><tr style="background:#f9fafb">${['วันที่','เลขที่ PO / ใบเสร็จ','สั่ง','ยอดส่ง','คงเหลือ','ราคา','หมายเหตุ'].map((t,i)=>'<th style="'+td+';text-align:'+(i>=2&&i<=5?'right':'left')+';font-weight:600">'+t+'</th>').join('')}</tr></thead>
-        <tbody>${rows}</tbody></table></div></div>`));
+        <tbody>${rows}</tbody></table></div></div>`);
+    boxes.push({bx,text:(g.code+' '+g.name).toLowerCase(),left:tLeft,hasPo});
+    card.append(bx);
   });
+  const nores=el('<div class="empty" style="display:none">ไม่พบรายการตามตัวกรอง</div>');card.append(nores);
+  const apply=()=>{
+    const q=F.q.trim().toLowerCase();let n=0;
+    boxes.forEach(b=>{
+      const trs=[...b.bx.querySelectorAll('tbody tr[data-d]')];
+      /* ช่วงวันที่: ซ่อนแถวที่อยู่นอกช่วง */
+      let inDate=0;
+      trs.forEach(tr=>{const d=tr.dataset.d;const ok=(!F.from||(d&&d>=F.from))&&(!F.to||(d&&d<=F.to));tr.style.display=ok?'':'none';if(ok)inDate++;});
+      const mq=!q||b.text.includes(q)||trs.some(tr=>tr.dataset.t.includes(q));
+      const ms=!F.st||(F.st==='left'?b.hasPo&&b.left>0.0001:b.hasPo&&b.left<=0.0001);
+      const show=mq&&ms&&(inDate>0||(!F.from&&!F.to));
+      b.bx.style.display=show?'':'none';if(show)n++;
+    });
+    nores.style.display=n?'none':'';
+    const filtered=F.q||F.from||F.to||F.st;
+    fbar.querySelector('.pscnt').textContent=filtered?'แสดง '+n+' จาก '+boxes.length+' สินค้า':boxes.length+' สินค้า';
+  };
+  fbar.querySelector('.psq').oninput=e=>{F.q=e.target.value;apply();};
+  fbar.querySelector('.psf').onchange=e=>{F.from=e.target.value;apply();};
+  fbar.querySelector('.pst').onchange=e=>{F.to=e.target.value;apply();};
+  fbar.querySelector('.pss').onchange=e=>{F.st=e.target.value;apply();};
+  fbar.querySelector('.psclr').onclick=()=>{Object.assign(F,{q:'',from:'',to:'',st:''});
+    fbar.querySelector('.psq').value='';fbar.querySelector('.psf').value='';fbar.querySelector('.pst').value='';fbar.querySelector('.pss').value='';apply();};
+  apply();
   return card;
 }
 function pgProfiles(v){
