@@ -525,7 +525,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.16-11';
+const APP_VER='2569.10.16-12';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof LINK_MODE!=='undefined'&&LINK_MODE)return false;          /* หน้าเซ็นจากลิงก์ ไม่รีโหลดใส่คนเซ็น */
@@ -2615,7 +2615,10 @@ async function shareCredit(d){
         <div style="font-size:14px;font-weight:600">${esc(label)}</div>
         ${done
           ? `<div class="tiny" style="color:#15803d">เซ็นแล้ว · ${esc(s.name||'')} · ${fmtDate(s.date)}</div>
-             <img src="${imgSrc(s.img)}" style="max-height:42px;margin-top:7px;display:block">`
+             <img src="${imgSrc(s.img)}" style="max-height:42px;margin-top:7px;display:block">
+             ${d.type==='sample'&&k==='rd'?`<div class="tiny" style="margin-top:8px">ต้องการให้ฝ่ายวิจัยแก้ไขผลการพิจารณา/ข้อเสนอแนะ — ส่งลิงก์เดิมนี้ได้เลย</div>
+             <textarea rows="2" readonly data-k="${k}" style="font-size:11.5px;margin-top:6px">${esc(baseUrl()+'#s='+d.sigDocId+'&r='+k)}</textarea>
+             <button class="btn gh sm cp" data-k="${k}" style="margin-top:6px;width:150px">คัดลอกลิงก์</button>`:''}`
           : `<div class="tiny">${needRd&&s&&s.img?'ลายเซ็นพร้อมแล้ว — ส่งลิงก์ให้กรอกผลการพิจารณาและข้อเสนอแนะ':'ยังไม่ได้เซ็น — ส่งลิงก์นี้ให้ท่านนี้'}</div>
              <textarea rows="2" readonly data-k="${k}" style="font-size:11.5px;margin-top:6px">${esc(baseUrl()+'#s='+d.sigDocId+'&r='+k)}</textarea>
              <button class="btn gh sm cp" data-k="${k}" style="margin-top:6px;width:150px">คัดลอกลิงก์</button>`}
@@ -2910,7 +2913,7 @@ function creditSignView(row,id,role){
     try{const o=JSON.parse(d.sigs.rd.note);
       if(o&&typeof o==='object'){
         if(o.canMake)d.canMake=o.canMake;
-        if(o.suggestion)d.suggestion=o.suggestion;}
+        if(typeof o.suggestion==='string')d.suggestion=o.suggestion;}
     }catch(e){}
   }
   const saveCo=DB.company,saveLogo=DB.logo;
@@ -2940,6 +2943,40 @@ function creditSignView(row,id,role){
   ov.lastChild.append(saveImgBtn(()=>sheets,fBase,sheets.length));
   sheets.forEach(s=>ov.append(s));
 
+  /* ใบขอตัวอย่าง: ฝ่ายวิจัยเซ็นแล้ว เปิดลิงก์เดิมเพื่อแก้ไขผลการพิจารณา/ข้อเสนอแนะได้ (ลายเซ็นเดิมคงไว้) */
+  if(done&&type==='sample'&&role==='rd'&&row.sigs.rd.ok!==false&&row.status!=='rejected'){
+    let cur={};try{cur=JSON.parse(row.sigs.rd.note||'{}')||{};}catch(e){}
+    const CANS=['สามารถจัดทำผลิตภัณฑ์','ไม่สามารถจัดทำผลิตภัณฑ์ได้'];
+    const eb=el(`<div style="max-width:210mm;margin:18px auto 0;background:#fff;border-radius:14px;padding:20px">
+      <div class="h3">แก้ไขผลการพิจารณา — ${esc(roleName(role,type))}</div>
+      <div class="tiny" style="margin-bottom:12px">เซ็นไว้แล้ว${row.sigs.rd.name?' โดย '+esc(row.sigs.rd.name):''}${row.sigs.rd.edited?' · แก้ไขล่าสุด '+esc(row.sigs.rd.edited):''} — แก้ไขแล้วกดบันทึก ลายเซ็นเดิมไม่เปลี่ยน</div>
+      <div class="field" style="margin-bottom:14px"><label>ผลการพิจารณา <span class="rq">*</span></label>
+        <div class="optrow" id="can">${CANS.map(o=>`<button type="button" class="opt ${cur.canMake===o?'on':''}" data-v="${esc(o)}"><span class="bx">${cur.canMake===o?'✓':''}</span>${esc(o)}</button>`).join('')}</div></div>
+      <div class="field" style="margin-bottom:14px"><label>ข้อเสนอแนะ</label>
+        <textarea id="sg" rows="3">${esc(cur.suggestion||'')}</textarea></div>
+      <button class="btn blk" id="sv">บันทึกการแก้ไข</button></div>`);
+    const cr=eb.querySelector('#can');
+    cr.querySelectorAll('.opt').forEach(b=>b.onclick=()=>{
+      cr.querySelectorAll('.opt').forEach(x=>{x.classList.remove('on');x.querySelector('.bx').textContent='';});
+      b.classList.add('on');b.querySelector('.bx').textContent='✓';});
+    const sv=eb.querySelector('#sv');
+    sv.onclick=async()=>{
+      const rd={canMake:(cr.querySelector('.opt.on')||{dataset:{}}).dataset.v||'',suggestion:eb.querySelector('#sg').value.trim()};
+      if(!rd.canMake){toast('กรุณาเลือกผลการพิจารณา');return;}
+      sv.disabled=true;sv.textContent='กำลังบันทึก…';
+      try{
+        const res=await sbRpc('update_rd_note',{p_id:id,p_note:JSON.stringify(rd)});
+        if(!(res&&res.sigs&&res.sigs.rd&&res.sigs.rd.note===JSON.stringify(rd)))throw new Error('ฐานข้อมูลยังไม่ได้รับการแก้ไข');
+        const now=new Date();
+        signResultScreen({tone:'ok',title:'แก้ไขผลการพิจารณาแล้ว',sub:'ส่งกลับให้ฝ่ายขายเรียบร้อย',
+          time:hhmm(now),dateText:thaiFullDate(now),name:row.sigs.rd.name||'',role:roleName(role,type),
+          line3:title+' '+d.no+' · '+rd.canMake});
+      }catch(e){sv.disabled=false;sv.textContent='บันทึกการแก้ไข';
+        signSaveError(/could not find|schema cache|does not exist/i.test(e.message)?new Error('ระบบยังไม่รองรับการแก้ไข — แจ้งฝ่ายขายให้ผู้ดูแลรันไฟล์ supabase-setup-19.sql'):e);}
+    };
+    ov.append(eb);$('#layer').append(ov);
+    return;
+  }
   if(done){
     const s0=row.sigs[role],when=new Date(s0.date||row.updated_at||Date.now());
     signResultScreen({
@@ -3102,7 +3139,7 @@ function applyCreditSigs(no,sigs,status,silent,type){
     try{const o=JSON.parse(d.sigs.rd.note);
       if(o&&typeof o==='object'){
         if(o.canMake)d.canMake=o.canMake;
-        if(o.suggestion)d.suggestion=o.suggestion;}
+        if(typeof o.suggestion==='string')d.suggestion=o.suggestion;}
     }catch(e){}
   }
   const isRc=d.type==='receipt'||DB.receipts.includes(d);
@@ -5395,7 +5432,7 @@ function linkSheetsFromRow(row,forceType){
   const type=forceType||row.doc_type||(row.payload&&row.payload.type)||'credit';
   const d=ensureByType(Object.assign({},row.payload,{type,sigs:row.sigs||{}}));
   if(type==='sample'&&d.sigs&&d.sigs.rd&&d.sigs.rd.note){
-    try{const o=JSON.parse(d.sigs.rd.note);if(o&&typeof o==='object'){if(o.canMake)d.canMake=o.canMake;if(o.suggestion)d.suggestion=o.suggestion;}}catch(e){}
+    try{const o=JSON.parse(d.sigs.rd.note);if(o&&typeof o==='object'){if(o.canMake)d.canMake=o.canMake;if(typeof o.suggestion==='string')d.suggestion=o.suggestion;}}catch(e){}
   }
   const saveCo=DB.company,saveLogo=DB.logo;
   if(d.company)DB.company=d.company;if(d.logo)DB.logo=d.logo;
