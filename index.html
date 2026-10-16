@@ -525,7 +525,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.16-35';
+const APP_VER='2569.10.16-36';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof LINK_MODE!=='undefined'&&LINK_MODE)return false;          /* หน้าเซ็นจากลิงก์ ไม่รีโหลดใส่คนเซ็น */
@@ -6371,7 +6371,7 @@ function pgDashboard(v){
   [['ยอดขายรวม (จากใบเสร็จ)',num0(Math.round(total))+' ฿',rcs.length+' ใบเสร็จในช่วงนี้','receipts',{rcFilter:'ทั้งหมด',rcY:'',rcM:'',rcFrom:'',rcTo:''}],
    ['รับชำระแล้ว',num0(Math.round(paid))+' ฿',rcs.filter(r=>r.status==='ชำระแล้ว').length+' ใบ','receipts',{rcFilter:'ชำระแล้ว',rcY:'',rcM:'',rcFrom:'',rcTo:''}],
    ['รอเก็บเงิน',num0(Math.round(unpaid))+' ฿',rcs.filter(r=>r.status!=='ชำระแล้ว').length+' ใบที่ยังไม่ครบ','receipts',{rcFilter:'รอชำระ',rcY:'',rcM:'',rcFrom:'',rcTo:''}],
-   ['ลูกค้าปิดการขาย / ซื้อแล้ว',statsOf(DB).custCB+' ราย','ปิดการขาย '+statsOf(DB).custClosed+' · ซื้อแล้ว '+statsOf(DB).custBought+' ราย · ยอดในมือ '+num0(Math.round(pendSum))+' ฿',null,null]
+   ['ลูกค้าปิดการขาย / ซื้อแล้ว',statsOf(DB).custCB+' ราย','ปิดการขาย '+statsOf(DB).custClosed+' · ซื้อแล้ว '+statsOf(DB).custBought+' ราย',null,null]
   ].forEach(([t,val,sub,page,extra])=>{
     const c=el(`<div class="card pad" style="cursor:pointer;transition:.15s">
       <div class="mut">${esc(t)}</div><div style="font-size:26px;font-weight:700;margin-top:4px">${val}</div>
@@ -6606,7 +6606,7 @@ function pgTeam(v){
   [['ยอดขายรวม (จากใบเสร็จ)',num0(Math.round(T('total')))+' ฿',T('rcN')+' ใบเสร็จ'],
    ['รับชำระแล้ว',num0(Math.round(T('paid')))+' ฿','เก็บเงินเรียบร้อย'],
    ['รอเก็บเงิน',num0(Math.round(T('unpaid')))+' ฿','ยังไม่ครบ'],
-   ['ลูกค้าปิดการขาย / ซื้อแล้ว',(T('custCB')||0)+' ราย','ปิดการขาย '+(T('custClosed')||0)+' · ซื้อแล้ว '+(T('custBought')||0)+' ราย · ยอดในมือ '+num0(Math.round(T('pendSum')))+' ฿']
+   ['ลูกค้าปิดการขาย / ซื้อแล้ว',(T('custCB')||0)+' ราย','ปิดการขาย '+(T('custClosed')||0)+' · ซื้อแล้ว '+(T('custBought')||0)+' ราย']
   ].forEach(([t,val,sub])=>kp.append(el(`<div class="card pad">
     <div class="mut">${esc(t)}</div><div style="font-size:26px;font-weight:700;margin-top:4px">${esc(val)}</div>
     <div class="tiny" style="margin-top:8px">${esc(sub)}</div></div>`)));
@@ -6649,7 +6649,7 @@ function pgTeam(v){
         <b style="white-space:nowrap">${num0(Math.round(r.st.total))} ฿</b></div>
       <div style="height:9px;background:#eef2f8;border-radius:99px;overflow:hidden">
         <div style="width:${(r.st.total/mxT*100).toFixed(0)}%;height:100%;background:${on?'#1d4ed8':'#2563eb'};transition:width .3s"></div></div>
-      <div class="tiny" style="margin-top:5px">ใบเสนอราคา ${r.st.quoteN} · PO ${r.st.poN} · ใบเสร็จ ${r.st.rcN} · ลูกค้า ${r.st.custN} ราย · ยอดในมือ ${num0(Math.round(r.st.pendSum))} ฿</div></div>`);
+      <div class="tiny" style="margin-top:5px">ใบเสนอราคา ${r.st.quoteN} · PO ${r.st.poN} · ใบเสร็จ ${r.st.rcN} · ลูกค้า ${r.st.custN} ราย</div></div>`);
     if(!on){w.onmouseenter=()=>w.style.background='#f6f9ff';w.onmouseleave=()=>w.style.background='';}
     w.onclick=()=>{S.teamSel=on?null:r.p.id;render();};
     box.append(w);});
