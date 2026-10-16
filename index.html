@@ -525,7 +525,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.16-18';
+const APP_VER='2569.10.16-19';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof LINK_MODE!=='undefined'&&LINK_MODE)return false;          /* หน้าเซ็นจากลิงก์ ไม่รีโหลดใส่คนเซ็น */
@@ -8071,25 +8071,72 @@ let scLast='',scBusy=false,scOff=false;
 const scHash=c=>SC_F.map(f=>String(c[f]??'')).join('|');
 const scFromRow=r=>{const o={_key:r.name_key,_at:r.updated_at,_by:r.updated_by_name||'',_old:!!r.is_old,_code:r.cust_code||''};
   SC_F.forEach(f=>{const v=r[SC_COL[f]||f];o[f]=f==='creditLimit'?(+v||0):(v??'');});return o;};
-const scToRow=c=>{const o={name_key:normName(c.name),updated_by:AUTH.user&&AUTH.user.id,updated_by_name:meName()};
+const scToRow=(c,t)=>{const o={name_key:t?t._key:normName(c.name),updated_by:AUTH.user&&AUTH.user.id,updated_by_name:meName()};
   SC_F.forEach(f=>{o[SC_COL[f]||f]=f==='creditLimit'?(+c[f]||0):String(c[f]??'');});
+  if(t)o.name=t.name;
   if((c.oldFlag||[]).length)o.is_old=true;                 /* ติ๊กลูกค้าเก่าเอง → ทุกคนเห็นเป็นลูกค้าเก่าด้วย */
   return o;};
+/* ชื่อเดียวกันที่เขียนต่างกัน (บจก./บริษัท…จำกัด/(สำนักงานใหญ่)) ถือเป็นลูกค้ารายเดียว
+   เลือก "รายการหลัก" แบบเดียวกันทุกเครื่อง: เป็นลูกค้าเก่า > มีรหัสลูกค้า > ข้อมูลครบกว่า > ชื่อยาวกว่า > เรียงตามตัวอักษร */
+const scScore=s=>(s._old?1000:0)+(s._code?100:0)+['contact','phone','email','address','taxId'].filter(f=>s[f]).length*10+Math.min(9,String(s.name||'').length/10);
+function scGroups(){
+  const g=new Map();
+  SHARED_CUST.forEach(s=>{const k=custKey(s.name);if(!k)return;(g.get(k)||g.set(k,[]).get(k)).push(s);});
+  g.forEach(l=>l.sort((a,b)=>scScore(b)-scScore(a)||String(a._key).localeCompare(String(b._key))));
+  return g;
+}
+let SC_LOOSE=null,SC_LOOSE_SIG='';
+function scLoose(){
+  const sig=SHARED_CUST.size+'|'+scLast;
+  if(SC_LOOSE&&SC_LOOSE_SIG===sig)return SC_LOOSE;
+  SC_LOOSE=new Map();scGroups().forEach((l,k)=>SC_LOOSE.set(k,l[0]));SC_LOOSE_SIG=sig;
+  return SC_LOOSE;
+}
+/* ผู้ดูแล: รวมรายการซ้ำในทะเบียนกลางให้เหลือรายเดียวจริง (เติมช่องว่างจากรายการซ้ำ แล้วลบรายการซ้ำ) */
+async function scMergeDups(){
+  if(!isManager())return 0;
+  let n=0;
+  for(const [,l] of scGroups()){
+    if(l.length<2)continue;
+    const keep=l[0],row=scToRow(keep,keep);
+    l.slice(1).forEach(s=>{SC_F.forEach(f=>{const col=SC_COL[f]||f;if(f==='name')return;
+      if(!row[col]||(f==='creditLimit'&&!+row[col]))row[col]=f==='creditLimit'?(+s[f]||0):String(s[f]??'');});
+      if(s._old)row.is_old=true;if(!row.cust_code&&s._code)row.cust_code=s._code;});
+    if(keep._old)row.is_old=true;if(keep._code&&!row.cust_code)row.cust_code=keep._code;
+    try{
+      const res=await sbFetch('customers_shared?on_conflict=name_key',{method:'POST',
+        headers:Object.assign(sbHeaders(),{Prefer:'resolution=merge-duplicates,return=representation'}),body:JSON.stringify([row])});
+      const drop=l.slice(1).map(s=>s._key);
+      await sbFetch('customers_shared?name_key=in.('+drop.map(k=>'"'+encodeURIComponent(k.replace(/"/g,'\\"'))+'"').join(',')+')',
+        {method:'DELETE',headers:Object.assign(sbHeaders(),{Prefer:'return=minimal'})});
+      drop.forEach(k=>SHARED_CUST.delete(k));
+      (res||[]).forEach(r=>{SHARED_CUST.set(r.name_key,scFromRow(r));if(r.updated_at>scLast)scLast=r.updated_at;});
+      n+=drop.length;
+    }catch(e){}
+  }
+  if(n){SC_LOOSE=null;}
+  return n;
+}
+let scFullAt=0;
 async function custSharedSync(){
   if(scBusy||scOff||!authed()||!sbOn()||!DB||readOnly()||LINK_MODE)return;
   scBusy=true;const db=DB;
   try{
     /* 1) ดึงรายการที่เปลี่ยนตั้งแต่ครั้งก่อน */
     let rows;
+    if(Date.now()-scFullAt>30*60*1000){scLast='';SHARED_CUST.clear();SC_LOOSE=null;scFullAt=Date.now();}
     try{rows=await sbGet('customers_shared?select=*&order=updated_at.asc'+(scLast?'&updated_at=gt.'+encodeURIComponent(scLast):''));}
     catch(e){if(/does not exist|schema cache|relation/i.test(e.message))scOff=true;return;}
     (rows||[]).forEach(r=>{SHARED_CUST.set(r.name_key,scFromRow(r));if(!scLast||r.updated_at>scLast)scLast=r.updated_at;});
+    if((rows||[]).length&&!readOnly())await scMergeDups();
     if(DB!==db)return;
+    const loose=scLoose();
     /* 2) จับคู่กับรายชื่อของเรา แล้วตัดสินว่าใช้ของกลาง หรือส่งของเราขึ้นไป */
     const push=[],pushNew=[];let changed=false;
     (db.customers||[]).forEach(c=>{
-      const k=normName(c.name);if(!k)return;
-      const s=SHARED_CUST.get(k),edited=c._scHash!==undefined&&scHash(c)!==c._scHash;
+      const k=custKey(c.name);if(!k)return;
+      const s=loose.get(k),edited=c._scHash!==undefined&&scHash(c)!==c._scHash;
+      if(s)c._scT=s;else delete c._scT;
       if(!s){if(c._scHash===undefined||edited)pushNew.push(c);return;}
       if(edited){push.push(c);return;}                                   /* เราแก้ → ส่งทับของกลาง */
       if(c._scHash===undefined){                                           /* ครั้งแรก: รวมช่องที่ของกลางยังว่าง */
@@ -8106,12 +8153,14 @@ async function custSharedSync(){
     const send=async(list,mode)=>{
       if(!list.length)return;
       const res=await sbFetch('customers_shared?on_conflict=name_key',{method:'POST',
-        headers:Object.assign(sbHeaders(),{Prefer:'resolution='+mode+',return=representation'}),body:JSON.stringify(list.map(scToRow))});
+        headers:Object.assign(sbHeaders(),{Prefer:'resolution='+mode+',return=representation'}),body:JSON.stringify(list.map(c=>scToRow(c,c._scT)))});
       (res||[]).forEach(r=>{SHARED_CUST.set(r.name_key,scFromRow(r));if(r.updated_at>scLast)scLast=r.updated_at;});
-      list.forEach(c=>{const s=SHARED_CUST.get(normName(c.name));c._scHash=scHash(c);c._scAt=s?s._at:'';});
+      SC_LOOSE=null;const lm=scLoose();
+      list.forEach(c=>{const s=lm.get(custKey(c.name));c._scHash=scHash(c);c._scAt=s?s._at:'';});
       changed=true;
     };
     try{await send(pushNew,'ignore-duplicates');await send(push,'merge-duplicates');}catch(e){}
+    (db.customers||[]).forEach(c=>{delete c._scT;});
     if(changed&&DB===db){save();if(!document.querySelector('.ov'))render();}
   }finally{scBusy=false;}
 }
@@ -8126,14 +8175,14 @@ document.addEventListener('visibilitychange',()=>{if(document.visibilityState===
 /* ชื่อลูกค้าทั้งหมดที่เลือกได้ในฟอร์มเอกสาร: ของเรา + ทะเบียนกลาง */
 function allCustNames(){
   const seen=new Set(),out=[];
-  (DB.customers||[]).forEach(c=>{const k=normName(c.name);if(k&&!seen.has(k)){seen.add(k);out.push(c.name);}});
-  SHARED_CUST.forEach((s,k)=>{if(!seen.has(k)){seen.add(k);out.push(s.name);}});
+  (DB.customers||[]).forEach(c=>{const k=custKey(c.name);if(k&&!seen.has(k)){seen.add(k);out.push(c.name);}});
+  scLoose().forEach((s,k)=>{if(!seen.has(k)){seen.add(k);out.push(s.name);}});
   return out;
 }
 /* ใช้ลูกค้าจากทะเบียนกลางในเอกสาร → เพิ่มเข้ารายชื่อของเราพร้อมข้อมูลพื้นฐาน */
 function adoptShared(name,how){
-  const k=normName(name);if(!k||readOnly()||findCustomer(name))return null;
-  const s=SHARED_CUST.get(k);if(!s)return null;
+  const k=custKey(name);if(!k||readOnly()||findCustomer(name))return null;
+  const s=scLoose().get(k);if(!s)return null;
   const c={id:uid(),status:'ใหม่',channel:'ทะเบียนกลาง',date:today(),owner:meName(),note:'',logo:null,photos:[],files:[],
     timeline:[{date:today(),title:how||'เพิ่มจากทะเบียนลูกค้ากลาง',note:s._by?'ข้อมูลโดย '+s._by:'',by:meName()}]};
   SC_F.forEach(f=>{c[f]=s[f];});c._scHash=scHash(c);c._scAt=s._at;
@@ -8522,7 +8571,7 @@ function sharedCustomerView(s){
     openForm('แก้ไขข้อมูลลูกค้า (ทะเบียนกลาง)',customerFields().filter(f=>f.group||SC_F.includes(f.key)),s,async d=>{
       try{const res=await sbFetch('customers_shared?on_conflict=name_key',{method:'POST',
           headers:Object.assign(sbHeaders(),{Prefer:'resolution=merge-duplicates,return=representation'}),
-          body:JSON.stringify([scToRow(Object.assign({},s,d,{name:s.name}))])});
+          body:JSON.stringify([scToRow(Object.assign({},s,d,{name:s.name}),s)])});
         (res||[]).forEach(r=>SHARED_CUST.set(r.name_key,scFromRow(r)));
         render();toast('บันทึกแล้ว — ทุกคนในทีมเห็นข้อมูลใหม่');
       }catch(e){toast(e.message);}});};
@@ -8547,8 +8596,8 @@ function pgProfiles(v){
     v.append(bar);
     const q=S.profQ.toLowerCase();
     /* ลูกค้าของทั้งทีม: รายชื่อของเรา + ทะเบียนกลาง (รายที่เรายังไม่มี) */
-    const mine=new Set(DB.customers.map(x=>normName(x.name)));
-    const shared=[];SHARED_CUST.forEach((s,k)=>{if(!mine.has(k))shared.push(Object.assign({_shared:true,id:'sc:'+k,photos:[],files:[]},s));});
+    const mine=new Set(DB.customers.map(x=>custKey(x.name)));
+    const shared=[];scLoose().forEach((s,k)=>{if(!mine.has(k))shared.push(Object.assign({_shared:true,id:'sc:'+k,photos:[],files:[]},s));});
     const items=DB.customers.concat(shared).filter(x=>!q||[x.name,x.contact,x.phone,x.email].join(' ').toLowerCase().includes(q));
     if(scOff)v.append(hint('ยังไม่ได้เปิดทะเบียนลูกค้ากลาง — ให้ผู้ดูแลรันไฟล์ supabase-setup-20.sql แล้วรายชื่อลูกค้าจะใช้ร่วมกันทั้งทีม'));
     v.append(listCard(items,{
