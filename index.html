@@ -525,7 +525,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.16-21';
+const APP_VER='2569.10.16-22';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof LINK_MODE!=='undefined'&&LINK_MODE)return false;          /* หน้าเซ็นจากลิงก์ ไม่รีโหลดใส่คนเซ็น */
@@ -4592,7 +4592,7 @@ function ncFindRows(period){
     /* และต้องเป็นลูกค้าที่เพิ่งติดต่อเข้ามาในรอบนี้ด้วย — ถ้าติดต่อกันมาก่อนหน้านี้แล้ว
        ถือว่าเป็นลูกค้าเก่าที่เพิ่งมาซื้อ ไม่ใช่ลูกค้าใหม่ของรอบ */
     .filter(x=>{const c=findCustomer(x.customer)||(DB.customers||[]).find(y=>custKey(y.name)===custKey(x.customer));
-      return !oldKeys().has(custKey(x.customer))&&!(c&&(c.oldFlag||[]).length)&&(!c||!c.date||c.date>=period.start);})
+      return !listOld(custKey(x.customer),x.date)&&!(c&&(c.oldFlag||[]).length)&&(!c||!c.date||c.date>=period.start);})
     .sort((a,b)=>String(a.date).localeCompare(String(b.date)))
     .map(x=>{
       const it=(x.items||[])[0]||{};
@@ -6000,14 +6000,14 @@ function productStats(inP){
    ลูกค้าเก่า = ที่เหลือ (เคยซื้อก่อนช่วงนี้ / อยู่ในรายชื่อลูกค้าเก่า / ติดต่อกันมาก่อน)
    ไม่ได้เลือกช่วงวันที่: ลูกค้าใหม่ = ซื้อครั้งเดียว · ลูกค้าเก่า = ซื้อซ้ำหรืออยู่ในรายชื่อลูกค้าเก่า */
 function buyerSplit(rcs,detail){
-  const bi=buyIndex(),olds=oldKeys(),seen=new Set(),rows=[];let nw=0,od=0;
+  const bi=buyIndex(),seen=new Set(),rows=[];let nw=0,od=0;
   const on=dateFilterOn(S.page==='team'?'team':'dash');
   rcs.forEach(r=>{
     const k=custKey(r.customer);if(!k||seen.has(k))return;seen.add(k);
     const b=bi[k]||{n:1,first:r.date};
     const c=(DB.customers||[]).find(x=>custKey(x.name)===k);
     /* เหตุผลที่นับเป็นลูกค้าเก่า (ไว้แสดงในรายชื่อ) */
-    const why=olds.has(k)?'อยู่ในรายชื่อลูกค้าเก่าของบริษัท'
+    const why=listOld(k,b.first)?'อยู่ในรายชื่อลูกค้าเก่าของบริษัท'
       :(c&&(c.oldFlag||[]).length)?'ติ๊กว่าเป็นลูกค้าเก่า'
       :on?(!inPeriod(b.first)?'เคยซื้อก่อนช่วงนี้ (ครั้งแรก '+fmtDate(b.first)+')'
           :(c&&c.date&&!inPeriod(c.date)&&c.date<b.first)?'ติดต่อกันมาก่อนช่วงนี้ ('+fmtDate(c.date)+')':'')
@@ -7049,13 +7049,22 @@ function buyIndex(){
 let OLD_KEYS=null,OLD_KEYS_N=-1;
 function oldKeys(){
   if(OLD_KEYS&&OLD_KEYS_N===SHARED_CUST.size)return OLD_KEYS;
-  OLD_KEYS=new Set();SHARED_CUST.forEach(s=>{if(s._old)OLD_KEYS.add(custKey(s.name));});
+  OLD_KEYS=new Map();SHARED_CUST.forEach(s=>{if(s._old){const k=custKey(s.name),p=OLD_KEYS.get(k);
+    OLD_KEYS.set(k,p===undefined?s._first:(p&&s._first?(p<s._first?p:s._first):''));}});
   OLD_KEYS_N=SHARED_CUST.size;return OLD_KEYS;
+}
+/* อยู่ในรายชื่อลูกค้าเก่าของบริษัท และนับเป็นลูกค้าเก่าจริงไหม
+   ยกเว้น: เดือนแรกที่มียอด (จากไฟล์) ตรงกับหรือหลังใบเสร็จใบแรกในระบบ = ซื้อครั้งแรกเกิดในระบบนี้เอง → นับตามใบเสร็จ (ลูกค้าใหม่) */
+function listOld(k,sysFirst){
+  const m=oldKeys();if(!m.has(k))return false;
+  const fb=m.get(k);
+  if(!fb||!sysFirst)return true;
+  return String(fb).slice(0,7)<String(sysFirst).slice(0,7);
 }
 function custKind(c,idx){
   const k=custKey(c.name),b=(idx||buyIndex())[k],n=b?b.n:0;
   if(n>=2)return {kind:'old',old:true,label:'ลูกค้าเก่า',sub:'สั่งซื้อซ้ำ '+n+' ครั้ง · ครั้งแรก '+fmtDate(b.first)};
-  if(oldKeys().has(k))return {kind:'old',old:true,label:'ลูกค้าเก่า',sub:'อยู่ในรายชื่อลูกค้าเก่าของบริษัท'};
+  if(listOld(k,b&&b.first))return {kind:'old',old:true,label:'ลูกค้าเก่า',sub:'อยู่ในรายชื่อลูกค้าเก่าของบริษัท'};
   if((c.oldFlag||[]).length)return {kind:'old',old:true,label:'ลูกค้าเก่า',sub:'ซื้อก่อนเริ่มใช้โปรแกรม'};
   if(n===1)return {kind:'new',old:false,label:'ลูกค้าใหม่',sub:'ซื้อครั้งแรก '+fmtDate(b.first)};
   if(WON_ST.includes(c.status)||c.status==='ซื้อขายแล้ว')return {kind:'new',old:false,label:'ลูกค้าใหม่',sub:'สถานะ '+c.status};
@@ -8108,7 +8117,7 @@ const SC_COL={contactPos:'contact_pos',shipTo:'ship_to',taxId:'tax_id',creditTer
 const SHARED_CUST=new Map();          /* name_key -> ข้อมูลกลาง (ชื่อช่องแบบในแอป) */
 let scLast='',scBusy=false,scOff=false;
 const scHash=c=>SC_F.map(f=>String(c[f]??'')).join('|');
-const scFromRow=r=>{const o={_key:r.name_key,_at:r.updated_at,_by:r.updated_by_name||'',_old:!!r.is_old,_code:r.cust_code||''};
+const scFromRow=r=>{const o={_key:r.name_key,_at:r.updated_at,_by:r.updated_by_name||'',_old:!!r.is_old,_code:r.cust_code||'',_first:r.first_buy||''};
   SC_F.forEach(f=>{const v=r[SC_COL[f]||f];o[f]=f==='creditLimit'?(+v||0):(v??'');});return o;};
 const scToRow=(c,t)=>{const o={name_key:t?t._key:normName(c.name),updated_by:AUTH.user&&AUTH.user.id,updated_by_name:meName()};
   SC_F.forEach(f=>{o[SC_COL[f]||f]=f==='creditLimit'?(+c[f]||0):String(c[f]??'');});
