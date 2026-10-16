@@ -522,29 +522,36 @@ a{color:var(--blue);text-decoration:none}
 
 <script>
 /* ================= เวอร์ชันของโปรแกรม =================
-   แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะขึ้นแถบให้กดอัปเดตเอง
-   (ไม่ต้องบอกทุกคนให้กด Ctrl+F5) */
-const APP_VER='2569.10.16-10';
+   แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
+   อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
+   (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
+const APP_VER='2569.10.16-11';
+let NEW_VER=null,updTimer=null;
+function safeToReload(){
+  if(typeof LINK_MODE!=='undefined'&&LINK_MODE)return false;          /* หน้าเซ็นจากลิงก์ ไม่รีโหลดใส่คนเซ็น */
+  if(document.querySelector('.ov,.prevov'))return false;               /* มีหน้าต่าง/ฟอร์ม/หน้าพิมพ์เปิดอยู่ */
+  const a=document.activeElement;
+  if(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)&&a.value)return false;   /* กำลังพิมพ์ค้าง */
+  if(typeof syncPending!=='undefined'&&syncPending)return false;      /* งานยังไม่ขึ้นคลาวด์ */
+  return true;
+}
+function tryAutoUpdate(){
+  clearTimeout(updTimer);
+  if(!NEW_VER)return;
+  if(safeToReload()){location.reload();return;}
+  /* ยังไม่ว่าง — ถ้ามีงานค้างให้ส่งขึ้นคลาวด์ก่อน แล้วรอดูใหม่ */
+  if(typeof syncPending!=='undefined'&&syncPending&&typeof cloudSave==='function'&&!document.querySelector('.ov,.prevov'))cloudSave();
+  updTimer=setTimeout(tryAutoUpdate,15000);
+}
 function checkNewVersion(){
   fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():'').then(t=>{
     const m=/const APP_VER='([^']+)'/.exec(t||'');
-    if(!m||m[1]===APP_VER||document.getElementById('verBar'))return;
-    if(typeof LINK_MODE!=='undefined'&&LINK_MODE)return;     /* หน้าเซ็นจากลิงก์ ไม่ต้องกวนคนเซ็น */
-    const b=document.createElement('div');b.id='verBar';
-    b.style.cssText='position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:2000;background:#0b2a63;color:#fff;'
-      +'border-radius:14px;padding:12px 16px;display:flex;gap:12px;align-items:center;box-shadow:0 10px 30px rgba(0,0,0,.3);font-size:14px;max-width:92vw';
-    b.innerHTML='<span>มีโปรแกรมเวอร์ชันใหม่</span>';
-    const go=document.createElement('button');go.textContent='อัปเดตเลย';
-    go.style.cssText='background:#fff;color:#0b2a63;border:0;border-radius:10px;padding:8px 14px;font-weight:700;cursor:pointer;font-family:inherit';
-    /* รอให้งานที่ค้างบันทึกขึ้นคลาวด์ก่อน แล้วค่อยโหลดใหม่ */
-    go.onclick=()=>{go.disabled=true;go.textContent='กำลังอัปเดต…';
-      Promise.resolve(typeof syncPending!=='undefined'&&syncPending&&typeof cloudSave==='function'?cloudSave():null)
-        .catch(()=>{}).finally(()=>location.reload());};
-    b.append(go);document.body.append(b);
+    if(!m||m[1]===APP_VER)return;
+    NEW_VER=m[1];tryAutoUpdate();
   }).catch(()=>{});
 }
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkNewVersion();});
-setInterval(checkNewVersion,30*60*1000);
+setInterval(checkNewVersion,10*60*1000);
 document.addEventListener('DOMContentLoaded',()=>{const v=document.getElementById('appVer');if(v)v.textContent='เวอร์ชัน '+APP_VER;});
 /* ================= utils ================= */
 const $=(s,r=document)=>r.querySelector(s);
