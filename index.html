@@ -524,7 +524,7 @@ a{color:var(--blue);text-decoration:none}
 /* ================= เวอร์ชันของโปรแกรม =================
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะขึ้นแถบให้กดอัปเดตเอง
    (ไม่ต้องบอกทุกคนให้กด Ctrl+F5) */
-const APP_VER='2569.10.16-5';
+const APP_VER='2569.10.16-6';
 function checkNewVersion(){
   fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():'').then(t=>{
     const m=/const APP_VER='([^']+)'/.exec(t||'');
@@ -8525,6 +8525,7 @@ function userMenu(){
       ${isManager()?'<button class="btn gh blk" id="emp">ข้อมูลพนักงาน</button>':''}
       ${ro?'<button class="btn blk" id="mine">กลับไปข้อมูลของฉัน</button>':''}
       ${ro?'':`<button class="btn gh blk" id="msig">ลายเซ็นของฉัน ${mySig()?'(ตั้งไว้แล้ว)':'— ยังไม่ได้ตั้ง'}</button>`}
+      <button class="btn gh blk" id="pin">เปลี่ยน PIN ของฉัน</button>
       <button class="btn dg blk" id="out">ออกจากระบบ</button>
     </div></div>`);
   const close=()=>ov.remove();
@@ -8534,6 +8535,40 @@ function userMenu(){
   if(m.querySelector('#mine'))m.querySelector('#mine').onclick=()=>{close();viewUser(AUTH.user.id,'ฉัน',true);};
   if(m.querySelector('#msig'))m.querySelector('#msig').onclick=()=>{close();mySigManager();};
   m.querySelector('#out').onclick=()=>{close();logout();};
+  m.querySelector('#pin').onclick=()=>{close();changePinForm();};
+  ov.append(m);$('#layer').append(ov);
+}
+/* เปลี่ยน PIN เอง (เช่น หลังผู้ดูแลตั้ง PIN ชั่วคราวให้) */
+function changePinForm(){
+  const ov=el('<div class="ov"></div>');
+  const m=el(`<div class="modal" style="max-width:400px"><header><b>เปลี่ยน PIN ของฉัน</b><button class="close">✕</button></header>
+    <div class="mb">
+      <div class="field" style="margin-bottom:12px"><label>PIN ใหม่ (ตัวเลข 6 หลัก)</label>
+        <input id="p1" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" style="letter-spacing:8px;font-size:20px;text-align:center"></div>
+      <div class="field"><label>พิมพ์ PIN ใหม่อีกครั้ง</label>
+        <input id="p2" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" style="letter-spacing:8px;font-size:20px;text-align:center"></div>
+      <div id="pe" class="tiny" style="color:#b91c1c;margin-top:10px"></div></div>
+    <footer><div style="flex:1"></div><button class="btn gh" id="c">ยกเลิก</button><button class="btn" id="ok">บันทึก PIN ใหม่</button></footer></div>`);
+  const close=()=>ov.remove();
+  m.querySelectorAll('input').forEach(i=>i.addEventListener('input',()=>{i.value=i.value.replace(/\D/g,'').slice(0,6);}));
+  m.querySelector('.close').onclick=close;m.querySelector('#c').onclick=close;
+  m.querySelector('#ok').onclick=async()=>{
+    const a=m.querySelector('#p1').value,b=m.querySelector('#p2').value,er=m.querySelector('#pe');
+    if(!/^\d{6}$/.test(a)){er.textContent='PIN ต้องเป็นตัวเลข 6 หลัก';return;}
+    if(a!==b){er.textContent='PIN สองช่องไม่ตรงกัน';return;}
+    if(/^(\d)\1{5}$/.test(a)||'0123456789'.includes(a)||'9876543210'.includes(a)){er.textContent='PIN เดาง่ายเกินไป (เลขเรียงหรือซ้ำกัน) — ใช้ตัวเลขอื่น';return;}
+    const ok=m.querySelector('#ok');ok.disabled=true;ok.textContent='กำลังบันทึก…';er.textContent='';
+    try{
+      const c=sbCfg();
+      let r=await fetch(c.url.replace(/\/$/,'')+'/auth/v1/user',{method:'PUT',
+        headers:{apikey:c.key,Authorization:'Bearer '+AUTH.token,'Content-Type':'application/json'},body:JSON.stringify({password:a})});
+      if(r.status===401&&AUTH.refresh&&await refreshSession())
+        r=await fetch(c.url.replace(/\/$/,'')+'/auth/v1/user',{method:'PUT',
+          headers:{apikey:c.key,Authorization:'Bearer '+AUTH.token,'Content-Type':'application/json'},body:JSON.stringify({password:a})});
+      if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.msg||j.message||j.error_description||('เปลี่ยน PIN ไม่สำเร็จ ('+r.status+')'));}
+      close();toast('เปลี่ยน PIN แล้ว — ครั้งหน้าเข้าระบบด้วย PIN ใหม่');
+    }catch(e){ok.disabled=false;ok.textContent='บันทึก PIN ใหม่';er.textContent=/same/i.test(e.message)?'PIN ใหม่ต้องไม่ซ้ำกับ PIN เดิม':e.message;}
+  };
   ov.append(m);$('#layer').append(ov);
 }
 /* ตั้ง / เปลี่ยน / ลบ ลายเซ็นประจำตัว */
