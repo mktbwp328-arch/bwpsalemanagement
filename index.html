@@ -526,7 +526,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.16-42';
+const APP_VER='2569.10.16-43';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -8794,7 +8794,7 @@ function purchaseSummary(c){
     g.lines.push(line);g.poMap.set((p.no||'')+'|'+(it.id||pkey(it)),line);g.poMap.set((p.no||'')+'|'+pkey(it),line);}));
   /* การส่งของ (ใบเสร็จ) — จับคู่กับ PO จากเลขที่อ้างอิง ไม่มีอ้างอิงก็ไปไว้แถว "ไม่อ้างอิง PO" */
   /* เรียงใบเสร็จตามวันที่ จะได้ตัดยอด PO ตามลำดับที่ส่งจริง */
-  rcs.slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))).forEach(r=>(r.items||[]).forEach(it=>{const g=P(it,true);if(!g)return;
+  rcs.slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.no||'').localeCompare(String(b.no||''),'en',{numeric:true})).forEach(r=>(r.items||[]).forEach(it=>{const g=P(it,true);if(!g)return;
     const del={date:r.date||'',no:r.no||'',inv:r.invNo||'',qty:+it.qty||0,unit:it.unit||'',price:+it.price||0,it};
     let line=(r.poRef&&(g.poMap.get(r.poRef+'|'+(r.poItemId||''))||g.poMap.get(r.poRef+'|'+pkey(it))))||null;
     /* ไม่ได้อ้างอิง PO → ตัดจาก PO ของสินค้านี้ที่ยังส่งไม่ครบ (PO เก่าก่อน) */
@@ -8829,15 +8829,18 @@ function purchaseSummary(c){
   card.append(fbar);
   const boxes=[];
   [...prods.values()].forEach(g=>{
-    g.lines.sort((a,b)=>(a.free?1:0)-(b.free?1:0)||String(a.date).localeCompare(String(b.date)));
+    /* เรียงเลขที่ให้ต่อกัน: ใบเสร็จในแต่ละแถว PO เรียงตามเลขที่ · แถว PO วันเดียวกันเรียงตามเลขใบเสร็จใบแรกของแถว (ยังไม่ส่งไว้ท้าย) */
+    const noCmp=(a,b)=>String(a||'').localeCompare(String(b||''),'en',{numeric:true});
+    g.lines.forEach(l=>l.dels.sort((a,b)=>noCmp(a.no,b.no)||String(a.date).localeCompare(String(b.date))));
+    const firstNo=l=>l.dels.length?l.dels[0].no:'￿';
+    g.lines.sort((a,b)=>(a.free?1:0)-(b.free?1:0)||String(a.date).localeCompare(String(b.date))||noCmp(firstNo(a),firstNo(b))||noCmp(a.no,b.no));
     let rows='',tOrder=0,tDel=0,tLeft=0,sameUnit=true;const u0=(g.lines.find(l=>!l.free)||{}).unit||'';
     g.lines.forEach(l=>{
-      l.dels.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
       let left=l.order;
       if(!l.free){tOrder+=l.order;if(l.unit!==u0)sameUnit=false;
-        rows+='<tr data-d="'+esc(l.date)+'" data-t="'+esc(l.no.toLowerCase())+'" style="background:#f8fbff"><td style="'+td+';color:#b91c1c">'+esc(fmtDate(l.date))+'</td><td style="'+td+'">'+esc(l.no)+'</td><td style="'+td+';text-align:right">'+fmtQ(l.order,l.unit)
+        rows+='<tr data-d="'+esc(l.date)+'" data-t="'+esc(l.no.toLowerCase())+'" style="background:#f8fbff"><td style="'+td+';color:#b91c1c">'+esc(fmtDate(l.date))+'</td><td style="'+td+';font-weight:600">'+esc(l.no)+'</td><td style="'+td+'"></td><td style="'+td+';text-align:right">'+fmtQ(l.order,l.unit)
           +'</td><td style="'+td+';text-align:right">-</td><td style="'+td+';text-align:right">'+fmtQ(l.order,l.unit)+'</td><td style="'+td+';text-align:right">'+(l.price?num(l.price):'')+'</td><td style="'+td+'"></td></tr>';}
-      else rows+='<tr><td colspan="7" style="'+td+';color:var(--mut)">ใบเสร็จที่ไม่ได้อ้างอิง PO</td></tr>';
+      else rows+='<tr><td colspan="8" style="'+td+';color:var(--mut)">ใบเสร็จที่ไม่ได้อ้างอิง PO</td></tr>';
       l.dels.forEach(d=>{
         /* ส่งแล้วในหน่วยของ PO */
         let sent=d.qty,ok=true;
@@ -8845,7 +8848,7 @@ function purchaseSummary(c){
           if(a.kg!=null&&b.kg!=null&&b.kg>0&&isKgUnit(l.unit))sent=a.kg;else ok=false;}
         if(!l.free&&ok)left=Math.max(0,left-sent);
         tDel+=ok?sent:0;
-        rows+='<tr data-d="'+esc(d.date)+'" data-t="'+esc((d.no+' '+d.inv).toLowerCase())+'"><td style="'+td+'">'+esc(fmtDate(d.date))+'</td><td style="'+td+'">ใบเสร็จ '+esc(d.no)+'</td><td style="'+td+';text-align:right">'
+        rows+='<tr data-d="'+esc(d.date)+'" data-t="'+esc((d.no+' '+d.inv).toLowerCase())+'"><td style="'+td+'">'+esc(fmtDate(d.date))+'</td><td style="'+td+'"></td><td style="'+td+'">'+esc(d.no)+'</td><td style="'+td+';text-align:right">'
           +(d.unit!==l.unit&&!l.free?fmtQ(d.qty,d.unit):'')+'</td><td style="'+td+';text-align:right">'+(ok?fmtQ(sent,l.free?d.unit:l.unit):fmtQ(d.qty,d.unit))
           +'</td><td style="'+td+';text-align:right">'+(l.free?'':(ok?fmtL(left,l.unit):'-'))+'</td><td style="'+td+';text-align:right">'+(d.price?num(d.price):'')
           +'</td><td style="'+td+';font-weight:600">'+esc(d.inv&&d.inv!==d.no?d.inv:'')+(d.auto?'<span class="tiny" style="font-weight:400;margin-left:6px">(จับคู่ PO ให้อัตโนมัติ)</span>':'')+'</td></tr>';
@@ -8858,7 +8861,7 @@ function purchaseSummary(c){
         <b style="font-size:15px">${esc(g.code||'-')}</b><span style="font-size:14px">${esc(String(g.name).split('\n')[0])}</span>
         ${sameUnit&&u0?`<span class="tiny" style="margin-left:auto">สั่งรวม ${fmtQ(tOrder,u0)} · ส่งแล้ว ${fmtQ(tDel,u0)} · <b style="color:${tLeft>0?'#b45309':'#15803d'}">คงเหลือ ${fmtL(tLeft,u0)}</b></span>`:''}</div>
       <div style="overflow:auto"><table style="width:100%;border-collapse:collapse">
-        <thead><tr style="background:#f9fafb">${['วันที่','เลขที่ PO / ใบเสร็จ','สั่ง','ยอดส่ง','คงเหลือ','ราคา','หมายเหตุ'].map((t,i)=>'<th style="'+td+';text-align:'+(i>=2&&i<=5?'right':'left')+';font-weight:600">'+t+'</th>').join('')}</tr></thead>
+        <thead><tr style="background:#f9fafb">${['วันที่','เลขที่ PO','เลขที่ใบเสร็จ','สั่ง','ยอดส่ง','คงเหลือ','ราคา','หมายเหตุ'].map((t,i)=>'<th style="'+td+';text-align:'+(i>=3&&i<=6?'right':'left')+';font-weight:600">'+t+'</th>').join('')}</tr></thead>
         <tbody>${rows}</tbody></table></div></div>`);
     boxes.push({bx,text:(g.code+' '+g.name).toLowerCase(),left:tLeft,hasPo});
     card.append(bx);
