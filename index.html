@@ -525,7 +525,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.16-19';
+const APP_VER='2569.10.16-20';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof LINK_MODE!=='undefined'&&LINK_MODE)return false;          /* หน้าเซ็นจากลิงก์ ไม่รีโหลดใส่คนเซ็น */
@@ -4583,7 +4583,7 @@ function ncFindRows(period){
   /* นับจากใบเสร็จเท่านั้น (ซื้อขายกันจริง) — PO ยังไม่ถือว่าซื้อ */
   const first={};
   (DB.receipts||[]).filter(r=>r.status!=='ยกเลิก').forEach(r=>{
-    const k=normName(r.customer);if(!k||!r.date)return;
+    const k=custKey(r.customer);if(!k||!r.date)return;
     if(!first[k]||r.date<first[k].date)first[k]={customer:r.customer,date:r.date,no:r.no,items:r.items||[]};
   });
   return Object.values(first)
@@ -4591,7 +4591,8 @@ function ncFindRows(period){
     .filter(x=>x.date>=period.start&&x.date<=period.end)
     /* และต้องเป็นลูกค้าที่เพิ่งติดต่อเข้ามาในรอบนี้ด้วย — ถ้าติดต่อกันมาก่อนหน้านี้แล้ว
        ถือว่าเป็นลูกค้าเก่าที่เพิ่งมาซื้อ ไม่ใช่ลูกค้าใหม่ของรอบ */
-    .filter(x=>{const c=findCustomer(x.customer);return !c||!c.date||c.date>=period.start;})
+    .filter(x=>{const c=findCustomer(x.customer)||(DB.customers||[]).find(y=>custKey(y.name)===custKey(x.customer));
+      return !oldKeys().has(custKey(x.customer))&&!(c&&(c.oldFlag||[]).length)&&(!c||!c.date||c.date>=period.start);})
     .sort((a,b)=>String(a.date).localeCompare(String(b.date)))
     .map(x=>{
       const it=(x.items||[])[0]||{};
@@ -5994,6 +5995,23 @@ function productStats(inP){
   return Object.values(map).sort((a,b)=>b.amount-a.amount);
 }
 /* ตัวเลขสรุปทั้งชุดของข้อมูลหนึ่งชุด (ของตัวเองหรือของเซลคนอื่น) */
+/* ลูกค้าที่ซื้อ (มีใบเสร็จ) ในช่วงที่เลือก แยกเป็นลูกค้าใหม่ / ลูกค้าเก่า — นับแบบเดียวกับ "บันทึกรายชื่อลูกค้าใหม่"
+   ลูกค้าใหม่ = ใบเสร็จใบแรกของลูกค้ารายนั้นอยู่ในช่วงนี้ และไม่ได้ติดต่อกันมาก่อนช่วงนี้ และไม่อยู่ในรายชื่อลูกค้าเก่าของบริษัท
+   ลูกค้าเก่า = ที่เหลือ (เคยซื้อก่อนช่วงนี้ / อยู่ในรายชื่อลูกค้าเก่า / ติดต่อกันมาก่อน)
+   ไม่ได้เลือกช่วงวันที่: ลูกค้าใหม่ = ซื้อครั้งเดียว · ลูกค้าเก่า = ซื้อซ้ำหรืออยู่ในรายชื่อลูกค้าเก่า */
+function buyerSplit(rcs){
+  const bi=buyIndex(),olds=oldKeys(),seen=new Set();let nw=0,od=0;
+  const on=dateFilterOn(S.page==='team'?'team':'dash');
+  rcs.forEach(r=>{
+    const k=custKey(r.customer);if(!k||seen.has(k))return;seen.add(k);
+    const b=bi[k]||{n:1,first:r.date};
+    const c=(DB.customers||[]).find(x=>custKey(x.name)===k);
+    const old=olds.has(k)||(c&&(c.oldFlag||[]).length)
+      ||(on?!inPeriod(b.first)||(c&&c.date&&!inPeriod(c.date)&&c.date<b.first):b.n>=2);
+    old?od++:nw++;
+  });
+  return {custNew:nw,custOld:od};
+}
 function statsOf(db){
   return withDB(db,()=>{
     const rcs=liveRc().filter(r=>inPeriod(r.date));
@@ -6014,8 +6032,7 @@ function statsOf(db){
       quoteN:quotes.length,quoteOk:quotes.filter(d=>d.status==='อนุมัติแล้ว').length,
       poN:pos.length,poSum:pos.reduce((a,b)=>a+poGross(b),0),
       custN:css.length,custWon:css.filter(c=>WON_ST.indexOf(c.status)>=0).length,
-      ...(()=>{const bi=buyIndex(),n={lead:0,new:0,old:0};css.forEach(c=>n[custKind(c,bi).kind]++);
-        return {custOld:n.old,custNew:n.new,custLead:n.lead};})(),
+      ...buyerSplit(rcs),
       products:productStats(inPeriod),buyers:customerStats(inPeriod),months,cnts,year:yr};
   });
 }
@@ -6297,7 +6314,7 @@ function pgDashboard(v){
   [['ใบเสนอราคา',st.quoteN+' ใบ','อนุมัติแล้ว '+st.quoteOk+' ใบ','documents',{docType:'quotation',docFilter:'ทั้งหมด',docQ:'',docOpen:null}],
    ['PO ลูกค้า',st.poN+' ใบ','มูลค่ารวม '+num0(Math.round(st.poSum))+' ฿','po',{poFilter:'ทั้งหมด',poQ:'',poOpen:null}],
    ['ใบเสร็จรับเงิน',st.rcN+' ใบ','ออกแล้วในช่วงนี้','receipts',{rcFilter:'ทั้งหมด',rcY:'',rcM:'',rcFrom:'',rcTo:'',rcQ:''}],
-   ['ลูกค้าที่ติดต่อเข้ามา',st.custN+' ราย','ใหม่ '+st.custNew+' · เก่า '+st.custOld+' · ยังไม่ซื้อ '+st.custLead+' ราย','customers',{custFilter:'ทั้งหมด',custQ:''}]
+   ['ลูกค้าที่ติดต่อเข้ามา',st.custN+' ราย','ซื้อแล้ว: ลูกค้าใหม่ '+st.custNew+' · ลูกค้าเก่า '+st.custOld+' ราย','customers',{custFilter:'ทั้งหมด',custQ:''}]
   ].forEach(([t,val,sub,page,extra])=>{
     const c=el(`<div class="card pad" style="cursor:pointer;transition:.15s">
       <div class="mut">${esc(t)}</div><div style="font-size:26px;font-weight:700;margin-top:4px">${esc(val)}</div>
@@ -6523,7 +6540,7 @@ function pgTeam(v){
   [['ใบเสนอราคา',T('quoteN')+' ใบ','อนุมัติแล้ว '+T('quoteOk')+' ใบ'],
    ['PO ลูกค้า',T('poN')+' ใบ','มูลค่ารวม '+num0(Math.round(T('poSum')))+' ฿'],
    ['ใบเสร็จรับเงิน',T('rcN')+' ใบ','ออกแล้วในช่วงนี้'],
-   ['ลูกค้าที่ติดต่อเข้ามา',T('custN')+' ราย','ใหม่ '+(T('custNew')||0)+' · เก่า '+(T('custOld')||0)+' · ยังไม่ซื้อ '+(T('custLead')||0)+' ราย']
+   ['ลูกค้าที่ติดต่อเข้ามา',T('custN')+' ราย','ซื้อแล้ว: ลูกค้าใหม่ '+(T('custNew')||0)+' · ลูกค้าเก่า '+(T('custOld')||0)+' ราย']
   ].forEach(([t,val,sub])=>kp2.append(el(`<div class="card pad">
     <div class="mut">${esc(t)}</div><div style="font-size:26px;font-weight:700;margin-top:4px">${esc(val)}</div>
     <div class="tiny" style="margin-top:8px">${esc(sub)}</div></div>`)));
