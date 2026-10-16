@@ -525,7 +525,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.16-24';
+const APP_VER='2569.10.16-25';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof LINK_MODE!=='undefined'&&LINK_MODE)return false;          /* หน้าเซ็นจากลิงก์ ไม่รีโหลดใส่คนเซ็น */
@@ -7064,14 +7064,11 @@ function listOld(k,sysFirst){
 }
 function custKind(c,idx){
   const k=custKey(c.name),b=(idx||buyIndex())[k],n=b?b.n:0;
-  /* มีใบเสร็จในระบบ: ใบเดียว = ลูกค้าใหม่ · 2 ใบขึ้นไป = ลูกค้าเก่า (สั่งซื้อซ้ำ) */
-  if(n>=2)return {kind:'old',old:true,label:'ลูกค้าเก่า',sub:'สั่งซื้อซ้ำ '+n+' ครั้ง · ใบแรก '+fmtDate(b.first)};
-  if(n===1)return {kind:'new',old:false,label:'ลูกค้าใหม่',sub:'ออกใบเสร็จใบแรก '+fmtDate(b.first)};
-  /* ยังไม่มีใบเสร็จในระบบ: ดูรายชื่อลูกค้าเก่าของบริษัท / ติ๊กเอง */
+  /* หน้าลูกค้า: เพิ่มเข้ามา = ลูกค้าใหม่ · ออกใบเสร็จแล้ว (ซื้อแล้ว) = ลูกค้าเก่า */
+  if(n>=1)return {kind:'old',old:true,label:'ลูกค้าเก่า',sub:'ซื้อแล้ว '+n+' ครั้ง · ใบเสร็จใบแรก '+fmtDate(b.first)};
   if(listOld(k,''))return {kind:'old',old:true,label:'ลูกค้าเก่า',sub:'อยู่ในรายชื่อลูกค้าเก่าของบริษัท'};
   if((c.oldFlag||[]).length)return {kind:'old',old:true,label:'ลูกค้าเก่า',sub:'ซื้อก่อนเริ่มใช้โปรแกรม'};
-  if(WON_ST.includes(c.status)||c.status==='ซื้อขายแล้ว')return {kind:'new',old:false,label:'ลูกค้าใหม่',sub:'สถานะ '+c.status};
-  return {kind:'lead',old:false,label:'ยังไม่ซื้อ',sub:''};
+  return {kind:'new',old:false,label:'ลูกค้าใหม่',sub:'ยังไม่ได้ออกใบเสร็จ'};
 }
 const KIND_CSS={old:'background:#ecfdf5;color:#047857;border:1px solid #a7f3d0',
   new:'background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe',lead:'background:#f3f4f6;color:#6b7280;border:1px solid #e5e7eb'};
@@ -7154,9 +7151,9 @@ function pgCustomers(v){
   v.append(chipRow(chipItems,S.custFilter,k=>{S.custFilter=k;render();},clear));
   /* แยกลูกค้าใหม่ / ลูกค้าเก่า (ดูจากใบเสร็จ) */
   const bidx=buyIndex(),kindOf=c=>custKind(c,bidx);
-  const kn={lead:0,new:0,old:0};DB.customers.forEach(c=>kn[kindOf(c).kind]++);
-  const ck=S.custKind||'ทั้งหมด';
-  v.append(chipRow([['ทั้งหมด','ทุกกลุ่ม'],['ยังไม่ซื้อ','ยังไม่ซื้อ ('+kn.lead+')'],['ลูกค้าใหม่','ลูกค้าใหม่ ('+kn.new+')'],['ลูกค้าเก่า','ลูกค้าเก่า ('+kn.old+')']],
+  const kn={new:0,old:0};DB.customers.forEach(c=>kn[kindOf(c).kind]++);
+  const ck=S.custKind==='ยังไม่ซื้อ'?'ทั้งหมด':(S.custKind||'ทั้งหมด');
+  v.append(chipRow([['ทั้งหมด','ทุกกลุ่ม'],['ลูกค้าใหม่','ลูกค้าใหม่ ('+kn.new+')'],['ลูกค้าเก่า','ลูกค้าเก่า ('+kn.old+')']],
     ck,k=>{S.custKind=k;render();},null));
 
   const q=S.custQ.toLowerCase();
