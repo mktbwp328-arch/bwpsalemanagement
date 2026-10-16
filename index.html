@@ -525,7 +525,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.16-25';
+const APP_VER='2569.10.16-26';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof LINK_MODE!=='undefined'&&LINK_MODE)return false;          /* หน้าเซ็นจากลิงก์ ไม่รีโหลดใส่คนเซ็น */
@@ -7064,11 +7064,11 @@ function listOld(k,sysFirst){
 }
 function custKind(c,idx){
   const k=custKey(c.name),b=(idx||buyIndex())[k],n=b?b.n:0;
-  /* หน้าลูกค้า: เพิ่มเข้ามา = ลูกค้าใหม่ · ออกใบเสร็จแล้ว (ซื้อแล้ว) = ลูกค้าเก่า */
-  if(n>=1)return {kind:'old',old:true,label:'ลูกค้าเก่า',sub:'ซื้อแล้ว '+n+' ครั้ง · ใบเสร็จใบแรก '+fmtDate(b.first)};
-  if(listOld(k,''))return {kind:'old',old:true,label:'ลูกค้าเก่า',sub:'อยู่ในรายชื่อลูกค้าเก่าของบริษัท'};
+  /* ยังไม่มีใบเสร็จ หรือใบเสร็จ 1 ใบ = ลูกค้าใหม่ · เคยออกใบเสร็จไปแล้ว (ใบที่ 2 ขึ้นไป) = ลูกค้าเก่า */
+  if(n>=2)return {kind:'old',old:true,label:'ลูกค้าเก่า',sub:'ซื้อแล้ว '+n+' ครั้ง · ใบเสร็จใบแรก '+fmtDate(b.first)};
+  if(listOld(k,n?b.first:''))return {kind:'old',old:true,label:'ลูกค้าเก่า',sub:'อยู่ในรายชื่อลูกค้าเก่าของบริษัท'};
   if((c.oldFlag||[]).length)return {kind:'old',old:true,label:'ลูกค้าเก่า',sub:'ซื้อก่อนเริ่มใช้โปรแกรม'};
-  return {kind:'new',old:false,label:'ลูกค้าใหม่',sub:'ยังไม่ได้ออกใบเสร็จ'};
+  return {kind:'new',old:false,label:'ลูกค้าใหม่',sub:n?'ออกใบเสร็จใบแรก '+fmtDate(b.first):'ยังไม่ได้ออกใบเสร็จ'};
 }
 const KIND_CSS={old:'background:#ecfdf5;color:#047857;border:1px solid #a7f3d0',
   new:'background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe',lead:'background:#f3f4f6;color:#6b7280;border:1px solid #e5e7eb'};
