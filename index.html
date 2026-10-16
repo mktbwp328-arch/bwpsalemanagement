@@ -487,7 +487,6 @@ a{color:var(--blue);text-decoration:none}
       <button class="btn gh sm blk admin-only" id="dbBtn" onclick="sbSettings()">ตั้งค่าฐานข้อมูล</button>
       <button class="btn gh sm blk admin-only" onclick="dataSizeReport()">ตรวจขนาดข้อมูล</button>
       <button class="btn gh sm blk" id="demoBtn" style="display:none" onclick="seedDemo()">สร้างข้อมูลตัวอย่าง</button>
-      <button class="btn dg sm blk admin-only" id="clearBtn" onclick="clearAllData()">ล้างข้อมูลทั้งหมด</button>
       <div id="appVer" style="text-align:center;font-size:11px;color:#8ea3c7;padding:2px 0 4px"></div>
     </div>
   </aside>
@@ -525,7 +524,7 @@ a{color:var(--blue);text-decoration:none}
 /* ================= เวอร์ชันของโปรแกรม =================
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะขึ้นแถบให้กดอัปเดตเอง
    (ไม่ต้องบอกทุกคนให้กด Ctrl+F5) */
-const APP_VER='2569.10.16-3';
+const APP_VER='2569.10.16-4';
 function checkNewVersion(){
   fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():'').then(t=>{
     const m=/const APP_VER='([^']+)'/.exec(t||'');
@@ -1199,22 +1198,6 @@ function seedDemo(){
       toast('สร้างข้อมูลตัวอย่างแล้ว — ลูกค้า 5 · ใบเสนอราคา '+nq+' · PO '+np+' · ใบเสร็จ '+nr);
     });
 }
-/* ล้างข้อมูลงานขายทั้งหมด แต่เก็บหัวกระดาษ โลโก้ และการตั้งค่าไว้ */
-function clearAllData(){
-  if(!isManager()){toast('เฉพาะผู้ดูแลระบบเท่านั้น');return;}
-  /* กันลบข้อมูลของลูกทีมโดยไม่ตั้งใจ — ล้างได้เฉพาะบัญชีของตัวเอง */
-  if(viewingOther()){toast('ล้างข้อมูลของ '+(AUTH.viewingName||'เพื่อนร่วมทีม')+' ไม่ได้ — ล้างได้เฉพาะบัญชีของตัวเอง');return;}
-  askConfirm("ล้างข้อมูลทั้งหมด",
-    "ลบลูกค้า เอกสาร PO และใบเสร็จของบัญชีนี้"
-    +" ทั้งหมด กู้คืนไม่ได้ (หัวกระดาษ โลโก้ และการตั้งค่ายังอยู่)",
-    "ล้างข้อมูล",()=>{
-      /* เก็บรายการ id เดิมไว้ด้วย ไม่งั้นข้อมูลที่ล้างไปแล้วจะถูกอีกเครื่องส่งกลับมา */
-      const keep={logo:DB.logo,cert:DB.cert,company:DB.company,sb:DB.sb,ids:DB.ids||[]};
-      DB=Object.assign(seed(),keep);
-      save();go("dashboard");toast("ล้างข้อมูลแล้ว");
-    });
-}
-
 /* ================= feedback ================= */
 let undoFn=null;
 function toast(msg,undo){
@@ -5771,7 +5754,6 @@ function render(){
   /* ปุ่มที่อันตราย ให้เห็นเฉพาะผู้ดูแล กันพนักงานกดผิด */
   document.querySelectorAll('.admin-only').forEach(b=>{b.style.display=isManager()?'':'none';});
   /* ล้างข้อมูลได้เฉพาะบัญชีตัวเอง — ตอนเปิดดูข้อมูลลูกทีมให้ซ่อนปุ่มไว้ */
-  const clr=$('#clearBtn');if(clr&&isManager())clr.style.display=viewingOther()?'none':'';
   /* ปุ่มสร้างข้อมูลตัวอย่าง เห็นเฉพาะบัญชี bwpsaleadmin */
   const demo=$('#demoBtn');if(demo)demo.style.display=(isDemoAccount()&&!viewingOther())?'':'none';
 
