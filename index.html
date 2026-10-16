@@ -525,7 +525,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.16-23';
+const APP_VER='2569.10.16-24';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof LINK_MODE!=='undefined'&&LINK_MODE)return false;          /* หน้าเซ็นจากลิงก์ ไม่รีโหลดใส่คนเซ็น */
@@ -4302,7 +4302,7 @@ function itemsEditor(initial,opts){
         <label class="itf"><span>จำนวน</span>
           <input class="itqty" type="number" step="0.01" inputmode="decimal" placeholder="0" value="${it.qty??''}"></label>
         <label class="itf"><span>หน่วย</span>
-          <select class="itunit">${UNITS.map(u=>`<option ${u===(it.unit||'ม้วน')?'selected':''}>${u}</option>`).join('')}</select></label>
+          <input class="itunit" autocomplete="off" value="${esc(it.unit||'ม้วน')}" placeholder="เลือกหรือพิมพ์หน่วย"></label>
         <label class="itf"><span>ราคา/หน่วย (บาท)</span>
           <input class="itprice" type="number" step="0.001" inputmode="decimal" placeholder="0.00" value="${it.price??''}"></label>
         <div class="itf itamtwrap"><span>จำนวนเงิน</span><div class="itamtbox"><span class="itamt">0.00</span></div></div>
@@ -4332,7 +4332,8 @@ function itemsEditor(initial,opts){
       if(!tEl.value&&p.thick)tEl.value=parseFloat(p.thick)||'';
       calc();});
     ['.itqty','.itprice','.itw','.itlen','.ithgt','.itthk','.itname'].forEach(s=>{r.querySelector(s).oninput=calc;});
-    r.querySelector('.itunit').onchange=calc;
+    listCombo(r.querySelector('.itunit'),UNITS);   /* หน่วย: เลือกจากรายการ หรือพิมพ์หน่วยใหม่ */
+    r.querySelector('.itunit').onchange=calc;r.querySelector('.itunit').oninput=calc;
     /* พิมพ์ชื่อสินค้าเสร็จ ลองอ่านขนาดจากในชื่อมาเติมช่องที่ยังว่าง */
     const fillFromName=()=>{
       const d=parseDims(r.querySelector('.itname').value);
@@ -4475,6 +4476,12 @@ function openForm(title,fields,values,onSubmit,opts){
       w.append(prev);paint();
       custom[f.key]=()=>({images:imgs,files:fls});
       ff.append(w);return;
+    }
+    /* ทุกช่องแบบรายการเลือก ให้พิมพ์ได้ด้วย (พิมพ์เพื่อค้นหา หรือพิมพ์ค่าใหม่) — ค่าเริ่มต้นเหมือนเดิม: ตัวแรกของรายการ (ยกเว้นชื่อลูกค้า) */
+    if(f.type==='select'){
+      const opts=typeof f.options==='function'?f.options():(f.options||[]);
+      f=Object.assign({},f,{type:'combo',options:opts,
+        def:f.def!==undefined?f.def:(f.key==='customer'||f.req?'':(opts[0]??'')),ph:f.ph||'เลือกจากรายการ หรือพิมพ์เพื่อค้นหา'});
     }
     /* ช่องเลือกที่พิมพ์เองได้ — เลือกจากรายการ หรือพิมพ์ค่าใหม่ก็ได้ */
     if(f.type==='combo'){
