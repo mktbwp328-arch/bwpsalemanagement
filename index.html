@@ -525,7 +525,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.16-29';
+const APP_VER='2569.10.16-30';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof LINK_MODE!=='undefined'&&LINK_MODE)return false;          /* หน้าเซ็นจากลิงก์ ไม่รีโหลดใส่คนเซ็น */
@@ -4607,7 +4607,9 @@ function ncFindRows(period){
   return Object.values(first)
     /* ใบเสร็จใบแรกของลูกค้ารายนั้นต้องอยู่ในรอบนี้ */
     .filter(x=>x.date>=period.start&&x.date<=period.end)
-    /* ลูกค้าใหม่ = ใบเสร็จใบแรกกับระบบนี้อยู่ในรอบนี้ (ไม่ดูรายชื่อลูกค้าเก่าหรือวันที่ติดต่อ) */
+    /* ลูกค้าใหม่ = ใบเสร็จใบแรกกับระบบนี้อยู่ในรอบนี้ และไม่เคยซื้อกับบริษัทมาก่อน (รายชื่อลูกค้าเก่า / ติ๊กเอง) */
+    .filter(x=>{const k=custKey(x.customer),c=(DB.customers||[]).find(y=>custKey(y.name)===k);
+      return !listOld(k,x.date)&&!(c&&(c.oldFlag||[]).length);})
     .sort((a,b)=>String(a.date).localeCompare(String(b.date)))
     .map(x=>{
       const k=custKey(x.customer);
@@ -6019,9 +6021,13 @@ function buyerSplit(rcs,detail){
   rcs.forEach(r=>{
     const k=custKey(r.customer);if(!k||seen.has(k))return;seen.add(k);
     const b=bi[k]||{n:1,first:r.date};
-    /* ลูกค้าใหม่ = ออกใบเสร็จใบแรกกับระบบนี้ในช่วงนี้ · ลูกค้าเก่า = เคยมีใบเสร็จในระบบก่อนช่วงนี้
+    /* ลูกค้าใหม่ = ออกใบเสร็จใบแรกกับระบบนี้ในช่วงนี้ และไม่เคยซื้อกับบริษัทมาก่อนใช้ระบบ
+       ลูกค้าเก่า = อยู่ในรายชื่อลูกค้าเก่า (มียอดก่อนใบเสร็จใบแรกในระบบ) / ติ๊กเอง / เคยมีใบเสร็จในระบบก่อนช่วงนี้
        (ไม่ได้เลือกช่วงวันที่: ซื้อครั้งเดียว = ใหม่ · ซื้อซ้ำ = เก่า) */
-    const why=on?(!inPeriod(b.first)?'เคยออกใบเสร็จก่อนช่วงนี้ (ใบแรก '+fmtDate(b.first)+')':'')
+    const c=(DB.customers||[]).find(x=>custKey(x.name)===k);
+    const why=listOld(k,b.first)?'เคยซื้อกับบริษัทก่อนใช้ระบบ (อยู่ในรายชื่อลูกค้าเก่า)'
+      :(c&&(c.oldFlag||[]).length)?'ติ๊กว่าเป็นลูกค้าเก่า'
+      :on?(!inPeriod(b.first)?'เคยออกใบเสร็จก่อนช่วงนี้ (ใบแรก '+fmtDate(b.first)+')':'')
       :(b.n>=2?'สั่งซื้อซ้ำ '+b.n+' ครั้ง (ใบแรก '+fmtDate(b.first)+')':'');
     why?od++:nw++;
     if(detail)rows.push({name:r.customer,old:!!why,why:why||('ออกใบเสร็จใบแรก '+fmtDate(b.first)+(r.no?' · ใบเสร็จ '+r.no:''))});
