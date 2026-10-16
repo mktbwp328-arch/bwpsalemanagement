@@ -525,7 +525,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.16-36';
+const APP_VER='2569.10.16-37';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof LINK_MODE!=='undefined'&&LINK_MODE)return false;          /* หน้าเซ็นจากลิงก์ ไม่รีโหลดใส่คนเซ็น */
@@ -4592,10 +4592,14 @@ function ncRowFor(customer,rcs){
   const items=[];rcs.forEach(r=>(r.items||[]).forEach(it=>items.push(it)));
   const uniq=a=>[...new Set(a.filter(Boolean))];
   const first=rcs[0]||{};
+  /* ขนาดกับเกรดเป็นคู่กัน — บรรทัดที่ n ของเกรดคือเกรดของขนาดบรรทัดที่ n */
+  const seen=new Set(),pairs=[];
+  items.forEach(it=>{const s=ncSize(it),g=ncGrade(it.name),k=s.toLowerCase().replace(/\s+/g,'')+'|'+g;
+    if(!s||seen.has(k))return;seen.add(k);pairs.push([s,g]);});
   return {rcNo:first.no||'',ck:custKey(customer),customer,
     kind:uniq(items.map(it=>NC_KIND[categoryOf(it.name,it.code)]||'')).join(', '),
-    size:uniq(items.map(ncSize)).join('\n'),
-    grade:uniq(items.map(it=>ncGrade(it.name))).join(' / ')};
+    size:pairs.map(p=>p[0]).join('\n'),
+    grade:pairs.map(p=>p[1]).join('\n')};
 }
 function ncFindRows(period){
   /* นับจากใบเสร็จเท่านั้น (ซื้อขายกันจริง) — PO ยังไม่ถือว่าซื้อ */
@@ -4672,7 +4676,7 @@ function ncRowsEditor(initial){
           <label class="itf"><span>ขนาดสินค้า</span>
             <textarea class="ncsize" rows="2" placeholder="เช่น 15 mic x 50 cm x 570 m">${esc(v.size||'')}</textarea></label>
           <label class="itf"><span>เกรด</span>
-            <input class="ncgrade" placeholder="A / AB" value="${esc(v.grade||'')}"></label>
+            <textarea class="ncgrade" rows="2" placeholder="A">${esc(v.grade||'')}</textarea></label>
         </div></div>`);
       const bind=(sel,k)=>{const e=r.querySelector(sel);e.oninput=()=>{v[k]=e.value;};};
       bind('.nccust','customer');bind('.nckind','kind');bind('.ncsize','size');bind('.ncgrade','grade');
@@ -4717,6 +4721,19 @@ function ncFillRows(d){
   const p=ncPeriod(d.date);let changed=false;
   const rcs=(DB.receipts||[]).filter(r=>r.status!=='ยกเลิก'&&r.date&&r.date>=p.start&&r.date<=p.end)
     .sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  const sk=s=>String(s||'').toLowerCase().replace(/\s+/g,'');
+  const lines=s=>String(s||'').split('\n').map(x=>x.trim());
+  /* จับคู่ขนาด/เกรดใหม่: ขนาดเดิมคงไว้ เติมเกรดของแต่ละขนาด แล้วต่อด้วยขนาดที่ยังขาด */
+  const pairUp=(r,f)=>{
+    const S=lines(r.size).filter(Boolean),G0=lines(r.grade);
+    const fp=lines(f.size).map((s,i)=>[s,lines(f.grade)[i]||'']).filter(p=>p[0]);
+    const one=G0.length===1&&!/[\/,]/.test(G0[0])?G0[0]:'';
+    const out=S.map((s,i)=>{let g=G0.length===S.length?G0[i]:null;
+      if(g==null){const m=fp.find(p=>sk(p[0])===sk(s));g=m?m[1]:one;}
+      return [s,g];});
+    fp.forEach(p=>{if(!out.some(o=>sk(o[0])===sk(p[0])&&(o[1]===p[1]||!p[1])))out.push(p);});
+    return {size:out.map(o=>o[0]).join('\n'),grade:out.map(o=>o[1]).join('\n')};
+  };
   const addTo=(cur,more,sep)=>{
     const have=String(cur||'').split(sep==='\n'?/\n/:/\s*[,\/]\s*/).map(s=>s.trim()).filter(Boolean);
     const keyOf=s=>s.toLowerCase().replace(/\s+/g,'');
@@ -4728,10 +4745,9 @@ function ncFillRows(d){
     const k=r.ck||custKey(r.customer);if(!k)return;
     const mine=rcs.filter(x=>custKey(x.customer)===k);if(!mine.length)return;
     const f=ncRowFor(r.customer,mine);
-    const s=addTo(r.size,f.size,'\n'),kd=addTo(r.kind,f.kind,', '),g=addTo(r.grade,f.grade,' / ');
-    if(s!=null){r.size=s;changed=true;}
+    const pr=pairUp(r,f),kd=addTo(r.kind,f.kind,', ');
+    if(pr.size!==String(r.size||'')||pr.grade!==String(r.grade||'')){r.size=pr.size;r.grade=pr.grade;changed=true;}
     if(kd!=null){r.kind=kd;changed=true;}
-    if(g!=null){r.grade=g;changed=true;}
     if(!r.ck){r.ck=k;changed=true;}
   });
   return changed;
@@ -4782,7 +4798,7 @@ function newCustSheet(d){
       <tbody>${rows.map((r,i)=>`<tr>
         <td class="c">${i+1}</td><td class="c">${esc(r.customer||'')}</td>
         <td class="c">${esc(r.kind||'')}</td><td class="c pre">${esc(r.size||'')}</td>
-        <td class="c">${esc(r.grade||'')}</td></tr>`).join('')}</tbody>
+        <td class="c pre">${esc(r.grade||'')}</td></tr>`).join('')}</tbody>
     </table>
     <div style="margin:8mm 0 0;text-indent:15mm">จึงเรียนมาเพื่อทราบและโปรดดำเนินการ</div>
     <div class="ncsigs">
