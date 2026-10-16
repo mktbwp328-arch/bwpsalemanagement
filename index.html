@@ -525,7 +525,7 @@ a{color:var(--blue);text-decoration:none}
 /* ================= เวอร์ชันของโปรแกรม =================
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะขึ้นแถบให้กดอัปเดตเอง
    (ไม่ต้องบอกทุกคนให้กด Ctrl+F5) */
-const APP_VER='2569.10.16-1';
+const APP_VER='2569.10.16-2';
 function checkNewVersion(){
   fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():'').then(t=>{
     const m=/const APP_VER='([^']+)'/.exec(t||'');
@@ -8386,6 +8386,24 @@ function uploadPanel(c,title){
 }
 
 /* ================= หน้าเข้าสู่ระบบ ================= */
+/* สำเนาข้อมูลงานขายทุกบัญชีที่เคยเปิดในเครื่องนี้ (localStorage: bwp_sales_v1_<user id>) */
+function localCopies(){
+  const out=[];
+  try{
+    for(let i=0;i<localStorage.length;i++){
+      const key=localStorage.key(i);
+      if(!key||!key.startsWith(KEY))continue;
+      const raw=localStorage.getItem(key);let d=null;
+      try{d=JSON.parse(raw);}catch(e){continue;}
+      if(!d||!d.customers)continue;
+      const uid=key.slice(KEY.length+1)||'';
+      const who=(d.mySig&&d.mySig.name)||(d.company&&uid===''?'ข้อมูลเก่า (ไม่ผูกบัญชี)':'')||'บัญชี '+(uid.slice(0,8)||'-');
+      out.push({key,uid,who,raw:d,cust:(d.customers||[]).length,docs:(d.docs||[]).length,rc:(d.receipts||[]).length,
+        at:d._t?new Date(+d._t).toLocaleString('th-TH'):''});
+    }
+  }catch(e){}
+  return out.sort((a,b)=>b.cust+b.docs-(a.cust+a.docs));
+}
 function loginScreen(msg){
   document.querySelector('.app').style.display='none';
   const old=document.getElementById('loginWrap');if(old)old.remove();
@@ -8418,8 +8436,28 @@ function loginScreen(msg){
         <a href="#" id="lgSwitch" style="font-weight:600">สมัครใช้งาน</a></div>
       <div class="tiny" style="text-align:center;margin-top:18px">ยังไม่มีบัญชี? ติดต่อผู้ดูแลระบบให้สร้างให้<br>
         ข้อมูลของแต่ละคนแยกกัน เข้าจากเครื่องไหนก็เห็นงานของตัวเอง</div>
+      <div id="lgBackup"></div>
     </div></div>`);
   document.body.append(w);
+  /* ข้อมูลงานขายที่เก็บอยู่ในเครื่องนี้ — แสดงสรุป และให้ดาวน์โหลดเป็นไฟล์สำรองได้ แม้ยังเข้าระบบไม่ได้ */
+  (()=>{
+    const copies=localCopies();
+    if(!copies.length)return;
+    const box=w.querySelector('#lgBackup');
+    box.innerHTML=`<div style="margin-top:16px;border-top:1px solid var(--bd2);padding-top:14px">
+      <div class="tiny" style="margin-bottom:8px">ข้อมูลงานขายที่เก็บอยู่ในเครื่องนี้:</div>
+      ${copies.map(c=>`<div class="tiny" style="margin-bottom:4px">· ${esc(c.who)} — ลูกค้า ${c.cust} ราย · เอกสาร ${c.docs} ใบ · ใบเสร็จ ${c.rc} ใบ${c.at?' · บันทึกล่าสุด '+esc(c.at):''}
+        <span style="opacity:.6">(ID ${esc(c.uid||'-')})</span></div>`).join('')}
+      <button class="btn gh sm blk" id="lgBk" style="margin-top:8px">💾 สำรองข้อมูลในเครื่องนี้เป็นไฟล์</button></div>`;
+    box.querySelector('#lgBk').onclick=()=>{
+      const out={exportedAt:new Date().toISOString(),app:APP_VER,copies:copies.map(c=>({key:c.key,uid:c.uid,who:c.who,data:c.raw}))};
+      const blob=new Blob([JSON.stringify(out)],{type:'application/json'});
+      const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+      a.download='bwp-สำรองข้อมูล-'+new Date().toISOString().slice(0,10)+'.json';
+      document.body.append(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},2000);
+      toast('ดาวน์โหลดไฟล์สำรองแล้ว — เก็บไฟล์นี้ไว้ อย่าลบ');
+    };
+  })();
   let mode='in';
   const err=t=>{const e=w.querySelector('#lgErr');e.style.display=t?'block':'none';e.textContent=t||'';};
   /* แสดงลิงก์สมัครเองเฉพาะตอนยังไม่มีใครในระบบ (เผื่อสร้างบัญชีผู้ดูแลคนแรก) */
