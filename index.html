@@ -525,7 +525,7 @@ a{color:var(--blue);text-decoration:none}
 /* ================= เวอร์ชันของโปรแกรม =================
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะขึ้นแถบให้กดอัปเดตเอง
    (ไม่ต้องบอกทุกคนให้กด Ctrl+F5) */
-const APP_VER='2569.10.14-2';
+const APP_VER='2569.10.16-1';
 function checkNewVersion(){
   fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():'').then(t=>{
     const m=/const APP_VER='([^']+)'/.exec(t||'');
@@ -2171,7 +2171,11 @@ async function signIn(user,password){
   const j=await sbAuthCall('token?grant_type=password',{email:toEmail(user),password});
   AUTH.token=j.access_token;AUTH.refresh=j.refresh_token;AUTH.user=j.user;saveSession();
 }
+/* ปิดการสร้างบัญชีใหม่ชั่วคราว ระหว่างกู้คืนบัญชีผู้ใช้ (16 ต.ค. 2569 บัญชีทั้งหมดในฐานข้อมูลหายไป)
+   ถ้าปล่อยไว้ พนักงานที่ลองเข้าระบบจะได้บัญชีใหม่ที่ไม่ผูกกับข้อมูลเดิม — กู้คืนเสร็จแล้วค่อยเปลี่ยนเป็น false */
+const SIGNUP_LOCK=true;
 async function signUp(user,password,name){
+  if(SIGNUP_LOCK)throw new Error('ระบบกำลังกู้คืนบัญชีผู้ใช้ — ยังเข้าระบบไม่ได้ชั่วคราว ห้ามสมัครใหม่ และห้ามล้างข้อมูลเบราว์เซอร์ ติดต่อผู้ดูแลระบบ');
   const email=toEmail(user);
   const j=await sbAuthCall('signup',{email,password,data:{name:name||toUsername(email)}});
   if(j.access_token){AUTH.token=j.access_token;AUTH.refresh=j.refresh_token;AUTH.user=j.user;saveSession();return true;}
