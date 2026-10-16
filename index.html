@@ -524,7 +524,7 @@ a{color:var(--blue);text-decoration:none}
 /* ================= เวอร์ชันของโปรแกรม =================
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะขึ้นแถบให้กดอัปเดตเอง
    (ไม่ต้องบอกทุกคนให้กด Ctrl+F5) */
-const APP_VER='2569.10.16-4';
+const APP_VER='2569.10.16-5';
 function checkNewVersion(){
   fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():'').then(t=>{
     const m=/const APP_VER='([^']+)'/.exec(t||'');
@@ -8798,10 +8798,12 @@ async function viewUser(id,name,mine){
     const keepProducts=allProducts();      /* คลังสินค้าเป็นของกลาง ไม่เปลี่ยนตามคนที่กำลังดู */
     /* บนคลาวด์ไม่มีข้อมูลของคนนี้ (เช่น หลังกู้คืนบัญชี) แต่ในเครื่องนี้มีสำเนาอยู่ → ใช้สำเนาแล้วส่งกลับขึ้นคลาวด์ */
     let restoredLocal=false;
-    if(!(d&&d.customers)){
+    /* บนคลาวด์ว่างเปล่า (ไม่มีแถว หรือมีแต่ไม่มีลูกค้า/เอกสาร/PO/ใบเสร็จเลย — เช่น เจ้าตัวเข้าระบบจากเครื่องที่ไม่มีสำเนา) */
+    const cnt=x=>x?(x.customers||[]).length+(x.docs||[]).length+(x.pos||[]).length+(x.receipts||[]).length:0;
+    if(!(d&&d.customers)||!cnt(d)){
       const local=load();
-      if(local&&local.customers&&(local.customers.length||(local.docs||[]).length)){DB=local;restoredLocal=true;}
-      else DB=seed();
+      if(local&&local.customers&&cnt(local)){DB=local;restoredLocal=true;}
+      else DB=d&&d.customers?d:seed();
     }else DB=d;
     DB.products=keepProducts;
     migrate();
