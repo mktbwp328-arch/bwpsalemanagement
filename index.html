@@ -525,7 +525,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.16-31';
+const APP_VER='2569.10.16-32';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof LINK_MODE!=='undefined'&&LINK_MODE)return false;          /* หน้าเซ็นจากลิงก์ ไม่รีโหลดใส่คนเซ็น */
@@ -8653,6 +8653,68 @@ function sharedCustomerView(s){
     if(c){save(true);go('profiles',{profSel:c.id,profTab:'info'});toast('เพิ่มเข้ารายชื่อลูกค้าของคุณแล้ว');}};
   ov.append(m);$('#layer').append(ov);
 }
+/* ---------- สรุปการสั่งซื้อรายสินค้าของลูกค้า (แบบตาราง Size/Spec ของฝ่ายขาย) ----------
+   แต่ละสินค้า: แถว PO (วันที่ เลขที่ จำนวนสั่ง ราคา) ตามด้วยการส่งของจากใบเสร็จที่อ้างอิง PO นั้น
+   คงเหลือ = สั่ง − ส่งแล้ว (หน่วยต่างกันจะแปลงเป็น กก. ให้ถ้าคำนวณได้) */
+function purchaseSummary(c){
+  const ck=custKey(c.name);
+  const pos=(DB.pos||[]).filter(p=>custKey(p.customer)===ck&&p.status!=='ยกเลิก');
+  const rcs=liveRc().filter(r=>custKey(r.customer)===ck);
+  const pkey=it=>String(it.code||'').trim().toUpperCase()||normName(it.name).slice(0,60);
+  const prods=new Map();
+  const P=it=>{const k=pkey(it);if(!k)return null;
+    if(!prods.has(k))prods.set(k,{code:it.code||'',name:it.name||'',lines:[],poMap:new Map()});return prods.get(k);};
+  /* PO */
+  pos.forEach(p=>(p.items||[]).forEach(it=>{const g=P(it);if(!g)return;
+    const line={po:p,it,date:p.date||'',no:p.custPoNo||p.no||'',order:+it.qty||0,unit:it.unit||'',price:+it.price||0,dels:[]};
+    g.lines.push(line);g.poMap.set((p.no||'')+'|'+(it.id||pkey(it)),line);g.poMap.set((p.no||'')+'|'+pkey(it),line);}));
+  /* การส่งของ (ใบเสร็จ) — จับคู่กับ PO จากเลขที่อ้างอิง ไม่มีอ้างอิงก็ไปไว้แถว "ไม่อ้างอิง PO" */
+  rcs.forEach(r=>(r.items||[]).forEach(it=>{const g=P(it);if(!g)return;
+    const del={date:r.date||'',no:r.no||'',inv:r.invNo||'',qty:+it.qty||0,unit:it.unit||'',price:+it.price||0,it};
+    const line=(r.poRef&&(g.poMap.get(r.poRef+'|'+(r.poItemId||''))||g.poMap.get(r.poRef+'|'+pkey(it))))||null;
+    if(line)line.dels.push(del);
+    else{let free=g.lines.find(l=>l.free);if(!free){free={free:true,date:'',no:'ไม่อ้างอิง PO',order:0,unit:it.unit||'',price:0,dels:[]};g.lines.push(free);}
+      free.dels.push(del);}}));
+  const card=el('<div class="card pad"><div class="h3">สรุปการสั่งซื้อรายสินค้า</div></div>');
+  if(!prods.size){card.append(el('<div class="empty">ยังไม่มี PO หรือใบเสร็จของลูกค้ารายนี้</div>'));return card;}
+  /* แปลงจำนวนเป็นหน่วยเดียวกับที่สั่ง (หน่วยต่างกัน → ใช้ กก. ถ้าคำนวณได้) */
+  const amt=(q,unit,it)=>({q,unit,kg:isKgUnit(unit)?q:(itemKg(Object.assign({},it,{qty:q,unit}))||null)});
+  const fmtQ=(q,u)=>q?num(q)+' '+esc(u||''):'-';
+  const td='padding:6px 8px;border-bottom:1px solid var(--bd2);font-size:13px;white-space:nowrap';
+  [...prods.values()].forEach(g=>{
+    g.lines.sort((a,b)=>(a.free?1:0)-(b.free?1:0)||String(a.date).localeCompare(String(b.date)));
+    let rows='',tOrder=0,tDel=0,tLeft=0,sameUnit=true;const u0=(g.lines.find(l=>!l.free)||{}).unit||'';
+    g.lines.forEach(l=>{
+      l.dels.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+      let left=l.order;
+      if(!l.free){tOrder+=l.order;if(l.unit!==u0)sameUnit=false;
+        rows+='<tr style="background:#f8fbff"><td style="'+td+';color:#b91c1c">'+esc(fmtDate(l.date))+'</td><td style="'+td+'">'+esc(l.no)+'</td><td style="'+td+';text-align:right">'+fmtQ(l.order,l.unit)
+          +'</td><td style="'+td+';text-align:right">-</td><td style="'+td+';text-align:right">'+fmtQ(l.order,l.unit)+'</td><td style="'+td+';text-align:right">'+(l.price?num(l.price):'')+'</td><td style="'+td+'"></td></tr>';}
+      else rows+='<tr><td colspan="7" style="'+td+';color:var(--mut)">ใบเสร็จที่ไม่ได้อ้างอิง PO</td></tr>';
+      l.dels.forEach(d=>{
+        /* ส่งแล้วในหน่วยของ PO */
+        let sent=d.qty,ok=true;
+        if(!l.free&&d.unit!==l.unit){const a=amt(d.qty,d.unit,d.it),b=amt(l.order,l.unit,l.it||d.it);
+          if(a.kg!=null&&b.kg!=null&&b.kg>0&&isKgUnit(l.unit))sent=a.kg;else ok=false;}
+        if(!l.free&&ok)left=Math.max(0,left-sent);
+        tDel+=ok?sent:0;
+        rows+='<tr><td style="'+td+'">'+esc(fmtDate(d.date))+'</td><td style="'+td+'">ใบเสร็จ '+esc(d.no)+'</td><td style="'+td+';text-align:right">'
+          +(d.unit!==l.unit&&!l.free?fmtQ(d.qty,d.unit):'')+'</td><td style="'+td+';text-align:right">'+(ok?fmtQ(sent,l.free?d.unit:l.unit):fmtQ(d.qty,d.unit))
+          +'</td><td style="'+td+';text-align:right">'+(l.free?'':(ok?fmtQ(left,l.unit):'-'))+'</td><td style="'+td+';text-align:right">'+(d.price?num(d.price):'')
+          +'</td><td style="'+td+';font-weight:600">'+esc(d.inv&&d.inv!==d.no?d.inv:'')+'</td></tr>';
+      });
+      if(!l.free)tLeft+=left;
+    });
+    card.append(el(`<div style="margin-top:14px;border:1px solid var(--bd);border-radius:12px;overflow:hidden">
+      <div style="display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;padding:10px 12px;background:#eef4ff;border-bottom:1px solid var(--bd)">
+        <b style="font-size:15px">${esc(g.code||'-')}</b><span style="font-size:14px">${esc(String(g.name).split('\n')[0])}</span>
+        ${sameUnit&&u0?`<span class="tiny" style="margin-left:auto">สั่งรวม ${fmtQ(tOrder,u0)} · ส่งแล้ว ${fmtQ(tDel,u0)} · <b style="color:${tLeft>0?'#b45309':'#15803d'}">คงเหลือ ${fmtQ(tLeft,u0)}</b></span>`:''}</div>
+      <div style="overflow:auto"><table style="width:100%;border-collapse:collapse">
+        <thead><tr style="background:#f9fafb">${['วันที่','เลขที่ PO / ใบเสร็จ','สั่ง','ยอดส่ง','คงเหลือ','ราคา','หมายเหตุ'].map((t,i)=>'<th style="'+td+';text-align:'+(i>=2&&i<=5?'right':'left')+';font-weight:600">'+t+'</th>').join('')}</tr></thead>
+        <tbody>${rows}</tbody></table></div></div>`));
+  });
+  return card;
+}
 function pgProfiles(v){
   const c=DB.customers.find(x=>x.id===S.profSel);
   if(!c){
@@ -8729,6 +8791,7 @@ function pgProfiles(v){
   }
 
   if(S.profTab==='history'){
+    v.append(purchaseSummary(c));
     const mk=(title,items,cfg)=>{
       const card=el(`<div class="card"><div class="pad" style="padding-bottom:6px"><div class="h3" style="margin:0">${esc(title)}</div></div></div>`);
       const inner=listCard(items,Object.assign({empty:el('<div class="empty">ไม่มีข้อมูล</div>')},cfg));
