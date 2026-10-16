@@ -525,7 +525,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.16-26';
+const APP_VER='2569.10.16-27';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof LINK_MODE!=='undefined'&&LINK_MODE)return false;          /* หน้าเซ็นจากลิงก์ ไม่รีโหลดใส่คนเซ็น */
@@ -6054,6 +6054,10 @@ function statsOf(db){
       poN:pos.length,poSum:pos.reduce((a,b)=>a+poGross(b),0),
       custN:css.length,custWon:css.filter(c=>WON_ST.indexOf(c.status)>=0).length,
       ...buyerSplit(rcs),
+      /* การ์ดลูกค้าที่ติดต่อเข้ามา: นับเฉพาะลูกค้าใหม่ (ป้ายเดียวกับหน้าลูกค้า) และในนั้นซื้อแล้ว (มีใบเสร็จ) กี่ราย */
+      ...(()=>{const bi=buyIndex();let nn=0,nb=0;
+        css.forEach(c=>{if(custKind(c,bi).kind!=='new')return;nn++;if(bi[custKey(c.name)])nb++;});
+        return {custNewN:nn,custNewBought:nb};})(),
       products:productStats(inPeriod),buyers:customerStats(inPeriod),months,cnts,year:yr};
   });
 }
@@ -6335,7 +6339,7 @@ function pgDashboard(v){
   [['ใบเสนอราคา',st.quoteN+' ใบ','อนุมัติแล้ว '+st.quoteOk+' ใบ','documents',{docType:'quotation',docFilter:'ทั้งหมด',docQ:'',docOpen:null}],
    ['PO ลูกค้า',st.poN+' ใบ','มูลค่ารวม '+num0(Math.round(st.poSum))+' ฿','po',{poFilter:'ทั้งหมด',poQ:'',poOpen:null}],
    ['ใบเสร็จรับเงิน',st.rcN+' ใบ','ออกแล้วในช่วงนี้','receipts',{rcFilter:'ทั้งหมด',rcY:'',rcM:'',rcFrom:'',rcTo:'',rcQ:''}],
-   ['ลูกค้าที่ติดต่อเข้ามา',st.custN+' ราย','ซื้อแล้ว: ลูกค้าใหม่ '+st.custNew+' · ลูกค้าเก่า '+st.custOld+' ราย','customers',{custFilter:'ทั้งหมด',custQ:''}]
+   ['ลูกค้าใหม่ที่ติดต่อเข้ามา',st.custNewN+' ราย','ซื้อแล้ว '+st.custNewBought+' ราย','customers',{custFilter:'ทั้งหมด',custQ:'',custKind:'ลูกค้าใหม่'}]
   ].forEach(([t,val,sub,page,extra])=>{
     const c=el(`<div class="card pad" style="cursor:pointer;transition:.15s">
       <div class="mut">${esc(t)}</div><div style="font-size:26px;font-weight:700;margin-top:4px">${esc(val)}</div>
@@ -6562,7 +6566,7 @@ function pgTeam(v){
   [['ใบเสนอราคา',T('quoteN')+' ใบ','อนุมัติแล้ว '+T('quoteOk')+' ใบ'],
    ['PO ลูกค้า',T('poN')+' ใบ','มูลค่ารวม '+num0(Math.round(T('poSum')))+' ฿'],
    ['ใบเสร็จรับเงิน',T('rcN')+' ใบ','ออกแล้วในช่วงนี้'],
-   ['ลูกค้าที่ติดต่อเข้ามา',T('custN')+' ราย','ซื้อแล้ว: ลูกค้าใหม่ '+(T('custNew')||0)+' · ลูกค้าเก่า '+(T('custOld')||0)+' ราย']
+   ['ลูกค้าใหม่ที่ติดต่อเข้ามา',(T('custNewN')||0)+' ราย','ซื้อแล้ว '+(T('custNewBought')||0)+' ราย']
   ].forEach(([t,val,sub])=>kp2.append(el(`<div class="card pad">
     <div class="mut">${esc(t)}</div><div style="font-size:26px;font-weight:700;margin-top:4px">${esc(val)}</div>
     <div class="tiny" style="margin-top:8px">${esc(sub)}</div></div>`)));
