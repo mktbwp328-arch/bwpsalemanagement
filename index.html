@@ -525,7 +525,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.16-34';
+const APP_VER='2569.10.16-35';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof LINK_MODE!=='undefined'&&LINK_MODE)return false;          /* หน้าเซ็นจากลิงก์ ไม่รีโหลดใส่คนเซ็น */
@@ -4710,6 +4710,32 @@ function ncRowsEditor(initial){
   paintList();paintRows();
   return {el:box,value:()=>rows.filter(x=>x.customer||x.kind||x.size)};
 }
+/* บันทึกที่สร้างไว้ก่อน เก็บขนาดสินค้าแค่บางรายการ — เติมขนาด/ชนิด/เกรดที่ยังขาด
+   จากใบเสร็จทุกใบของลูกค้ารายนั้นในรอบของบันทึก (เติมอย่างเดียว ไม่ลบที่พิมพ์แก้ไว้) */
+function ncFillRows(d){
+  if(!(d.rows||[]).length||!d.date)return false;
+  const p=ncPeriod(d.date);let changed=false;
+  const rcs=(DB.receipts||[]).filter(r=>r.status!=='ยกเลิก'&&r.date&&r.date>=p.start&&r.date<=p.end)
+    .sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  const addTo=(cur,more,sep)=>{
+    const have=String(cur||'').split(sep==='\n'?/\n/:/\s*[,\/]\s*/).map(s=>s.trim()).filter(Boolean);
+    const keyOf=s=>s.toLowerCase().replace(/\s+/g,'');
+    const hs=new Set(have.map(keyOf));
+    const add=String(more||'').split(sep==='\n'?/\n/:/\s*[,\/]\s*/).map(s=>s.trim()).filter(s=>s&&!hs.has(keyOf(s)));
+    return add.length?have.concat(add).join(sep):null;
+  };
+  d.rows.forEach(r=>{
+    const k=r.ck||custKey(r.customer);if(!k)return;
+    const mine=rcs.filter(x=>custKey(x.customer)===k);if(!mine.length)return;
+    const f=ncRowFor(r.customer,mine);
+    const s=addTo(r.size,f.size,'\n'),kd=addTo(r.kind,f.kind,', '),g=addTo(r.grade,f.grade,' / ');
+    if(s!=null){r.size=s;changed=true;}
+    if(kd!=null){r.kind=kd;changed=true;}
+    if(g!=null){r.grade=g;changed=true;}
+    if(!r.ck){r.ck=k;changed=true;}
+  });
+  return changed;
+}
 function ensureNewCust(d){
   if(!d.rows)d.rows=[];
   if(!d.sigs)d.sigs={};
@@ -4732,6 +4758,7 @@ function ncFields(){return [
 /* ---------- แผ่นพิมพ์ ---------- */
 function newCustSheet(d){
   ensureNewCust(d);
+  if(!LINK_MODE&&ncFillRows(d))save();
   const co=DB.company||COMPANY,lg=logoSrc(),s=d.sigs||{};
   const sig=k=>s[k]&&s[k].img?`<img src="${imgSrc(s[k].img)}" style="max-height:15mm;max-width:46mm">`:'';
   const rows=(d.rows||[]).length?d.rows:[{customer:'',kind:'',size:'',grade:''}];
@@ -4814,6 +4841,7 @@ function pgNewCust(v){
 }
 function ncDetail(v,d){
   ensureNewCust(d);
+  if(ncFillRows(d))save();
   header('ตัดยอด '+fmtDate(d.date),['รายชื่อลูกค้าใหม่']);
   backBtn('กลับ',()=>go('newcust',{ncOpen:null}));
   actionBtn('แก้ไขข้อมูล','edit',()=>openForm('แก้ไขบันทึก',ncFields(),d,o=>{
