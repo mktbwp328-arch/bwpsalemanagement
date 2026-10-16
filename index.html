@@ -524,7 +524,7 @@ a{color:var(--blue);text-decoration:none}
 /* ================= เวอร์ชันของโปรแกรม =================
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะขึ้นแถบให้กดอัปเดตเอง
    (ไม่ต้องบอกทุกคนให้กด Ctrl+F5) */
-const APP_VER='2569.10.16-7';
+const APP_VER='2569.10.16-8';
 function checkNewVersion(){
   fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():'').then(t=>{
     const m=/const APP_VER='([^']+)'/.exec(t||'');
@@ -1111,7 +1111,10 @@ async function vaultSync(force){
   return {up,err:VAULT_ERR};
 }
 window.addEventListener('online',()=>{if(DB)resolveVault();});
-function load(){try{const r=localStorage.getItem(localKey())||localStorage.getItem(KEY);
+/* เข้าระบบแล้ว: ใช้เฉพาะสำเนาของบัญชีนั้นเท่านั้น
+   (เดิมถ้าไม่เจอ จะไปหยิบข้อมูลเก่าสมัยยังไม่มีระบบบัญชี "bwp_sales_v1" มาใช้แทน
+    แล้วส่งขึ้นคลาวด์เป็นข้อมูลของคนนั้น — ข้อมูลทดสอบเก่าไปโผล่ในบัญชีใหม่) */
+function load(){try{const r=AUTH.user?localStorage.getItem(localKey()):localStorage.getItem(KEY);
   if(r)return unpackDB(JSON.parse(r));}catch(e){}return null;}
 
 function seed(){
