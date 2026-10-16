@@ -525,7 +525,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.16-14';
+const APP_VER='2569.10.16-16';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof LINK_MODE!=='undefined'&&LINK_MODE)return false;          /* หน้าเซ็นจากลิงก์ ไม่รีโหลดใส่คนเซ็น */
@@ -665,6 +665,7 @@ function save(now){
   clearTimeout(syncTimer);
   if(now)cloudSave();                    /* งานสำคัญ ส่งขึ้นคลาวด์ทันที ไม่รอหน่วงเวลา */
   else syncTimer=setTimeout(cloudSave,1500);
+  if(typeof custSharedSoon==='function')custSharedSoon();   /* ลูกค้าที่เพิ่ม/แก้ เข้าทะเบียนกลางทันที */
 }
 /* ข้อมูลใหญ่จนใกล้ขีดจำกัด — จัดการให้เองเงียบ ๆ ไม่ต้องถาม (ทำครั้งเดียวต่อบัญชีต่อการเปิดเว็บ)
    1) ย่อลายเซ็น/โลโก้ที่ฝังในข้อมูล  2) ย้ายรูปแนบขึ้นที่เก็บไฟล์  3) ถ้ายังใหญ่ ค่อยบีบรูปให้เล็กลงทีละขั้น */
@@ -7001,6 +7002,8 @@ function custKind(c,idx){
   const flag=(c.oldFlag||[]).length>0;
   if(b&&b.n)return {old:true,label:b.n>=2?'ลูกค้าเก่า · ซื้อซ้ำ':'ลูกค้าเก่า',
     sub:'ซื้อแล้ว '+b.n+' ครั้ง · ครั้งแรก '+fmtDate(b.first)};
+  /* ปิดการขายแล้ว (หรือสถานะหลังจากนั้น) ถือเป็นลูกค้าเก่า แม้ยังไม่ได้ออกใบเสร็จ */
+  if(WON_ST.includes(c.status)||c.status==='ซื้อขายแล้ว')return {old:true,label:'ลูกค้าเก่า',sub:'สถานะ '+c.status};
   if(flag)return {old:true,label:'ลูกค้าเก่า',sub:'ซื้อก่อนเริ่มใช้โปรแกรม'};
   return {old:false,label:'ลูกค้าใหม่',sub:'ยังไม่เคยซื้อ'};
 }
@@ -8094,7 +8097,13 @@ async function custSharedSync(){
     if(changed&&DB===db){save();if(!document.querySelector('.ov'))render();}
   }finally{scBusy=false;}
 }
-setInterval(()=>custSharedSync(),3*60*1000);
+/* ดึงรายชื่อที่คนอื่นเพิ่ม/แก้ทุก 1 นาที (ถามแค่รายการที่เปลี่ยน ปกติได้คำตอบว่าง ไม่เปลือง)
+   ถ้าเปิดโปรแกรมก่อนติดตั้งทะเบียนกลาง ให้ลองใหม่ทุก 10 นาที ไม่ต้องรีเฟรชเอง */
+let scOffAt=0;
+setInterval(()=>{if(scOff){if(!scOffAt)scOffAt=Date.now();else if(Date.now()-scOffAt>10*60*1000){scOff=false;scOffAt=0;}}custSharedSync();},60*1000);
+/* บันทึกงาน (เพิ่ม/แก้ลูกค้า) → ส่งเข้าทะเบียนกลางทันที ไม่ต้องรอรอบ */
+let scSoon=null;
+function custSharedSoon(){clearTimeout(scSoon);scSoon=setTimeout(()=>custSharedSync(),2000);}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')custSharedSync();});
 /* ชื่อลูกค้าทั้งหมดที่เลือกได้ในฟอร์มเอกสาร: ของเรา + ทะเบียนกลาง */
 function allCustNames(){
