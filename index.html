@@ -525,7 +525,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.16-12';
+const APP_VER='2569.10.16-13';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof LINK_MODE!=='undefined'&&LINK_MODE)return false;          /* หน้าเซ็นจากลิงก์ ไม่รีโหลดใส่คนเซ็น */
@@ -6978,8 +6978,34 @@ function customerFields(){return [
   {group:'ข้อมูลบริษัท (ไม่บังคับ)'},
   {key:'taxId',label:'เลขประจำตัวผู้เสียภาษี'},{key:'website',label:'เว็บไซต์'},
   {key:'address',label:'ที่อยู่',type:'textarea',full:true},
-  {key:'creditTerm',label:'เครดิตเทอม',def:'30 วัน'},{key:'creditLimit',label:'วงเงินเครดิต (บาท)',type:'number',def:0}
+  {key:'creditTerm',label:'เครดิตเทอม',def:'30 วัน'},{key:'creditLimit',label:'วงเงินเครดิต (บาท)',type:'number',def:0},
+  {group:'ลูกค้าใหม่ / ลูกค้าเก่า'},
+  {key:'oldFlag',label:'',type:'checks',full:true,options:[OLD_FLAG],
+    hint:'ระบบติดป้ายให้เองจากใบเสร็จ — ติ๊กช่องนี้เฉพาะลูกค้าที่เคยซื้อกับบริษัทก่อนเริ่มใช้โปรแกรม (ไม่มีใบเสร็จในระบบ)'}
 ];}
+/* ---------- ลูกค้าใหม่ / ลูกค้าเก่า (ติดป้ายอัตโนมัติจากใบเสร็จ) ----------
+   ลูกค้าใหม่ = ยังไม่เคยมีใบเสร็จ · ลูกค้าเก่า = มีใบเสร็จแล้ว (2 ใบขึ้นไป = ซื้อซ้ำ)
+   หรือติ๊กเองว่าเป็นลูกค้าเก่าอยู่แล้ว (ซื้อก่อนเริ่มใช้โปรแกรม) */
+const OLD_FLAG='เป็นลูกค้าเก่าอยู่แล้ว (ซื้อก่อนเริ่มใช้โปรแกรม)';
+function buyIndex(){
+  const idx={};
+  (DB.receipts||[]).filter(r=>r.status!=='ยกเลิก').forEach(r=>{
+    const k=normName(r.customer);if(!k)return;
+    const x=idx[k]||(idx[k]={n:0,first:'',last:''});
+    x.n++;if(r.date&&(!x.first||r.date<x.first))x.first=r.date;if(r.date&&r.date>x.last)x.last=r.date;
+  });
+  return idx;
+}
+function custKind(c,idx){
+  const b=(idx||buyIndex())[normName(c.name)];
+  const flag=(c.oldFlag||[]).length>0;
+  if(b&&b.n)return {old:true,label:b.n>=2?'ลูกค้าเก่า · ซื้อซ้ำ':'ลูกค้าเก่า',
+    sub:'ซื้อแล้ว '+b.n+' ครั้ง · ครั้งแรก '+fmtDate(b.first)};
+  if(flag)return {old:true,label:'ลูกค้าเก่า',sub:'ซื้อก่อนเริ่มใช้โปรแกรม'};
+  return {old:false,label:'ลูกค้าใหม่',sub:'ยังไม่เคยซื้อ'};
+}
+const kindBadge=k=>`<span style="display:inline-block;margin-left:8px;padding:1px 8px;border-radius:999px;font-size:11.5px;font-weight:600;vertical-align:middle;${
+  k.old?'background:#ecfdf5;color:#047857;border:1px solid #a7f3d0':'background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe'}">${esc(k.label)}</span>`;
 /* หารายชื่อลูกค้าที่ซ้ำกัน (ชื่อเดียวกันแต่คนละรายการ) */
 function dupGroups(){
   const by={};
@@ -7053,12 +7079,19 @@ function pgCustomers(v){
       .filter(([k,n])=>n>0||k===S.custFilter)
       .map(([k,n])=>[k,k+' ('+n+')'])];
   let clear=null;
-  if(S.custFilter!=='ทั้งหมด'||S.custQ||dateFilterOn('cust')){clear=el('<button class="chip clear">ล้างตัวกรอง ✕</button>');
-    clear.onclick=()=>{S.custFilter='ทั้งหมด';S.custQ='';dateFilterClear('cust');render();};}
+  if(S.custFilter!=='ทั้งหมด'||S.custQ||dateFilterOn('cust')||(S.custKind&&S.custKind!=='ทั้งหมด')){clear=el('<button class="chip clear">ล้างตัวกรอง ✕</button>');
+    clear.onclick=()=>{S.custFilter='ทั้งหมด';S.custKind='ทั้งหมด';S.custQ='';dateFilterClear('cust');render();};}
   v.append(chipRow(chipItems,S.custFilter,k=>{S.custFilter=k;render();},clear));
+  /* แยกลูกค้าใหม่ / ลูกค้าเก่า (ดูจากใบเสร็จ) */
+  const bidx=buyIndex(),kindOf=c=>custKind(c,bidx);
+  const nOld=DB.customers.filter(c=>kindOf(c).old).length;
+  const ck=S.custKind||'ทั้งหมด';
+  v.append(chipRow([['ทั้งหมด','ใหม่+เก่า'],['ลูกค้าใหม่','ลูกค้าใหม่ ('+(DB.customers.length-nOld)+')'],['ลูกค้าเก่า','ลูกค้าเก่า ('+nOld+')']],
+    ck,k=>{S.custKind=k;render();},null));
 
   const q=S.custQ.toLowerCase();
   const items=DB.customers.filter(c=>(S.custFilter==='ทั้งหมด'||c.status===S.custFilter)&&
+    (ck==='ทั้งหมด'||(ck==='ลูกค้าเก่า')===kindOf(c).old)&&
     dateFilterPass(c,'cust')&&
     (!q||[c.name,c.contact,c.phone,c.email].join(' ').toLowerCase().includes(q)));
   const cnt=el(`<div style="display:flex;align-items:center;gap:12px"><div class="tiny">พบ ${items.length} รายการ</div></div>`);
@@ -7077,8 +7110,8 @@ function pgCustomers(v){
   v.append(cnt);
   v.append(listCard(items,{
     avatar:c=>c.logo?`<img src="${imgSrc(c.logo)}">`:esc(initials(c.name)),
-    title:c=>esc(c.name),
-    meta:c=>[esc(c.contact||'ไม่ระบุผู้ติดต่อ'),esc(c.phone||''),'ติดต่อ '+ago(c.date)].filter(Boolean).join(' · '),
+    title:c=>esc(c.name)+kindBadge(kindOf(c)),
+    meta:c=>{const k=kindOf(c);return [esc(c.contact||'ไม่ระบุผู้ติดต่อ'),esc(c.phone||''),'ติดต่อ '+ago(c.date),k.old?esc(k.sub):''].filter(Boolean).join(' · ');},
     status:c=>pill(c.status,CUST_ST),
     isSel:c=>c.id===S.profSel,
     onOpen:openCustomer,
