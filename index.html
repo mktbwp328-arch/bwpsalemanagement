@@ -526,7 +526,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.16-41';
+const APP_VER='2569.10.16-42';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -6140,13 +6140,21 @@ function buyerSplit(rcs,detail){
 function buyerListBtn(getDbs){
   const b=el('<button class="btn gh sm" style="margin:10px 0 0 auto;display:block">ดูรายชื่อลูกค้าใหม่ / ลูกค้าเก่า ที่ซื้อในช่วงนี้ →</button>');
   b.onclick=()=>{
-    const rows=[];getDbs().forEach(db=>withDB(db,()=>rows.push(...buyerSplit(liveRc().filter(r=>inPeriod(r.date)),true))));
+    const rows=[],cl=[];getDbs().forEach(db=>withDB(db,()=>{
+      const rcs=liveRc().filter(r=>inPeriod(r.date));rows.push(...buyerSplit(rcs,true));
+      const bought=new Set(rcs.map(r=>custKey(r.customer)).filter(Boolean)),seen=new Set();
+      DB.customers.filter(c=>inPeriod(c.date)&&(WON_ST.includes(c.status)||c.status==='ซื้อขายแล้ว')).forEach(c=>{
+        const k=custKey(c.name);if(!k||bought.has(k)||seen.has(k))return;seen.add(k);
+        cl.push({name:c.name,why:'สถานะ "'+c.status+'" · ยังไม่ได้ออกใบเสร็จในช่วงนี้'});});
+    }));
     const nw=rows.filter(r=>!r.old),od=rows.filter(r=>r.old);
     const li=l=>l.map((r,i)=>'<div style="padding:8px 0;border-bottom:1px solid var(--bd2)"><div style="font-size:13.5px;font-weight:600">'+(i+1)+'. '+esc(r.name)+'</div><div class="tiny">'+esc(r.why)+'</div></div>').join('')||'<div class="tiny">ไม่มี</div>';
     const ov=el('<div class="ov"></div>');
-    const m=el('<div class="modal" style="max-width:640px"><header><div><b>ลูกค้าที่ซื้อในช่วงนี้</b><div class="tiny" style="margin-top:2px">ตามช่วงวันที่ที่เลือกไว้ด้านบน</div></div><button class="close">✕</button></header>'
+    const m=el('<div class="modal" style="max-width:640px"><header><div><b>ลูกค้าที่ซื้อในช่วงนี้</b><div class="tiny" style="margin-top:2px">ตามช่วงวันที่ที่เลือกไว้ด้านบน · ตรงกับการ์ดลูกค้าปิดการขาย / ซื้อแล้ว</div></div><button class="close">✕</button></header>'
       +'<div class="mb"><div class="h3" style="color:#1d4ed8">ลูกค้าใหม่ '+nw.length+' ราย</div>'+li(nw)
-      +'<div class="h3" style="margin-top:18px;color:#047857">ลูกค้าเก่า '+od.length+' ราย</div>'+li(od)+'</div></div>');
+      +'<div class="h3" style="margin-top:18px;color:#047857">ลูกค้าเก่า '+od.length+' ราย</div>'+li(od)
+      +'<div class="h3" style="margin-top:18px;color:#b45309">ปิดการขายแล้ว ยังไม่ซื้อ '+cl.length+' ราย</div>'+li(cl)
+      +'<div class="tiny" style="margin-top:14px;font-weight:600">รวมลูกค้าปิดการขาย / ซื้อแล้ว '+(nw.length+od.length+cl.length)+' ราย</div></div></div>');
     m.querySelector('.close').onclick=()=>ov.remove();ov.append(m);$('#layer').append(ov);
   };
   return b;
@@ -6176,7 +6184,8 @@ function statsOf(db){
       ...(()=>{const closed=new Set(),bought=new Set();
         css.forEach(c=>{if(WON_ST.includes(c.status)||c.status==='ซื้อขายแล้ว')closed.add(custKey(c.name));});
         rcs.forEach(r=>{const k=custKey(r.customer);if(k)bought.add(k);});
-        return {custClosed:closed.size,custBought:bought.size,custCB:new Set([...closed,...bought]).size};})(),
+        const closedOnly=[...closed].filter(k=>!bought.has(k));
+        return {custClosed:closedOnly.length,custBought:bought.size,custCB:bought.size+closedOnly.length};})(),
       /* การ์ดลูกค้าที่ติดต่อเข้ามา: นับเฉพาะลูกค้าใหม่ (ป้ายเดียวกับหน้าลูกค้า) และในนั้นซื้อแล้ว (มีใบเสร็จ) กี่ราย */
       ...(()=>{const bi=buyIndex();let nn=0,nb=0;
         css.forEach(c=>{if(custKind(c,bi).kind!=='new')return;nn++;if(bi[custKey(c.name)])nb++;});
@@ -6445,7 +6454,7 @@ function pgDashboard(v){
   [['ยอดขายรวม (จากใบเสร็จ)',num0(Math.round(total))+' ฿',rcs.length+' ใบเสร็จในช่วงนี้','receipts',{rcFilter:'ทั้งหมด',rcY:'',rcM:'',rcFrom:'',rcTo:''}],
    ['รับชำระแล้ว',num0(Math.round(paid))+' ฿',rcs.filter(r=>r.status==='ชำระแล้ว').length+' ใบ','receipts',{rcFilter:'ชำระแล้ว',rcY:'',rcM:'',rcFrom:'',rcTo:''}],
    ['รอเก็บเงิน',num0(Math.round(unpaid))+' ฿',rcs.filter(r=>r.status!=='ชำระแล้ว').length+' ใบที่ยังไม่ครบ','receipts',{rcFilter:'รอชำระ',rcY:'',rcM:'',rcFrom:'',rcTo:''}],
-   ['ลูกค้าปิดการขาย / ซื้อแล้ว',statsOf(DB).custCB+' ราย','ปิดการขาย '+statsOf(DB).custClosed+' · ซื้อแล้ว '+statsOf(DB).custBought+' ราย',null,null]
+   ['ลูกค้าปิดการขาย / ซื้อแล้ว',statsOf(DB).custCB+' ราย','ซื้อแล้ว '+statsOf(DB).custBought+' (ใหม่ '+statsOf(DB).custNew+' · เก่า '+statsOf(DB).custOld+') · ปิดการขาย ยังไม่ซื้อ '+statsOf(DB).custClosed+' ราย',null,null]
   ].forEach(([t,val,sub,page,extra])=>{
     const c=el(`<div class="card pad" style="cursor:pointer;transition:.15s">
       <div class="mut">${esc(t)}</div><div style="font-size:26px;font-weight:700;margin-top:4px">${val}</div>
@@ -6680,7 +6689,7 @@ function pgTeam(v){
   [['ยอดขายรวม (จากใบเสร็จ)',num0(Math.round(T('total')))+' ฿',T('rcN')+' ใบเสร็จ'],
    ['รับชำระแล้ว',num0(Math.round(T('paid')))+' ฿','เก็บเงินเรียบร้อย'],
    ['รอเก็บเงิน',num0(Math.round(T('unpaid')))+' ฿','ยังไม่ครบ'],
-   ['ลูกค้าปิดการขาย / ซื้อแล้ว',(T('custCB')||0)+' ราย','ปิดการขาย '+(T('custClosed')||0)+' · ซื้อแล้ว '+(T('custBought')||0)+' ราย']
+   ['ลูกค้าปิดการขาย / ซื้อแล้ว',(T('custCB')||0)+' ราย','ซื้อแล้ว '+(T('custBought')||0)+' (ใหม่ '+(T('custNew')||0)+' · เก่า '+(T('custOld')||0)+') · ปิดการขาย ยังไม่ซื้อ '+(T('custClosed')||0)+' ราย']
   ].forEach(([t,val,sub])=>kp.append(el(`<div class="card pad">
     <div class="mut">${esc(t)}</div><div style="font-size:26px;font-weight:700;margin-top:4px">${esc(val)}</div>
     <div class="tiny" style="margin-top:8px">${esc(sub)}</div></div>`)));
