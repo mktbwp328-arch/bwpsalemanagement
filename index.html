@@ -525,7 +525,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.16-33';
+const APP_VER='2569.10.16-34';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof LINK_MODE!=='undefined'&&LINK_MODE)return false;          /* หน้าเซ็นจากลิงก์ ไม่รีโหลดใส่คนเซ็น */
@@ -8660,18 +8660,38 @@ function purchaseSummary(c){
   const ck=custKey(c.name);
   const pos=(DB.pos||[]).filter(p=>custKey(p.customer)===ck&&p.status!=='ยกเลิก');
   const rcs=liveRc().filter(r=>custKey(r.customer)===ck);
-  const pkey=it=>String(it.code||'').trim().toUpperCase()||normName(it.name).slice(0,60);
-  const prods=new Map();
-  const P=it=>{const k=pkey(it);if(!k)return null;
-    if(!prods.has(k))prods.set(k,{code:it.code||'',name:it.name||'',lines:[],poMap:new Map()});return prods.get(k);};
+  /* จับคู่สินค้า: รหัสตรงกันก่อน ถ้ารหัสไม่ตรง (เช่น ใบเสร็จใช้ F-001 แต่ PO ใช้ 01FXX-SST002) ใช้ชื่อ/ขนาดสินค้า */
+  const codeK=it=>String(it.code||'').trim().toUpperCase();
+  const nameK=it=>String(it.name||'').split('\n')[0].toLowerCase().replace(/plastic|พลาสติก/g,'').replace(/[\s.,()\-]/g,'');
+  const pkey=it=>codeK(it)||nameK(it).slice(0,60);
+  const prods=new Map(),byCode=new Map(),byName=new Map();
+  const P=(it,fromRc)=>{
+    let g=null;
+    const ck=codeK(it),nk=nameK(it);
+    /* รหัสที่มีใน PO → ใช้รหัส · ไม่มี → หาจากชื่อ/ขนาด (รหัสกลาง ๆ อย่าง F-001 ใช้กับหลายขนาด จึงไม่ยึดรหัส) */
+    if(ck&&byCode.has(ck))g=byCode.get(ck);
+    if(!g&&nk&&byName.has(nk))g=byName.get(nk);
+    if(!g){const k=(ck||'')+'|'+nk;if(k==='|')return null;
+      g=prods.get(k);
+      if(!g){g={code:it.code||'',name:it.name||'',lines:[],poMap:new Map()};prods.set(k,g);}}
+    if(!fromRc){if(ck&&!byCode.has(ck))byCode.set(ck,g);if(nk&&!byName.has(nk))byName.set(nk,g);}
+    return g;};
   /* PO */
-  pos.forEach(p=>(p.items||[]).forEach(it=>{const g=P(it);if(!g)return;
+  pos.forEach(p=>(p.items||[]).forEach(it=>{const g=P(it,false);if(!g)return;
     const line={po:p,it,date:p.date||'',no:p.custPoNo||p.no||'',order:+it.qty||0,unit:it.unit||'',price:+it.price||0,dels:[]};
     g.lines.push(line);g.poMap.set((p.no||'')+'|'+(it.id||pkey(it)),line);g.poMap.set((p.no||'')+'|'+pkey(it),line);}));
   /* การส่งของ (ใบเสร็จ) — จับคู่กับ PO จากเลขที่อ้างอิง ไม่มีอ้างอิงก็ไปไว้แถว "ไม่อ้างอิง PO" */
-  rcs.forEach(r=>(r.items||[]).forEach(it=>{const g=P(it);if(!g)return;
+  /* เรียงใบเสร็จตามวันที่ จะได้ตัดยอด PO ตามลำดับที่ส่งจริง */
+  rcs.slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))).forEach(r=>(r.items||[]).forEach(it=>{const g=P(it,true);if(!g)return;
     const del={date:r.date||'',no:r.no||'',inv:r.invNo||'',qty:+it.qty||0,unit:it.unit||'',price:+it.price||0,it};
-    const line=(r.poRef&&(g.poMap.get(r.poRef+'|'+(r.poItemId||''))||g.poMap.get(r.poRef+'|'+pkey(it))))||null;
+    let line=(r.poRef&&(g.poMap.get(r.poRef+'|'+(r.poItemId||''))||g.poMap.get(r.poRef+'|'+pkey(it))))||null;
+    /* ไม่ได้อ้างอิง PO → ตัดจาก PO ของสินค้านี้ที่ยังส่งไม่ครบ (PO เก่าก่อน) */
+    if(!line){
+      const open=g.lines.filter(l=>!l.free&&l.unit===del.unit&&l.order-l.dels.reduce((a,d)=>a+(d.unit===l.unit?d.qty:0),0)>0.0001)
+        .sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+      line=open.find(l=>!l.date||!del.date||l.date<=del.date)||open[0]||null;
+      if(line)del.auto=true;
+    }
     if(line)line.dels.push(del);
     else{let free=g.lines.find(l=>l.free);if(!free){free={free:true,date:'',no:'ไม่อ้างอิง PO',order:0,unit:it.unit||'',price:0,dels:[]};g.lines.push(free);}
       free.dels.push(del);}}));
@@ -8680,6 +8700,7 @@ function purchaseSummary(c){
   /* แปลงจำนวนเป็นหน่วยเดียวกับที่สั่ง (หน่วยต่างกัน → ใช้ กก. ถ้าคำนวณได้) */
   const amt=(q,unit,it)=>({q,unit,kg:isKgUnit(unit)?q:(itemKg(Object.assign({},it,{qty:q,unit}))||null)});
   const fmtQ=(q,u)=>q?num(q)+' '+esc(u||''):'-';
+  const fmtL=(q,u)=>num(q||0)+' '+esc(u||'');   /* คงเหลือ: 0 ก็แสดง 0.00 */
   const td='padding:6px 8px;border-bottom:1px solid var(--bd2);font-size:13px;white-space:nowrap';
   [...prods.values()].forEach(g=>{
     g.lines.sort((a,b)=>(a.free?1:0)-(b.free?1:0)||String(a.date).localeCompare(String(b.date)));
@@ -8700,15 +8721,15 @@ function purchaseSummary(c){
         tDel+=ok?sent:0;
         rows+='<tr><td style="'+td+'">'+esc(fmtDate(d.date))+'</td><td style="'+td+'">ใบเสร็จ '+esc(d.no)+'</td><td style="'+td+';text-align:right">'
           +(d.unit!==l.unit&&!l.free?fmtQ(d.qty,d.unit):'')+'</td><td style="'+td+';text-align:right">'+(ok?fmtQ(sent,l.free?d.unit:l.unit):fmtQ(d.qty,d.unit))
-          +'</td><td style="'+td+';text-align:right">'+(l.free?'':(ok?fmtQ(left,l.unit):'-'))+'</td><td style="'+td+';text-align:right">'+(d.price?num(d.price):'')
-          +'</td><td style="'+td+';font-weight:600">'+esc(d.inv&&d.inv!==d.no?d.inv:'')+'</td></tr>';
+          +'</td><td style="'+td+';text-align:right">'+(l.free?'':(ok?fmtL(left,l.unit):'-'))+'</td><td style="'+td+';text-align:right">'+(d.price?num(d.price):'')
+          +'</td><td style="'+td+';font-weight:600">'+esc(d.inv&&d.inv!==d.no?d.inv:'')+(d.auto?'<span class="tiny" style="font-weight:400;margin-left:6px">(จับคู่ PO ให้อัตโนมัติ)</span>':'')+'</td></tr>';
       });
       if(!l.free)tLeft+=left;
     });
     card.append(el(`<div style="margin-top:14px;border:1px solid var(--bd);border-radius:12px;overflow:hidden">
       <div style="display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;padding:10px 12px;background:#eef4ff;border-bottom:1px solid var(--bd)">
         <b style="font-size:15px">${esc(g.code||'-')}</b><span style="font-size:14px">${esc(String(g.name).split('\n')[0])}</span>
-        ${sameUnit&&u0?`<span class="tiny" style="margin-left:auto">สั่งรวม ${fmtQ(tOrder,u0)} · ส่งแล้ว ${fmtQ(tDel,u0)} · <b style="color:${tLeft>0?'#b45309':'#15803d'}">คงเหลือ ${fmtQ(tLeft,u0)}</b></span>`:''}</div>
+        ${sameUnit&&u0?`<span class="tiny" style="margin-left:auto">สั่งรวม ${fmtQ(tOrder,u0)} · ส่งแล้ว ${fmtQ(tDel,u0)} · <b style="color:${tLeft>0?'#b45309':'#15803d'}">คงเหลือ ${fmtL(tLeft,u0)}</b></span>`:''}</div>
       <div style="overflow:auto"><table style="width:100%;border-collapse:collapse">
         <thead><tr style="background:#f9fafb">${['วันที่','เลขที่ PO / ใบเสร็จ','สั่ง','ยอดส่ง','คงเหลือ','ราคา','หมายเหตุ'].map((t,i)=>'<th style="'+td+';text-align:'+(i>=2&&i<=5?'right':'left')+';font-weight:600">'+t+'</th>').join('')}</tr></thead>
         <tbody>${rows}</tbody></table></div></div>`));
