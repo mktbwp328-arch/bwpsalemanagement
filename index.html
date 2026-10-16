@@ -525,7 +525,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.16-13';
+const APP_VER='2569.10.16-14';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof LINK_MODE!=='undefined'&&LINK_MODE)return false;          /* หน้าเซ็นจากลิงก์ ไม่รีโหลดใส่คนเซ็น */
@@ -5613,7 +5613,7 @@ const PAGES=[
   {id:'po',label:'PO ลูกค้า',icon:'cart',count:()=>DB.pos.length},
   {id:'receipts',label:'ใบเสร็จรับเงิน',icon:'receipt',count:()=>DB.receipts.length},
   {id:'newcust',label:'รายชื่อลูกค้าใหม่',icon:'users',count:()=>DB.docs.filter(d=>d.type==='newcust').length},
-  {id:'profiles',label:'ข้อมูลลูกค้า',icon:'profile',count:()=>DB.customers.length},
+  {id:'profiles',label:'ข้อมูลลูกค้า',icon:'profile',count:()=>allCustNames().length},
   {id:'products',label:'ข้อมูลสินค้า',icon:'cart',count:()=>(DB.products||[]).length},
   {id:'employees',label:'ข้อมูลพนักงาน',icon:'badge',count:()=>null,mgr:true}
 ];
@@ -7196,12 +7196,12 @@ function docFields(type){
   const t=DOC_TYPES.find(x=>x[0]===type);
   const money=type==='quotation'||type==='credit';
   const base=[{key:'no',label:'เลขที่เอกสาร',req:true,def:nextNo(t[2],type)},
-    {key:'customer',label:'ลูกค้า',type:'select',options:DB.customers.map(c=>c.name),req:true},
+    {key:'customer',label:'ลูกค้า',type:'select',options:allCustNames(),req:true},
     {key:'date',label:'วันที่',type:'date',def:today()},
     {key:'status',label:'สถานะ',type:'select',options:Object.keys(DOC_ST),def:'ร่าง'}];
   if(type==='quotation')return [
     {group:'เสนอราคาให้ใคร',sub:'ข้อมูลส่วนนี้จะพิมพ์ที่หัวเอกสาร'},
-    {key:'customer',label:'ลูกค้า',type:'combo',options:()=>DB.customers.map(c=>c.name),req:true,
+    {key:'customer',label:'ลูกค้า',type:'combo',options:()=>allCustNames(),req:true,
       ph:'พิมพ์ชื่อลูกค้า หรือเลือกจากรายการ',
       hint:'พิมพ์ชื่อใหม่ได้ · ถ้าเลือกลูกค้าที่มีในระบบ ที่อยู่บนเอกสารจะดึงจากข้อมูลลูกค้าให้อัตโนมัติ'},
     {key:'contact',label:'ผู้ติดต่อ',def:'ฝ่ายจัดซื้อ'},
@@ -7247,7 +7247,7 @@ function creditFields(){return [
   {key:'no',label:'เลขที่เอกสาร',req:true,def:nextNo('CRD','credit')},
   {key:'date',label:'วันที่',type:'date',def:today()},
   {key:'customer',label:'ชื่อบริษัท / ห้างหุ้นส่วน / ร้าน',req:true,full:true,type:'combo',
-   options:()=>DB.customers.map(c=>c.name),ph:'พิมพ์ชื่อลูกค้า หรือเลือกจากรายการ',
+   options:()=>allCustNames(),ph:'พิมพ์ชื่อลูกค้า หรือเลือกจากรายการ',
    fill:{bizType:'biz',taxAddress:'address',tel:'phone',email:'email',taxId:'taxId',
          shipAddress:'shipTo',shipTel:'phone'},
    hint:'เลือกลูกค้าแล้ว ระบบจะดึงที่อยู่ เบอร์โทร อีเมล และเลขผู้เสียภาษี มาให้อัตโนมัติ'},
@@ -7295,7 +7295,7 @@ function sampleFields(){return [
   {key:'rev',label:'Rev.',def:'01'},
   {key:'date',label:'วัน/เดือน/ปี',type:'date',def:today()},
   {key:'status',label:'สถานะ',type:'select',options:Object.keys(DOC_ST),def:'ร่าง'},
-  {key:'customer',label:'ชื่อลูกค้า',type:'select',options:DB.customers.map(c=>c.name),req:true,full:true},
+  {key:'customer',label:'ชื่อลูกค้า',type:'select',options:allCustNames(),req:true,full:true},
   {key:'size',label:'ขนาดผลิตภัณฑ์ที่ต้องการ',full:true},
   {key:'workType',label:'งานที่ต้องการ',type:'radio',full:true,options:['ตัวอย่าง','ยอดสั่งซื้อตัวอย่าง']},
   {key:'wPerRoll',label:'น้ำหนักต่อม้วน / ต่อใบ (กก.)',type:'number',hint:'ถ้าขนาดผลิตภัณฑ์เป็นถุงคลุม เอกสารจะพิมพ์เป็น "ต่อใบ" ให้เอง'},
@@ -7341,7 +7341,7 @@ function requirementFields(){return [
   {key:'status',label:'สถานะ',type:'select',options:Object.keys(DOC_ST),def:'ร่าง'},
   {group:'ข้อมูลสินค้า'},
   {key:'attn',label:'เรียน',full:true,def:'ฝ่ายผลิตส่วนงานเป่า / ฝ่ายวางแผน / ฝ่ายควบคุมคุณภาพ / ฝ่ายคลังสินค้า / ฝ่ายขนส่ง'},
-  {key:'customer',label:'ชื่อลูกค้า',req:true,type:'combo',options:()=>DB.customers.map(c=>c.name),ph:'พิมพ์ชื่อลูกค้า หรือเลือกจากรายการ'},
+  {key:'customer',label:'ชื่อลูกค้า',req:true,type:'combo',options:()=>allCustNames(),ph:'พิมพ์ชื่อลูกค้า หรือเลือกจากรายการ'},
   {key:'matcode',label:'Matcode'},
   {key:'size',label:'ขนาดผลิตภัณฑ์'},
   {key:'thick',label:'ความหนา ± (mic)'},
@@ -7581,6 +7581,7 @@ function pgDocuments(v){
     if(doc.type==='sample'||doc.type==='requirement'){ensureByType(doc);doc.amount=doc.amount||0;}
     const signed=autoSignSales(doc);      /* เติมลายเซ็นฝ่ายขายที่จำไว้ให้เลย */
     autoSignRd(doc);                      /* และลายเซ็นฝ่ายวิจัยที่บันทึกไว้ */
+    if(doc.customer)adoptShared(doc.customer,'เพิ่มจากทะเบียนกลาง (สร้าง'+docTypeName(doc.type)+')');
     DB.docs.unshift(doc);save(true);render();
     toast(signed?'สร้างเอกสารแล้ว — เซ็นชื่อฝ่ายขายให้อัตโนมัติ':'สร้างเอกสารแล้ว');
     openDocSmart(doc);},
@@ -8039,6 +8040,79 @@ function openDoc(d){
 /* เทียบชื่อลูกค้าแบบไม่สนช่องว่างเกินและตัวพิมพ์เล็กใหญ่ กันรายชื่อซ้ำ
    เช่น "บริษัท เอ  จำกัด" กับ "บริษัท เอ จำกัด" ถือเป็นรายเดียวกัน */
 const normName=s=>String(s||'').replace(/\s+/g,' ').trim().toLowerCase();
+/* ================= ทะเบียนลูกค้ากลาง (ใช้ร่วมกันทั้งทีม) =================
+   ข้อมูลพื้นฐาน (ชื่อ ที่อยู่ เลขภาษี ผู้ติดต่อ เบอร์ อีเมล เครดิต) อยู่ในตาราง customers_shared บนคลาวด์
+   ใครเพิ่ม/แก้ ทุกคนเห็นตาม (ต้องรัน supabase-setup-20.sql)
+   สถานะการขาย บันทึกการติดต่อ รูป ไฟล์ ยังเป็นของแต่ละคนเหมือนเดิม
+   วิธีซิงก์: ดึงเฉพาะที่เปลี่ยน → ใส่ให้ลูกค้าในรายชื่อของเรา → ส่งรายที่เราเพิ่ม/แก้ขึ้นไป (จับคู่ด้วยชื่อ) */
+const SC_F=['name','contact','contactPos','phone','email','address','shipTo','taxId','biz','website','creditTerm','creditLimit'];
+const SC_COL={contactPos:'contact_pos',shipTo:'ship_to',taxId:'tax_id',creditTerm:'credit_term',creditLimit:'credit_limit'};
+const SHARED_CUST=new Map();          /* name_key -> ข้อมูลกลาง (ชื่อช่องแบบในแอป) */
+let scLast='',scBusy=false,scOff=false;
+const scHash=c=>SC_F.map(f=>String(c[f]??'')).join('|');
+const scFromRow=r=>{const o={_key:r.name_key,_at:r.updated_at,_by:r.updated_by_name||''};
+  SC_F.forEach(f=>{const v=r[SC_COL[f]||f];o[f]=f==='creditLimit'?(+v||0):(v??'');});return o;};
+const scToRow=c=>{const o={name_key:normName(c.name),updated_by:AUTH.user&&AUTH.user.id,updated_by_name:meName()};
+  SC_F.forEach(f=>{o[SC_COL[f]||f]=f==='creditLimit'?(+c[f]||0):String(c[f]??'');});return o;};
+async function custSharedSync(){
+  if(scBusy||scOff||!authed()||!sbOn()||!DB||readOnly()||LINK_MODE)return;
+  scBusy=true;const db=DB;
+  try{
+    /* 1) ดึงรายการที่เปลี่ยนตั้งแต่ครั้งก่อน */
+    let rows;
+    try{rows=await sbGet('customers_shared?select=*&order=updated_at.asc'+(scLast?'&updated_at=gt.'+encodeURIComponent(scLast):''));}
+    catch(e){if(/does not exist|schema cache|relation/i.test(e.message))scOff=true;return;}
+    (rows||[]).forEach(r=>{SHARED_CUST.set(r.name_key,scFromRow(r));if(!scLast||r.updated_at>scLast)scLast=r.updated_at;});
+    if(DB!==db)return;
+    /* 2) จับคู่กับรายชื่อของเรา แล้วตัดสินว่าใช้ของกลาง หรือส่งของเราขึ้นไป */
+    const push=[],pushNew=[];let changed=false;
+    (db.customers||[]).forEach(c=>{
+      const k=normName(c.name);if(!k)return;
+      const s=SHARED_CUST.get(k),edited=c._scHash!==undefined&&scHash(c)!==c._scHash;
+      if(!s){if(c._scHash===undefined||edited)pushNew.push(c);return;}
+      if(edited){push.push(c);return;}                                   /* เราแก้ → ส่งทับของกลาง */
+      if(c._scHash===undefined){                                           /* ครั้งแรก: รวมช่องที่ของกลางยังว่าง */
+        let more=false;
+        SC_F.forEach(f=>{if(f==='name')return;
+          const sv=s[f],has=!(sv===''||sv==null||(f==='creditLimit'&&!sv));
+          if(has)c[f]=sv;else if(String(c[f]??'')!==String(sv??''))more=true;});
+        if(more)push.push(c);else{c._scHash=scHash(c);c._scAt=s._at;}
+        changed=true;return;
+      }
+      if(c._scAt!==s._at){SC_F.forEach(f=>{if(f!=='name')c[f]=s[f];});c._scHash=scHash(c);c._scAt=s._at;changed=true;}  /* ของกลางใหม่กว่า */
+    });
+    /* 3) ส่งขึ้นคลาวด์ — รายใหม่: ถ้ามีคนเพิ่มชื่อนี้ไปก่อนแล้ว ไม่ทับ · รายที่แก้: ทับของกลาง */
+    const send=async(list,mode)=>{
+      if(!list.length)return;
+      const res=await sbFetch('customers_shared?on_conflict=name_key',{method:'POST',
+        headers:Object.assign(sbHeaders(),{Prefer:'resolution='+mode+',return=representation'}),body:JSON.stringify(list.map(scToRow))});
+      (res||[]).forEach(r=>{SHARED_CUST.set(r.name_key,scFromRow(r));if(r.updated_at>scLast)scLast=r.updated_at;});
+      list.forEach(c=>{const s=SHARED_CUST.get(normName(c.name));c._scHash=scHash(c);c._scAt=s?s._at:'';});
+      changed=true;
+    };
+    try{await send(pushNew,'ignore-duplicates');await send(push,'merge-duplicates');}catch(e){}
+    if(changed&&DB===db){save();if(!document.querySelector('.ov'))render();}
+  }finally{scBusy=false;}
+}
+setInterval(()=>custSharedSync(),3*60*1000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')custSharedSync();});
+/* ชื่อลูกค้าทั้งหมดที่เลือกได้ในฟอร์มเอกสาร: ของเรา + ทะเบียนกลาง */
+function allCustNames(){
+  const seen=new Set(),out=[];
+  (DB.customers||[]).forEach(c=>{const k=normName(c.name);if(k&&!seen.has(k)){seen.add(k);out.push(c.name);}});
+  SHARED_CUST.forEach((s,k)=>{if(!seen.has(k)){seen.add(k);out.push(s.name);}});
+  return out;
+}
+/* ใช้ลูกค้าจากทะเบียนกลางในเอกสาร → เพิ่มเข้ารายชื่อของเราพร้อมข้อมูลพื้นฐาน */
+function adoptShared(name,how){
+  const k=normName(name);if(!k||readOnly()||findCustomer(name))return null;
+  const s=SHARED_CUST.get(k);if(!s)return null;
+  const c={id:uid(),status:'ใหม่',channel:'ทะเบียนกลาง',date:today(),owner:meName(),note:'',logo:null,photos:[],files:[],
+    timeline:[{date:today(),title:how||'เพิ่มจากทะเบียนลูกค้ากลาง',note:s._by?'ข้อมูลโดย '+s._by:'',by:meName()}]};
+  SC_F.forEach(f=>{c[f]=s[f];});c._scHash=scHash(c);c._scAt=s._at;
+  DB.customers.unshift(c);
+  return c;
+}
 function findCustomer(name){
   const k=normName(name);
   if(!k)return null;
@@ -8049,6 +8123,8 @@ function ensureCustomer(name){
   if(!n||readOnly())return null;
   const found=findCustomer(n);
   if(found)return found;
+  const sh=adoptShared(n,'เพิ่มจากทะเบียนกลาง (สร้าง PO/เอกสาร)');
+  if(sh)return sh;
   const c={id:uid(),name:n,status:'ปิดการขาย',channel:'จาก PO',date:today(),
     contact:'',contactPos:'',phone:'',email:'',address:'',shipTo:'',taxId:'',biz:'',website:'',
     creditTerm:'30 วัน',creditLimit:0,owner:meName(),note:'',logo:null,photos:[],files:[],
@@ -8099,7 +8175,7 @@ function poFields(){return [
   /* เลขที่ภายในระบบสร้างให้เอง ไม่ต้องกรอก */
   {key:'custPoNo',label:'เลขที่ PO ของลูกค้า',req:true,ph:'เลขที่ตามใบ PO ที่ลูกค้าส่งมา'},
   {key:'customer',label:'ลูกค้า',req:true,type:'combo',
-   options:()=>DB.customers.map(c=>c.name),
+   options:()=>allCustNames(),
    ph:'พิมพ์ชื่อลูกค้า หรือเลือกจากรายการ',
    hint:'ถ้าเป็นลูกค้าใหม่ที่ยังไม่มีในระบบ พิมพ์ชื่อได้เลย ระบบจะเพิ่มให้อัตโนมัติ'},
   {key:'status',label:'สถานะ',type:'select',options:Object.keys(PO_ST),def:'รอตรวจสอบ'},
@@ -8251,7 +8327,7 @@ function rcFields(){return [
   {group:'ข้อมูลเอกสาร'},
   {key:'no',label:'เลขที่ใบเสร็จ',req:true},
   {key:'invNo',label:'เลขที่ใบกำกับภาษี'},
-  {key:'customer',label:'ลูกค้า',type:'select',options:DB.customers.map(c=>c.name),req:true},
+  {key:'customer',label:'ลูกค้า',type:'select',options:allCustNames(),req:true},
   {key:'date',label:'วันที่',type:'date',def:today()},
   {key:'creditDays',label:'เครดิต (วัน)'},
   {key:'dueDate',label:'ครบกำหนด',type:'date'},
@@ -8402,6 +8478,32 @@ function openRc(r){
 }
 
 /* ---------- 6. CUSTOMER PROFILES ---------- */
+/* ลูกค้าในทะเบียนกลางที่ยังไม่อยู่ในรายชื่อของเรา: ดู / แก้ข้อมูลพื้นฐาน / เพิ่มเข้ารายชื่อของเรา */
+function sharedCustomerView(s){
+  const ov=el('<div class="ov"></div>');
+  const row=(l,v)=>`<div class="fl"><span>${esc(l)}</span><b style="font-weight:500">${esc(v||'-')}</b></div>`;
+  const m=el(`<div class="modal" style="max-width:620px"><header><div><b>${esc(s.name)}</b>
+      <div class="tiny" style="margin-top:2px">ทะเบียนลูกค้ากลาง${s._by?' · แก้ล่าสุดโดย '+esc(s._by):''}</div></div><button class="close">✕</button></header>
+    <div class="mb"><div class="grid g2">${row('ผู้ติดต่อ',s.contact)}${row('เบอร์โทร',s.phone)}${row('อีเมล',s.email)}${row('เลขประจำตัวผู้เสียภาษี',s.taxId)}
+      <div class="fl" style="grid-column:1/-1"><span>ที่อยู่</span><b style="font-weight:500;line-height:1.6">${esc(s.address||'-')}</b></div>
+      ${row('ประเภทธุรกิจ',s.biz)}${row('เครดิตเทอม',s.creditTerm)}</div></div>
+    <footer><button class="btn gh" id="ed">แก้ไขข้อมูล</button><div style="flex:1"></div>
+      ${readOnly()?'':'<button class="btn" id="ad">เพิ่มเข้ารายชื่อลูกค้าของฉัน</button>'}</footer></div>`);
+  const close=()=>ov.remove();
+  m.querySelector('.close').onclick=close;
+  m.querySelector('#ed').onclick=()=>{close();
+    openForm('แก้ไขข้อมูลลูกค้า (ทะเบียนกลาง)',customerFields().filter(f=>f.group||SC_F.includes(f.key)),s,async d=>{
+      try{const res=await sbFetch('customers_shared?on_conflict=name_key',{method:'POST',
+          headers:Object.assign(sbHeaders(),{Prefer:'resolution=merge-duplicates,return=representation'}),
+          body:JSON.stringify([scToRow(Object.assign({},s,d,{name:s.name}))])});
+        (res||[]).forEach(r=>SHARED_CUST.set(r.name_key,scFromRow(r)));
+        render();toast('บันทึกแล้ว — ทุกคนในทีมเห็นข้อมูลใหม่');
+      }catch(e){toast(e.message);}});};
+  const ad=m.querySelector('#ad');
+  if(ad)ad.onclick=()=>{const c=adoptShared(s.name);close();
+    if(c){save(true);go('profiles',{profSel:c.id,profTab:'info'});toast('เพิ่มเข้ารายชื่อลูกค้าของคุณแล้ว');}};
+  ov.append(m);$('#layer').append(ov);
+}
 function pgProfiles(v){
   const c=DB.customers.find(x=>x.id===S.profSel);
   if(!c){
@@ -8417,14 +8519,19 @@ function pgProfiles(v){
     bar.append(searchRow(S.profQ,'ค้นหาชื่อลูกค้า',q=>{S.profQ=q;render();}));
     v.append(bar);
     const q=S.profQ.toLowerCase();
-    const items=DB.customers.filter(x=>!q||[x.name,x.contact,x.phone,x.email].join(' ').toLowerCase().includes(q));
+    /* ลูกค้าของทั้งทีม: รายชื่อของเรา + ทะเบียนกลาง (รายที่เรายังไม่มี) */
+    const mine=new Set(DB.customers.map(x=>normName(x.name)));
+    const shared=[];SHARED_CUST.forEach((s,k)=>{if(!mine.has(k))shared.push(Object.assign({_shared:true,id:'sc:'+k,photos:[],files:[]},s));});
+    const items=DB.customers.concat(shared).filter(x=>!q||[x.name,x.contact,x.phone,x.email].join(' ').toLowerCase().includes(q));
+    if(scOff)v.append(hint('ยังไม่ได้เปิดทะเบียนลูกค้ากลาง — ให้ผู้ดูแลรันไฟล์ supabase-setup-20.sql แล้วรายชื่อลูกค้าจะใช้ร่วมกันทั้งทีม'));
     v.append(listCard(items,{
       avatar:x=>x.logo?`<img src="${imgSrc(x.logo)}">`:esc(initials(x.name)),
-      title:x=>esc(x.name),
-      meta:x=>[esc(x.biz||'ไม่ระบุประเภทธุรกิจ'),esc(x.contact||''),
+      title:x=>esc(x.name)+(x._shared?'<span style="margin-left:8px;font-size:11.5px;color:#6b7280">· ทะเบียนกลาง</span>':''),
+      meta:x=>x._shared?[esc(x.contact||''),esc(x.phone||''),x._by?'ข้อมูลโดย '+esc(x._by):''].filter(Boolean).join(' · ')
+        :[esc(x.biz||'ไม่ระบุประเภทธุรกิจ'),esc(x.contact||''),
         ((x.photos.length+x.files.length+(x.logo?1:0))||0)+' ไฟล์'].filter(Boolean).join(' · '),
-      status:x=>pill(x.status,CUST_ST),
-      onOpen:x=>go('profiles',{profSel:x.id,profTab:'info'}),
+      status:x=>x._shared?'':pill(x.status,CUST_ST),
+      onOpen:x=>x._shared?sharedCustomerView(x):go('profiles',{profSel:x.id,profTab:'info'}),
       empty:emptyState('ยังไม่มีข้อมูลลูกค้า','เพิ่มลูกค้ารายแรกเพื่อเริ่มเก็บข้อมูล','เพิ่มลูกค้าใหม่',()=>$('#topActions .btn').click())
     }));
     return;
@@ -8682,6 +8789,7 @@ function loginScreen(msg){
       w.remove();document.querySelector('.app').style.display='';
       await startApp();
       setTimeout(()=>sweepSignatures(true),4000);
+      setTimeout(()=>custSharedSync(),2500);
     }catch(e){b.disabled=false;syncMode();err(e.message);}
   };
   w.querySelector('#lgGo').onclick=go;
@@ -9024,6 +9132,7 @@ async function viewUser(id,name,mine){
     setSync(readOnly()?'readonly':viewingOther()?'editing':'idle');render();
     autoTidyDone=false;inlineTidyDone=false;setTimeout(autoTidy,2000);
     setTimeout(()=>sweepSignatures(true),3000);   /* ลายเซ็นจากลิงก์ของเอกสารบัญชีนี้ */
+    setTimeout(()=>custSharedSync(),2000);
     toast(mine?'กลับมาที่ข้อมูลของคุณแล้ว':'กำลังดูข้อมูลของ '+name+' (แก้ไขไม่ได้)');
   }catch(e){toast(e.message);}
 }
@@ -9158,6 +9267,7 @@ async function boot(){
     catch(e){if(!await refreshSession()){clearSession();loginScreen('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่');return;}}
     await startApp();
     setTimeout(()=>sweepSignatures(true),4000);   /* ลายเซ็นที่เซ็นผ่านลิงก์ระหว่างปิดโปรแกรม */
+    setTimeout(()=>custSharedSync(),2500);        /* ทะเบียนลูกค้ากลาง */
   }else loginScreen();
 }
 window.addEventListener('hashchange',handleHash);
