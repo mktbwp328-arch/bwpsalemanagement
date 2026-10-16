@@ -525,7 +525,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.16-20';
+const APP_VER='2569.10.16-21';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof LINK_MODE!=='undefined'&&LINK_MODE)return false;          /* หน้าเซ็นจากลิงก์ ไม่รีโหลดใส่คนเซ็น */
@@ -5999,18 +5999,38 @@ function productStats(inP){
    ลูกค้าใหม่ = ใบเสร็จใบแรกของลูกค้ารายนั้นอยู่ในช่วงนี้ และไม่ได้ติดต่อกันมาก่อนช่วงนี้ และไม่อยู่ในรายชื่อลูกค้าเก่าของบริษัท
    ลูกค้าเก่า = ที่เหลือ (เคยซื้อก่อนช่วงนี้ / อยู่ในรายชื่อลูกค้าเก่า / ติดต่อกันมาก่อน)
    ไม่ได้เลือกช่วงวันที่: ลูกค้าใหม่ = ซื้อครั้งเดียว · ลูกค้าเก่า = ซื้อซ้ำหรืออยู่ในรายชื่อลูกค้าเก่า */
-function buyerSplit(rcs){
-  const bi=buyIndex(),olds=oldKeys(),seen=new Set();let nw=0,od=0;
+function buyerSplit(rcs,detail){
+  const bi=buyIndex(),olds=oldKeys(),seen=new Set(),rows=[];let nw=0,od=0;
   const on=dateFilterOn(S.page==='team'?'team':'dash');
   rcs.forEach(r=>{
     const k=custKey(r.customer);if(!k||seen.has(k))return;seen.add(k);
     const b=bi[k]||{n:1,first:r.date};
     const c=(DB.customers||[]).find(x=>custKey(x.name)===k);
-    const old=olds.has(k)||(c&&(c.oldFlag||[]).length)
-      ||(on?!inPeriod(b.first)||(c&&c.date&&!inPeriod(c.date)&&c.date<b.first):b.n>=2);
-    old?od++:nw++;
+    /* เหตุผลที่นับเป็นลูกค้าเก่า (ไว้แสดงในรายชื่อ) */
+    const why=olds.has(k)?'อยู่ในรายชื่อลูกค้าเก่าของบริษัท'
+      :(c&&(c.oldFlag||[]).length)?'ติ๊กว่าเป็นลูกค้าเก่า'
+      :on?(!inPeriod(b.first)?'เคยซื้อก่อนช่วงนี้ (ครั้งแรก '+fmtDate(b.first)+')'
+          :(c&&c.date&&!inPeriod(c.date)&&c.date<b.first)?'ติดต่อกันมาก่อนช่วงนี้ ('+fmtDate(c.date)+')':'')
+      :(b.n>=2?'สั่งซื้อซ้ำ '+b.n+' ครั้ง':'');
+    why?od++:nw++;
+    if(detail)rows.push({name:r.customer,old:!!why,why:why||('ซื้อครั้งแรก '+fmtDate(b.first)+(r.no?' · ใบเสร็จ '+r.no:''))});
   });
-  return {custNew:nw,custOld:od};
+  return detail?rows:{custNew:nw,custOld:od};
+}
+/* ปุ่มดูรายชื่อลูกค้าที่ซื้อในช่วงนี้ แยกใหม่/เก่า พร้อมเหตุผล (ใช้เทียบกับบันทึกรายชื่อลูกค้าใหม่) */
+function buyerListBtn(getDbs){
+  const b=el('<button class="btn gh sm" style="margin:10px 0 0 auto;display:block">ดูรายชื่อลูกค้าใหม่ / ลูกค้าเก่า ที่ซื้อในช่วงนี้ →</button>');
+  b.onclick=()=>{
+    const rows=[];getDbs().forEach(db=>withDB(db,()=>rows.push(...buyerSplit(liveRc().filter(r=>inPeriod(r.date)),true))));
+    const nw=rows.filter(r=>!r.old),od=rows.filter(r=>r.old);
+    const li=l=>l.map((r,i)=>'<div style="padding:8px 0;border-bottom:1px solid var(--bd2)"><div style="font-size:13.5px;font-weight:600">'+(i+1)+'. '+esc(r.name)+'</div><div class="tiny">'+esc(r.why)+'</div></div>').join('')||'<div class="tiny">ไม่มี</div>';
+    const ov=el('<div class="ov"></div>');
+    const m=el('<div class="modal" style="max-width:640px"><header><div><b>ลูกค้าที่ซื้อในช่วงนี้</b><div class="tiny" style="margin-top:2px">ตามช่วงวันที่ที่เลือกไว้ด้านบน</div></div><button class="close">✕</button></header>'
+      +'<div class="mb"><div class="h3" style="color:#1d4ed8">ลูกค้าใหม่ '+nw.length+' ราย</div>'+li(nw)
+      +'<div class="h3" style="margin-top:18px;color:#047857">ลูกค้าเก่า '+od.length+' ราย</div>'+li(od)+'</div></div>');
+    m.querySelector('.close').onclick=()=>ov.remove();ov.append(m);$('#layer').append(ov);
+  };
+  return b;
 }
 function statsOf(db){
   return withDB(db,()=>{
@@ -6324,6 +6344,7 @@ function pgDashboard(v){
     c.onclick=()=>go(page,extra);
     kp2.append(c);});
   v.append(kp2);
+  v.append(buyerListBtn(()=>[DB]));
   v.append(categoryCard(st.products));
 
   /* งานที่ปิดการขายแล้วแต่ยังไม่ได้ออกใบเสร็จ — รวมเคส "มีแค่ใบเสนอราคา ไม่มี PO" */
@@ -6545,6 +6566,7 @@ function pgTeam(v){
     <div class="mut">${esc(t)}</div><div style="font-size:26px;font-weight:700;margin-top:4px">${esc(val)}</div>
     <div class="tiny" style="margin-top:8px">${esc(sub)}</div></div>`)));
   v.append(kp2);
+  v.append(buyerListBtn(()=>(cur?[cur]:ok).map(r=>r.p.db).filter(Boolean)));
   /* สินค้าขายดี — รวมทั้งทีมหรือเฉพาะคนที่เลือก */
   let prods;
   if(cur)prods=cur.st.products;
