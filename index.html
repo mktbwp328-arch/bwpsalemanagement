@@ -525,7 +525,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.16-17';
+const APP_VER='2569.10.16-18';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof LINK_MODE!=='undefined'&&LINK_MODE)return false;          /* หน้าเซ็นจากลิงก์ ไม่รีโหลดใส่คนเซ็น */
@@ -6014,7 +6014,8 @@ function statsOf(db){
       quoteN:quotes.length,quoteOk:quotes.filter(d=>d.status==='อนุมัติแล้ว').length,
       poN:pos.length,poSum:pos.reduce((a,b)=>a+poGross(b),0),
       custN:css.length,custWon:css.filter(c=>WON_ST.indexOf(c.status)>=0).length,
-      custOld:(()=>{const bi=buyIndex();return css.filter(c=>custKind(c,bi).old).length;})(),
+      ...(()=>{const bi=buyIndex(),n={lead:0,new:0,old:0};css.forEach(c=>n[custKind(c,bi).kind]++);
+        return {custOld:n.old,custNew:n.new,custLead:n.lead};})(),
       products:productStats(inPeriod),buyers:customerStats(inPeriod),months,cnts,year:yr};
   });
 }
@@ -6296,7 +6297,7 @@ function pgDashboard(v){
   [['ใบเสนอราคา',st.quoteN+' ใบ','อนุมัติแล้ว '+st.quoteOk+' ใบ','documents',{docType:'quotation',docFilter:'ทั้งหมด',docQ:'',docOpen:null}],
    ['PO ลูกค้า',st.poN+' ใบ','มูลค่ารวม '+num0(Math.round(st.poSum))+' ฿','po',{poFilter:'ทั้งหมด',poQ:'',poOpen:null}],
    ['ใบเสร็จรับเงิน',st.rcN+' ใบ','ออกแล้วในช่วงนี้','receipts',{rcFilter:'ทั้งหมด',rcY:'',rcM:'',rcFrom:'',rcTo:'',rcQ:''}],
-   ['ลูกค้าที่ติดต่อเข้ามา',st.custN+' ราย','ใหม่ '+(st.custN-st.custOld)+' · เก่า '+st.custOld+' · ปิดการขายแล้ว '+st.custWon+' ราย','customers',{custFilter:'ทั้งหมด',custQ:''}]
+   ['ลูกค้าที่ติดต่อเข้ามา',st.custN+' ราย','ใหม่ '+st.custNew+' · เก่า '+st.custOld+' · ยังไม่ซื้อ '+st.custLead+' ราย','customers',{custFilter:'ทั้งหมด',custQ:''}]
   ].forEach(([t,val,sub,page,extra])=>{
     const c=el(`<div class="card pad" style="cursor:pointer;transition:.15s">
       <div class="mut">${esc(t)}</div><div style="font-size:26px;font-weight:700;margin-top:4px">${esc(val)}</div>
@@ -6522,7 +6523,7 @@ function pgTeam(v){
   [['ใบเสนอราคา',T('quoteN')+' ใบ','อนุมัติแล้ว '+T('quoteOk')+' ใบ'],
    ['PO ลูกค้า',T('poN')+' ใบ','มูลค่ารวม '+num0(Math.round(T('poSum')))+' ฿'],
    ['ใบเสร็จรับเงิน',T('rcN')+' ใบ','ออกแล้วในช่วงนี้'],
-   ['ลูกค้าที่ติดต่อเข้ามา',T('custN')+' ราย','ใหม่ '+(T('custN')-(T('custOld')||0))+' · เก่า '+(T('custOld')||0)+' · ปิดการขายแล้ว '+T('custWon')+' ราย']
+   ['ลูกค้าที่ติดต่อเข้ามา',T('custN')+' ราย','ใหม่ '+(T('custNew')||0)+' · เก่า '+(T('custOld')||0)+' · ยังไม่ซื้อ '+(T('custLead')||0)+' ราย']
   ].forEach(([t,val,sub])=>kp2.append(el(`<div class="card pad">
     <div class="mut">${esc(t)}</div><div style="font-size:26px;font-weight:700;margin-top:4px">${esc(val)}</div>
     <div class="tiny" style="margin-top:8px">${esc(sub)}</div></div>`)));
@@ -6985,31 +6986,45 @@ function customerFields(){return [
   {key:'oldFlag',label:'',type:'checks',full:true,options:[OLD_FLAG],
     hint:'ระบบติดป้ายให้เองจากใบเสร็จ — ติ๊กช่องนี้เฉพาะลูกค้าที่เคยซื้อกับบริษัทก่อนเริ่มใช้โปรแกรม (ไม่มีใบเสร็จในระบบ)'}
 ];}
-/* ---------- ลูกค้าใหม่ / ลูกค้าเก่า (ติดป้ายอัตโนมัติจากใบเสร็จ) ----------
-   ลูกค้าใหม่ = ยังไม่เคยมีใบเสร็จ · ลูกค้าเก่า = มีใบเสร็จแล้ว (2 ใบขึ้นไป = ซื้อซ้ำ)
-   หรือติ๊กเองว่าเป็นลูกค้าเก่าอยู่แล้ว (ซื้อก่อนเริ่มใช้โปรแกรม) */
+/* ---------- ลูกค้าใหม่ / ลูกค้าเก่า ----------
+   ลูกค้าเก่า  = อยู่ในรายชื่อลูกค้าเก่าของบริษัท (ทะเบียนกลาง) · สั่งซื้อซ้ำ (ใบเสร็จ 2 ใบขึ้นไป) · หรือติ๊กเอง
+   ลูกค้าใหม่  = ซื้อครั้งแรกแล้ว (ใบเสร็จ 1 ใบ) หรือปิดการขายแล้ว
+   ยังไม่ซื้อ   = ติดต่อเข้ามา แต่ยังไม่ซื้อ
+   จับคู่ชื่อแบบหลวม: ตัด บริษัท/จำกัด/บจก./หจก./(มหาชน)/(สำนักงานใหญ่)/ช่องว่าง/จุด ออกก่อนเทียบ
+   (ชื่อในใบเสร็จกับในรายชื่อลูกค้ามักเขียนต่างกันนิดหน่อย) */
 const OLD_FLAG='เป็นลูกค้าเก่าอยู่แล้ว (ซื้อก่อนเริ่มใช้โปรแกรม)';
+const custKey=s=>String(s||'').toLowerCase()
+  .replace(/\((สำนักงานใหญ่|มหาชน|สาขา[^)]*)\)/g,'')
+  .replace(/ห้างหุ้นส่วนจำกัด|ห้างหุ้นส่วนสามัญ|ห้างหุ้นส่วน|บริษัท|จำกัด|บจก\.?|บมจ\.?|หจก\.?|co\.?,?\s*ltd\.?|company|limited/g,'')
+  .replace(/[\s.,()\-]/g,'');
 function buyIndex(){
   const idx={};
   (DB.receipts||[]).filter(r=>r.status!=='ยกเลิก').forEach(r=>{
-    const k=normName(r.customer);if(!k)return;
+    const k=custKey(r.customer);if(!k)return;
     const x=idx[k]||(idx[k]={n:0,first:'',last:''});
     x.n++;if(r.date&&(!x.first||r.date<x.first))x.first=r.date;if(r.date&&r.date>x.last)x.last=r.date;
   });
   return idx;
 }
-function custKind(c,idx){
-  const b=(idx||buyIndex())[normName(c.name)];
-  const flag=(c.oldFlag||[]).length>0;
-  if(b&&b.n)return {old:true,label:b.n>=2?'ลูกค้าเก่า · ซื้อซ้ำ':'ลูกค้าเก่า',
-    sub:'ซื้อแล้ว '+b.n+' ครั้ง · ครั้งแรก '+fmtDate(b.first)};
-  /* ปิดการขายแล้ว (หรือสถานะหลังจากนั้น) ถือเป็นลูกค้าเก่า แม้ยังไม่ได้ออกใบเสร็จ */
-  if(WON_ST.includes(c.status)||c.status==='ซื้อขายแล้ว')return {old:true,label:'ลูกค้าเก่า',sub:'สถานะ '+c.status};
-  if(flag)return {old:true,label:'ลูกค้าเก่า',sub:'ซื้อก่อนเริ่มใช้โปรแกรม'};
-  return {old:false,label:'ลูกค้าใหม่',sub:'ยังไม่เคยซื้อ'};
+/* รายชื่อลูกค้าเก่าของบริษัท (จากทะเบียนกลาง) */
+let OLD_KEYS=null,OLD_KEYS_N=-1;
+function oldKeys(){
+  if(OLD_KEYS&&OLD_KEYS_N===SHARED_CUST.size)return OLD_KEYS;
+  OLD_KEYS=new Set();SHARED_CUST.forEach(s=>{if(s._old)OLD_KEYS.add(custKey(s.name));});
+  OLD_KEYS_N=SHARED_CUST.size;return OLD_KEYS;
 }
-const kindBadge=k=>`<span style="display:inline-block;margin-left:8px;padding:1px 8px;border-radius:999px;font-size:11.5px;font-weight:600;vertical-align:middle;${
-  k.old?'background:#ecfdf5;color:#047857;border:1px solid #a7f3d0':'background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe'}">${esc(k.label)}</span>`;
+function custKind(c,idx){
+  const k=custKey(c.name),b=(idx||buyIndex())[k],n=b?b.n:0;
+  if(n>=2)return {kind:'old',old:true,label:'ลูกค้าเก่า',sub:'สั่งซื้อซ้ำ '+n+' ครั้ง · ครั้งแรก '+fmtDate(b.first)};
+  if(oldKeys().has(k))return {kind:'old',old:true,label:'ลูกค้าเก่า',sub:'อยู่ในรายชื่อลูกค้าเก่าของบริษัท'};
+  if((c.oldFlag||[]).length)return {kind:'old',old:true,label:'ลูกค้าเก่า',sub:'ซื้อก่อนเริ่มใช้โปรแกรม'};
+  if(n===1)return {kind:'new',old:false,label:'ลูกค้าใหม่',sub:'ซื้อครั้งแรก '+fmtDate(b.first)};
+  if(WON_ST.includes(c.status)||c.status==='ซื้อขายแล้ว')return {kind:'new',old:false,label:'ลูกค้าใหม่',sub:'สถานะ '+c.status};
+  return {kind:'lead',old:false,label:'ยังไม่ซื้อ',sub:''};
+}
+const KIND_CSS={old:'background:#ecfdf5;color:#047857;border:1px solid #a7f3d0',
+  new:'background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe',lead:'background:#f3f4f6;color:#6b7280;border:1px solid #e5e7eb'};
+const kindBadge=k=>`<span style="display:inline-block;margin-left:8px;padding:1px 8px;border-radius:999px;font-size:11.5px;font-weight:600;vertical-align:middle;${KIND_CSS[k.kind]}">${esc(k.label)}</span>`;
 /* หารายชื่อลูกค้าที่ซ้ำกัน (ชื่อเดียวกันแต่คนละรายการ) */
 function dupGroups(){
   const by={};
@@ -7088,14 +7103,14 @@ function pgCustomers(v){
   v.append(chipRow(chipItems,S.custFilter,k=>{S.custFilter=k;render();},clear));
   /* แยกลูกค้าใหม่ / ลูกค้าเก่า (ดูจากใบเสร็จ) */
   const bidx=buyIndex(),kindOf=c=>custKind(c,bidx);
-  const nOld=DB.customers.filter(c=>kindOf(c).old).length;
+  const kn={lead:0,new:0,old:0};DB.customers.forEach(c=>kn[kindOf(c).kind]++);
   const ck=S.custKind||'ทั้งหมด';
-  v.append(chipRow([['ทั้งหมด','ใหม่+เก่า'],['ลูกค้าใหม่','ลูกค้าใหม่ ('+(DB.customers.length-nOld)+')'],['ลูกค้าเก่า','ลูกค้าเก่า ('+nOld+')']],
+  v.append(chipRow([['ทั้งหมด','ทุกกลุ่ม'],['ยังไม่ซื้อ','ยังไม่ซื้อ ('+kn.lead+')'],['ลูกค้าใหม่','ลูกค้าใหม่ ('+kn.new+')'],['ลูกค้าเก่า','ลูกค้าเก่า ('+kn.old+')']],
     ck,k=>{S.custKind=k;render();},null));
 
   const q=S.custQ.toLowerCase();
   const items=DB.customers.filter(c=>(S.custFilter==='ทั้งหมด'||c.status===S.custFilter)&&
-    (ck==='ทั้งหมด'||(ck==='ลูกค้าเก่า')===kindOf(c).old)&&
+    (ck==='ทั้งหมด'||kindOf(c).label===ck)&&
     dateFilterPass(c,'cust')&&
     (!q||[c.name,c.contact,c.phone,c.email].join(' ').toLowerCase().includes(q)));
   const cnt=el(`<div style="display:flex;align-items:center;gap:12px"><div class="tiny">พบ ${items.length} รายการ</div></div>`);
@@ -7115,7 +7130,7 @@ function pgCustomers(v){
   v.append(listCard(items,{
     avatar:c=>c.logo?`<img src="${imgSrc(c.logo)}">`:esc(initials(c.name)),
     title:c=>esc(c.name)+kindBadge(kindOf(c)),
-    meta:c=>{const k=kindOf(c);return [esc(c.contact||'ไม่ระบุผู้ติดต่อ'),esc(c.phone||''),'ติดต่อ '+ago(c.date),k.old?esc(k.sub):''].filter(Boolean).join(' · ');},
+    meta:c=>{const k=kindOf(c);return [esc(c.contact||'ไม่ระบุผู้ติดต่อ'),esc(c.phone||''),'ติดต่อ '+ago(c.date),esc(k.sub||'')].filter(Boolean).join(' · ');},
     status:c=>pill(c.status,CUST_ST),
     isSel:c=>c.id===S.profSel,
     onOpen:openCustomer,
@@ -8054,10 +8069,12 @@ const SC_COL={contactPos:'contact_pos',shipTo:'ship_to',taxId:'tax_id',creditTer
 const SHARED_CUST=new Map();          /* name_key -> ข้อมูลกลาง (ชื่อช่องแบบในแอป) */
 let scLast='',scBusy=false,scOff=false;
 const scHash=c=>SC_F.map(f=>String(c[f]??'')).join('|');
-const scFromRow=r=>{const o={_key:r.name_key,_at:r.updated_at,_by:r.updated_by_name||''};
+const scFromRow=r=>{const o={_key:r.name_key,_at:r.updated_at,_by:r.updated_by_name||'',_old:!!r.is_old,_code:r.cust_code||''};
   SC_F.forEach(f=>{const v=r[SC_COL[f]||f];o[f]=f==='creditLimit'?(+v||0):(v??'');});return o;};
 const scToRow=c=>{const o={name_key:normName(c.name),updated_by:AUTH.user&&AUTH.user.id,updated_by_name:meName()};
-  SC_F.forEach(f=>{o[SC_COL[f]||f]=f==='creditLimit'?(+c[f]||0):String(c[f]??'');});return o;};
+  SC_F.forEach(f=>{o[SC_COL[f]||f]=f==='creditLimit'?(+c[f]||0):String(c[f]??'');});
+  if((c.oldFlag||[]).length)o.is_old=true;                 /* ติ๊กลูกค้าเก่าเอง → ทุกคนเห็นเป็นลูกค้าเก่าด้วย */
+  return o;};
 async function custSharedSync(){
   if(scBusy||scOff||!authed()||!sbOn()||!DB||readOnly()||LINK_MODE)return;
   scBusy=true;const db=DB;
@@ -8536,8 +8553,8 @@ function pgProfiles(v){
     if(scOff)v.append(hint('ยังไม่ได้เปิดทะเบียนลูกค้ากลาง — ให้ผู้ดูแลรันไฟล์ supabase-setup-20.sql แล้วรายชื่อลูกค้าจะใช้ร่วมกันทั้งทีม'));
     v.append(listCard(items,{
       avatar:x=>x.logo?`<img src="${imgSrc(x.logo)}">`:esc(initials(x.name)),
-      title:x=>esc(x.name)+(x._shared?'<span style="margin-left:8px;font-size:11.5px;color:#6b7280">· ทะเบียนกลาง</span>':''),
-      meta:x=>x._shared?[esc(x.contact||''),esc(x.phone||''),x._by?'ข้อมูลโดย '+esc(x._by):''].filter(Boolean).join(' · ')
+      title:x=>esc(x.name)+(x._shared?(x._old?kindBadge({kind:'old',label:'ลูกค้าเก่า'}):'')+'<span style="margin-left:8px;font-size:11.5px;color:#6b7280">· ทะเบียนกลาง</span>':kindBadge(custKind(x))),
+      meta:x=>x._shared?[x._code?'รหัส '+esc(x._code):'',esc(x.contact||''),esc(x.phone||''),x._by?'ข้อมูลโดย '+esc(x._by):''].filter(Boolean).join(' · ')
         :[esc(x.biz||'ไม่ระบุประเภทธุรกิจ'),esc(x.contact||''),
         ((x.photos.length+x.files.length+(x.logo?1:0))||0)+' ไฟล์'].filter(Boolean).join(' · '),
       status:x=>x._shared?'':pill(x.status,CUST_ST),
