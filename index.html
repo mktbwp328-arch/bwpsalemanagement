@@ -526,9 +526,10 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.16-40';
+const APP_VER='2569.10.16-41';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
+  if(typeof saveBusy!=='undefined'&&saveBusy)return false;
   if(typeof LINK_MODE!=='undefined'&&LINK_MODE)return false;          /* หน้าเซ็นจากลิงก์ ไม่รีโหลดใส่คนเซ็น */
   if(document.querySelector('.ov,.prevov'))return false;               /* มีหน้าต่าง/ฟอร์ม/หน้าพิมพ์เปิดอยู่ */
   const a=document.activeElement;
@@ -570,7 +571,9 @@ function imgSrc(s){
 const uid=()=>Math.random().toString(36).slice(2,10);
 const num=n=>Number(n||0).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
 const num0=n=>Number(n||0).toLocaleString('th-TH');
-const today=()=>new Date().toISOString().slice(0,10);
+const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+/* วันที่ (ตามเวลาไทย) ของเวลาแบบ ISO จากฐานข้อมูล */
+const localDay=s=>{const x=new Date(s);return !s||isNaN(x)?'':x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
 function fmtDate(iso){const d=new Date(iso);if(!iso||isNaN(d))return '-';
   return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+(d.getFullYear()+543);}
 function ago(iso){const d=new Date(iso);if(isNaN(d))return '';const day=Math.floor((Date.now()-d)/86400000);
@@ -758,7 +761,7 @@ function mergeList(mine,theirs,known){
   (theirs||[]).forEach(x=>{if(x&&x.id&&byId.has(x.id))mergeSigsInto(byId.get(x.id),x);});
   const seen=new Set(out.map(x=>x&&x.id).filter(Boolean));
   /* กันซ้ำอีกชั้นด้วยเลขที่เอกสาร เผื่อ id คนละตัวแต่เป็นใบเดียวกัน */
-  const noKey=x=>x&&x.no?String(x.type||'')+'|'+x.no:null;
+  const noKey=x=>x&&x.no?String(x.type||'')+'|'+x.no+'|'+custKey(x.customer||''):null;
   const nos=new Set(out.map(noKey).filter(Boolean));
   let added=0;
   (theirs||[]).forEach(x=>{
@@ -819,7 +822,7 @@ async function shrinkInlineImages(){
   const walk=(o,depth)=>{
     if(!o||typeof o!=='object'||depth>8)return;
     for(const k of Object.keys(o)){
-      if(k==='products')continue;
+      if(k==='products'||k==='photos'||k==='files'||k==='images'||k==='attachments')continue;
       const v=o[k];
       if(typeof v==='string'){
         if(v.length>6000&&/^data:image\/(png|jpe?g|webp|gif)/.test(v))jobs.push([o,k]);
@@ -880,8 +883,19 @@ async function autoTidy(){
   }catch(e){autoTidyDone=false;}
 }
 const mbTxt=n=>(Math.round(n/1024/1024*10)/10)+' MB';
+let saveBusy=false;
 async function cloudSave(tries){
   if(readOnly())return;
+  if(saveBusy){syncPending=true;saveAgain=true;return;}   /* กำลังส่งรอบก่อนอยู่ ส่งต่อให้รอบถัดไป */
+  saveBusy=true;saveAgain=false;
+  const owner=dataOwner();
+  try{return await cloudSaveRun(tries,owner);}
+  finally{saveBusy=false;
+    if(saveAgain&&!retryArmed){saveAgain=false;clearTimeout(syncTimer);syncTimer=setTimeout(()=>cloudSave(),800);}}
+}
+let retryArmed=false,saveAgain=false;
+async function cloudSaveRun(tries,owner){
+  retryArmed=false;
   if(!authed()&&AUTH.refresh&&await refreshSession()){}   /* ต่ออายุเซสชันให้เองก่อน */
   if(!authed()){                      /* เซสชันหลุด: บอกให้เข้าระบบใหม่ ข้อมูลในเครื่องยังอยู่ */
     setSync('offline');lastSyncErr='เซสชันหมดอายุ ต้องเข้าระบบใหม่';
@@ -894,9 +908,9 @@ async function cloudSave(tries){
        เช็คด้วยเวลาที่แก้ล่าสุดก่อน (เบามาก) จะได้ไม่ต้องโหลดข้อมูลทั้งก้อนทุกครั้งที่บันทึก */
     try{
       const curT=await cloudStamp(dataOwner());
-      if(curT&&curT>cloudSeen+2000){
+      if(curT&&curT!==cloudSeen){
         const cur=await cloudRow(dataOwner());
-        if(cur&&cur.data&&cur.data.customers){
+        if(cur&&cur.data&&cur.data.customers&&dataOwner()===owner){
         const added=mergeCloud(cur.data);
         if(added){
           try{saveLocalCopy();}catch(e){}
@@ -906,6 +920,7 @@ async function cloudSave(tries){
         }
       }
     }catch(e){}
+    if(dataOwner()!==owner)return;            /* สลับไปดูข้อมูลคนอื่นระหว่างทาง — รอบนี้ไม่เขียน */
     /* คลังรหัสสินค้าเก็บในตารางกลาง ไม่ต้องใส่มากับข้อมูลส่วนตัวของแต่ละคน */
     const mine=Object.assign({},DB);delete mine.products;
     const stamp=new Date().toISOString();
@@ -925,8 +940,8 @@ async function cloudSave(tries){
     const n=(+tries||0)+1;
     /* ลองใหม่ให้เองเรื่อย ๆ จนกว่าจะสำเร็จ ผู้ใช้ไม่ต้องกดอะไร
        เริ่มถี่ก่อน แล้วค่อยห่างขึ้นเป็นทุก 30 วินาที */
-    clearTimeout(retryTimer);
-    retryTimer=setTimeout(()=>cloudSave(n),Math.min(n*2500,30000));
+    clearTimeout(retryTimer);retryArmed=true;
+    retryTimer=setTimeout(()=>{retryArmed=false;cloudSave(n);},Math.min(n*2500,30000));
     if(n<=3)return;
     if(syncErrShown)return;
     syncErrShown=true;
@@ -939,7 +954,7 @@ async function cloudSave(tries){
   }
 }
 /* เน็ตกลับมา หรือกลับมาที่หน้าเว็บ: ส่งงานที่ค้างขึ้นคลาวด์ให้เองทันที */
-const retryNow=()=>{if(syncPending&&authed()&&!readOnly()){clearTimeout(retryTimer);cloudSave();}};
+const retryNow=()=>{if(syncPending&&authed()&&!readOnly()){clearTimeout(retryTimer);retryArmed=false;cloudSave();}};
 window.addEventListener('online',retryNow);
 window.addEventListener('focus',retryNow);
 /* ปิดแท็บ / สลับไปแอปอื่น: ถ้ายังมีงานค้างไม่ได้อัปโหลด ให้รีบส่งทันที */
@@ -1729,7 +1744,7 @@ function creditSheets(d){
     ${[[0,1],[2,3]].map(pair=>`<table class="apv">
       <tr><th style="width:24%">วงเงินอนุมัติ (บาท)</th><th style="width:18%">เครดิต (วัน)</th>
         <th style="width:29%">${CREDIT_ROLES[pair[0]][1]}</th><th style="width:29%">${CREDIT_ROLES[pair[1]][1]}</th></tr>
-      <tr><td class="va">${d.approvedAmount?num(d.approvedAmount):''}</td><td class="va">${d.creditDays||''}</td>
+      <tr><td class="va">${d.approvedAmount?num(d.approvedAmount):''}</td><td class="va">${esc(d.creditDays||'')}</td>
         ${pair.map(i=>{const r=CREDIT_ROLES[i],s=d.sigs[r[0]];
           return `<td class="sg">${s&&s.img?`<img src="${imgSrc(s.img)}">`:''}
             <div class="nm">( ${esc(s?s.name:'')}${s?'':'.'.repeat(30)} )</div>
@@ -2148,6 +2163,7 @@ async function sbAuthCall(path,body){
   const j=await r.json().catch(()=>({}));
   if(!r.ok){
     const m=j.msg||j.message||j.error_description||j.error||('เข้าสู่ระบบไม่สำเร็จ ('+r.status+')');
+    if(/refresh_token/.test(path)){const e=new Error(m);e.status=r.status;throw e;}
     if(/invalid login/i.test(m))throw new Error('PIN ไม่ถูกต้อง');
     if(/legacy api keys|invalid api key|no api key/i.test(m))throw new Error('คีย์เชื่อมต่อฐานข้อมูลใช้ไม่ได้แล้ว (ถูกปิดหรือเปลี่ยนใน Supabase) — ติดต่อผู้ดูแลระบบ');
     if(/ทะเบียนพนักงาน/.test(m))throw new Error('เบอร์นี้ไม่มีในทะเบียนพนักงาน กรุณาติดต่อผู้ดูแลระบบ');
@@ -2180,7 +2196,7 @@ async function refreshSession(){
   if(!AUTH.refresh)return false;
   try{const j=await sbAuthCall('token?grant_type=refresh_token',{refresh_token:AUTH.refresh});
     AUTH.token=j.access_token;AUTH.refresh=j.refresh_token;AUTH.user=j.user||AUTH.user;saveSession();return true;}
-  catch(e){clearSession();return false;}
+  catch(e){if(e&&e.status>=400&&e.status<500)clearSession();return false;}
 }
 async function loadProfile(){
   const rows=await sbGet('profiles?select=id,name,email,role&id=eq.'+AUTH.user.id);
@@ -2245,7 +2261,7 @@ function sbSettings(){
 }
 
 /* ================= ลายเซ็นบนหน้าจอ + สายอนุมัติ ================= */
-function b64e(obj){return btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(obj))));}
+function b64e(obj){return u8ToB64(new TextEncoder().encode(JSON.stringify(obj)));}
 function b64d(s){return JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(s),c=>c.charCodeAt(0))));}
 
 /* แผ่นเซ็น — ใช้ได้ทั้งเมาส์ ปากกา (stylus/Apple Pencil) และนิ้ว */
@@ -2325,7 +2341,7 @@ function signaturePad(){
    เซ็นครั้งเดียว ระบบจำไว้ แล้วเติมให้อัตโนมัติทุกครั้งที่สร้างเอกสารใหม่ */
 function mySig(){const s=DB&&DB.mySig;return s&&s.img?s:null;}
 function saveMySig(sig){
-  if(!sig||!sig.img||readOnly())return;
+  if(!sig||!sig.img||readOnly()||viewingOther())return;
   DB.mySig={img:sig.img,name:sig.name||'',savedAt:today()};
   save();
 }
@@ -2743,7 +2759,7 @@ async function shareCustomerCredit(d){
       <button class="btn gh sm" id="cp" style="margin-top:8px;width:150px">คัดลอกลิงก์</button>
       <div style="font-size:14px;font-weight:600;margin:16px 0 8px">ข้อ 2 การซื้อสินค้า</div>
       <div class="tiny" style="margin-bottom:6px">${(d.products&&d.products.length)||d.qtyKg||d.qtyRoll||d.qtyPcs
-        ? '✓ ได้ข้อมูลจากลูกค้าแล้ว — '+((d.products||[]).join(', ')||'ยังไม่เลือกประเภทสินค้า')
+        ? '✓ ได้ข้อมูลจากลูกค้าแล้ว — '+esc((d.products||[]).join(', ')||'ยังไม่เลือกประเภทสินค้า')
         : 'ยังไม่ได้รับข้อมูลจากลูกค้า'}</div>
       <div style="font-size:14px;font-weight:600;margin:16px 0 8px">ข้อ 3 สถานะการเซ็นของลูกค้า</div>
       <div class="list" id="st"></div></div>
@@ -2764,6 +2780,7 @@ async function shareCustomerCredit(d){
           try{
             const res=await sbRpc('remove_doc_signature',{p_id:d.sigDocId,p_role:'cust'+i});
             delete c.sig;delete c.sigDate;
+            if(d.sigs)delete d.sigs['cust'+i];sigDelMark(d,'cust'+i);
             if(res)applyCreditSigs(d.no,res.sigs,res.status,true,d.type);
             save(true);render();ov.remove();shareCustomerCredit(d);
             toast('ลบแล้ว — ส่งลิงก์เดิมให้ลูกค้าเซ็นใหม่ได้เลย');
@@ -2891,8 +2908,10 @@ function customerSignView(row,id){
       if(hasSec2){
         let key='custInfo',n=2;
         while((row.sigs||{})[key])key='custInfo'+(n++);
-        await sbRpc('add_doc_signature',{p_id:id,p_role:key,p_name:'ข้อมูลจากลูกค้า',
+        const r2=await sbRpc('add_doc_signature',{p_id:id,p_role:key,p_name:'ข้อมูลจากลูกค้า',
           p_sig:null,p_ok:true,p_note:JSON.stringify(sec2),p_roles_required:rolesOf('credit').map(r=>r[0])});
+        if(r2&&r2.status==='rejected')throw new Error('เอกสารนี้ถูกตีกลับแล้ว ข้อมูลข้อ 2 ยังไม่ถูกบันทึก — แจ้งฝ่ายขาย');
+        if(!(r2&&r2.sigs&&r2.sigs[key]))throw new Error('ฐานข้อมูลยังไม่ได้รับข้อมูลข้อ 2 — ลองกดบันทึกอีกครั้ง');
       }
       const now=new Date();
       signResultScreen({tone:'ok',title:'เซ็นเรียบร้อยแล้ว',
@@ -3062,7 +3081,7 @@ function creditSignView(row,id,role){
       if(ok&&!mine)throw new Error('ฐานข้อมูลยังไม่ได้รับลายเซ็น');
       ov.remove();
       const st=res&&res.status,now=new Date();
-      const left=roles.length-Object.keys(res.sigs||{}).length;
+      const left=roles.length-roles.filter(r=>(res.sigs||{})[r[0]]).length;
       signResultScreen({
         tone:st==='rejected'?'bad':'ok',
         title:st==='rejected'?'บันทึกไม่อนุมัติแล้ว':'เซ็นเรียบร้อยแล้ว',
@@ -3122,10 +3141,10 @@ function applyCreditSigs(no,sigs,status,silent,type){
   if((d.type||'credit')==='credit'&&ciKey&&d.sigs[ciKey].note){
     try{const o=JSON.parse(d.sigs[ciKey].note);
       if(o&&typeof o==='object'){
-        if(o.products&&o.products.length)d.products=o.products;
-        if(o.qtyKg)d.qtyKg=o.qtyKg;
-        if(o.qtyRoll)d.qtyRoll=o.qtyRoll;
-        if(o.qtyPcs)d.qtyPcs=o.qtyPcs;}
+        if(Array.isArray(o.products)&&o.products.length)d.products=o.products.map(x=>String(x).slice(0,80));
+        if(o.qtyKg)d.qtyKg=+o.qtyKg||0;
+        if(o.qtyRoll)d.qtyRoll=+o.qtyRoll||0;
+        if(o.qtyPcs)d.qtyPcs=+o.qtyPcs||0;}
     }catch(e){}
   }
   /* ใบขอเครดิต: ลายเซ็นฝั่งลูกค้า (ข้อ 3) กลับเข้าไปอยู่ในรายชื่อผู้ติดต่อ */
@@ -3184,10 +3203,11 @@ async function checkCredit(d,silent){
     /* จำว่าใครกดไม่อนุมัติ ไว้แสดงในหน้าเอกสาร */
     if(row.status==='rejected'){d.rejectBy=row.reject_by||'';d.rejectNote=row.reject_note||'';}
     else if(d.rejectBy){delete d.rejectBy;}
-    const before=Object.keys(d.sigs||{}).length;
+    const cntR=s=>rolesOf(d.type).filter(r=>s&&s[r[0]]).length;
+    const before=cntR(d.sigs);
     await syncLocalSigs(d,row.sigs);
     applyCreditSigs(d.no,row.sigs,row.status,true,d.type);
-    const after=Object.keys(d.sigs||{}).length;
+    const after=cntR(d.sigs);
     render();
     if(!silent||after>before)toast(row.status==='complete'?'เซ็นครบ '+n+' ลายเซ็นแล้ว ✓'
       :row.status==='rejected'?'มีผู้ไม่อนุมัติเอกสารนี้':after>before?'ได้รับลายเซ็นเพิ่ม ('+after+'/'+n+')':'ยังรอลายเซ็นอยู่ ('+after+'/'+n+')');
@@ -3272,8 +3292,11 @@ async function checkApproval(d,silent){
       if(!silent)toast('ยังรอผู้บริหารเซ็นอยู่');return 'pending';
     }
     if(d.sigApprover&&row.status==='approved')return row.status;
+    const seenKey=d.approvalId+'|'+row.status;
+    if(row.status==='rejected'&&d.approvalSeen===seenKey)return row.status;
+    d.approvalSeen=seenKey;
     applySignature({no:d.no,ok:row.status==='approved',name:row.approver_name,
-      date:(row.decided_at||'').slice(0,10)||today(),img:row.approver_sig},true);
+      date:localDay(row.decided_at)||today(),img:row.approver_sig},true);
     render();
     toast(row.status==='approved'?'ผู้บริหารเซ็นอนุมัติแล้ว ✓':'ผู้บริหารไม่อนุมัติเอกสารนี้');
     return row.status;
@@ -3293,9 +3316,10 @@ async function findOtherApproval(d,silent){
       &&(!r.customer||!d.customer||r.customer===d.customer)
       &&(!since||(r.decided_at&&Date.parse(r.decided_at)>since)));
     if(!hit)return null;
-    d.approvalId=hit.id;
+    if(hit.status==='rejected'&&d.approvalSeen===hit.id+'|rejected')return null;
+    d.approvalId=hit.id;d.approvalSeen=hit.id+'|'+hit.status;
     applySignature({no:d.no,ok:hit.status==='approved',name:hit.approver_name,
-      date:(hit.decided_at||'').slice(0,10)||today(),img:hit.approver_sig},true);
+      date:localDay(hit.decided_at)||today(),img:hit.approver_sig},true);
     render();
     toast(hit.status==='approved'?'พบลายเซ็นผู้บริหารจากลิงก์ที่ส่งไปก่อนหน้า — ใส่ให้แล้ว ✓':'ผู้บริหารไม่อนุมัติเอกสารนี้ (จากลิงก์ที่ส่งไปก่อนหน้า)');
     return hit.status;
@@ -3325,8 +3349,8 @@ async function handleHash(){
   if(!ms&&!mo&&!mc&&!m1&&!m2)return false;
   /* ไม่ลบลิงก์ออกจากแถบที่อยู่แล้ว — เดิมลบทันที ถ้าโหลดไม่ขึ้น/รีเฟรช/กดอัปเดต คนเซ็นจะหลุดไปหน้าเข้าระบบ
      และลิงก์หายไปเลย ตอนนี้รีเฟรชกี่ครั้งก็กลับมาที่เอกสารเดิม (เซ็นแล้วจะขึ้นว่าเซ็นไปแล้ว) */
-  if(m2)history.replaceState(null,'',baseUrl());
-  LINK_MODE=true;
+  if(m2){if(!booted)return false;history.replaceState(null,'',baseUrl());}
+  else LINK_MODE=true;
   if(ms){
     const [,id,role]=ms;
     if(!Object.values(SIGN_ROLES).some(rs=>rs.some(r=>r[0]===role))){linkErrorScreen('ลิงก์ไม่ถูกต้อง','ลิงก์อาจคัดลอกมาไม่ครบ — ขอลิงก์ใหม่จากฝ่ายขาย',false);return true;}
@@ -3911,14 +3935,14 @@ function parseAnyDate(str){
   if(m){
     const mo=MONS[m[2].slice(0,3).toLowerCase()];
     if(mo!==undefined){
-      let y=+m[3];if(y<100)y+=2500;               /* 69 = 2569 */
+      let y=+m[3];if(y<100)y+=(y>=60?2500:2000);  /* 69 = 2569 · 26 = 2026 */
       if(y>2400)y-=543;                            /* พ.ศ. -> ค.ศ. */
       return new Date(Date.UTC(y,mo,+m[1])).toISOString().slice(0,10);
     }
   }
   m=s.match(/(\d{1,2})[-\/](\d{1,2})[-\/](\d{2,4})/);
   if(m){
-    let y=+m[3];if(y<100)y+=2500;
+    let y=+m[3];if(y<100)y+=(y>=60?2500:2000);
     if(y>2400)y-=543;
     return new Date(Date.UTC(y,+m[2]-1,+m[1])).toISOString().slice(0,10);
   }
@@ -4754,6 +4778,7 @@ function ncFillRows(d){
     return add.length?have.concat(add).join(sep):null;
   };
   d.rows.forEach(r=>{
+    if(r.kv===2)return;
     const k=r.ck||custKey(r.customer);if(!k)return;
     const mine=rcs.filter(x=>custKey(x.customer)===k);if(!mine.length)return;
     const f=ncRowFor(r.customer,mine);
@@ -4850,7 +4875,8 @@ function pgNewCust(v){
     const pre={date:p.end,attn:'ผู้จัดการฝ่ายบัญชี',salesName:meName(),intro:NC_INTRO,rows:ncFindRows(p)};
     openForm('สร้างบันทึกรายชื่อลูกค้าใหม่',ncFields(),pre,d=>{
       const doc=ensureNewCust(Object.assign({id:uid(),type:'newcust',status:'ร่าง'},d));
-      doc.no=doc.no||('NC-'+(new Date(doc.date).getFullYear()+543)+'-'+String(ncDocs().length+1).padStart(2,'0'));
+      doc.no=doc.no||('NC-'+(new Date(doc.date).getFullYear()+543)+'-'+String(Math.max(ncDocs().length,
+        ...ncDocs().map(x=>+((String(x.no||'').match(/-(\d+)$/)||[])[1])||0))+1).padStart(2,'0'));
       autoSignSales(doc);
       DB.docs.unshift(doc);save(true);render();toast('สร้างบันทึกแล้ว');
       go('newcust',{ncOpen:doc.id});
@@ -4903,7 +4929,7 @@ function ncDetail(v,d){
   right.append(signCard(d,()=>render()));
   const del=el(`<button class="btn dg blk">${svg('trash','ic s')}ลบบันทึกนี้</button>`);
   del.onclick=()=>askConfirm('ลบบันทึก','ลบบันทึกตัดยอด '+fmtDate(d.date)+' ออกจากระบบ?','ลบ',()=>{
-    const i=DB.docs.indexOf(d);DB.docs.splice(i,1);save(true);go('newcust',{ncOpen:null});
+    const i=DB.docs.findIndex(x=>x===d||(d.id&&x.id===d.id));if(i<0){toast('ข้อมูลถูกโหลดใหม่ — เปิดรายการอีกครั้ง');return;}DB.docs.splice(i,1);save(true);go('newcust',{ncOpen:null});
     toast('ลบบันทึกแล้ว',()=>{DB.docs.splice(i,0,d);save(true);render();});});
   right.append(del);
   wrap.append(right);
@@ -5935,7 +5961,17 @@ function rcIndex(){
   if(_rci&&_rcv===dirtySince&&_rcSrc===DB.receipts)return _rci;
   const live=DB.receipts.filter(r=>r.status!=='ยกเลิก');
   const byRef=new Set(),byItem=new Set();
-  live.forEach(r=>{const k=rcRef(r);if(k){byRef.add(k);if(r.poItemId)byItem.add(k+'|'+r.poItemId);}});
+  const poBy=new Map();(DB.pos||[]).forEach(p=>{if(p.no)poBy.set(p.no,p);});
+  const nk=it=>String(it.name||'').split('\n')[0].toLowerCase().replace(/plastic|พลาสติก/g,'').replace(/[\s.,()\-]/g,'');
+  const ck=it=>String(it.code||'').trim().toUpperCase();
+  live.forEach(r=>{const k=rcRef(r);if(!k)return;byRef.add(k);
+    if(r.poItemId){byItem.add(k+'|'+r.poItemId);return;}
+    const po=poBy.get(k);if(!po||!(po.items||[]).length)return;
+    const its=(r.items||[]).filter(it=>it.name||it.code);
+    if(!its.length){po.items.forEach(x=>{if(x.id)byItem.add(k+'|'+x.id);});return;}
+    its.forEach(it=>{const m=po.items.find(x=>x.id&&ck(x)&&ck(x)===ck(it))||po.items.find(x=>x.id&&nk(x)&&nk(x)===nk(it));
+      if(m)byItem.add(k+'|'+m.id);});
+  });
   _rci={live,byRef,byItem,n:DB.receipts.length};_rcv=dirtySince;_rcSrc=DB.receipts;
   return _rci;
 }
@@ -5987,13 +6023,13 @@ function pending(){
 /* ออกใบเสร็จจาก PO — ถ้ามีหลายรายการให้เลือกก่อนว่าจะออกของรายการไหน */
 function issuePoReceipt(p,item){
   const items=(p.items||[]).filter(it=>it.id);
-  const pre=it=>({customer:p.customer,poRef:p.no,poItemId:it?it.id:'',
+  const pre=(it,list)=>({customer:p.customer,poRef:p.no,poItemId:it?it.id:'',
     shipTo:p.ship||'',salesman:p.owner||'',
-    amount:Math.round((it?itemGross(it):poGross(p))*100)/100,
+    amount:Math.round((it?itemGross(it):list?list.reduce((a,x)=>a+itemGross(x),0):poGross(p))*100)/100,
     /* ขนาดชิ้นงานติดไปด้วย ใบเสร็จจะได้คำนวณน้ำหนักเป็นกิโลกรัมได้ */
     items:it?[{code:it.code||'',name:it.name||'',qty:it.qty||0,unit:it.unit||'',price:it.price||0,
                w:it.w||'',l:it.l||'',h:it.h||'',t:it.t||''}]
-            :(p.items||[]).map(x=>({code:x.code||'',name:x.name||'',qty:x.qty||0,unit:x.unit||'',price:x.price||0,
+            :(list||p.items||[]).map(x=>({code:x.code||'',name:x.name||'',qty:x.qty||0,unit:x.unit||'',price:x.price||0,
                w:x.w||'',l:x.l||'',h:x.h||'',t:x.t||''}))});
   if(item)return issueReceipt(pre(item));
   const left=poItemsLeft(p);
@@ -6017,7 +6053,12 @@ function issuePoReceipt(p,item){
         ${done?'<span class="pill" style="background:#dcfce7;color:#15803d">ออกแล้ว</span>':''}</div></div>`);
     if(!done)r.onclick=()=>{ov.remove();issueReceipt(pre(it));};
     list.append(r);});
-  m.querySelector('#all').onclick=()=>{ov.remove();issueReceipt(pre(null));};
+  /* บางรายการออกใบเสร็จไปแล้ว: รวมเฉพาะที่เหลือ */
+  const allBtn=m.querySelector('#all');
+  if(left.length<items.length){allBtn.textContent='ออกใบเดียวรวม '+left.length+' รายการที่เหลือ';
+    allBtn.onclick=()=>{ov.remove();issueReceipt(pre(null,left));};}
+  else allBtn.onclick=()=>{ov.remove();issueReceipt(pre(null));};
+  if(!left.length)allBtn.remove();
   m.querySelector('.close').onclick=()=>ov.remove();m.querySelector('#c').onclick=()=>ov.remove();
   ov.append(m);$('#layer').append(ov);
 }
@@ -6025,9 +6066,13 @@ function issuePoReceipt(p,item){
 function issueReceipt(pre){
   if(readOnly()){toast('กำลังดูข้อมูลของ '+(AUTH.viewingName||'เพื่อนร่วมทีม')+' — ออกใบเสร็จไม่ได้');return;}
   openForm('ออกใบเสร็จรับเงิน',rcFields(),Object.assign({
-    no:'RC-'+(new Date().getFullYear()+543)+'-'+String(DB.receipts.length+67).padStart(4,'0'),
+    no:'RC-'+(new Date().getFullYear()+543)+'-'+String(Math.max(DB.receipts.length+66,
+      ...DB.receipts.map(r=>+((String(r.no||'').match(/^RC-\d{4}-(\d+)$/)||[])[1])||0))+1).padStart(4,'0'),
     date:today(),status:'รอชำระ'},pre),d=>{
-    const r=Object.assign({id:uid(),photos:[],files:[]},d);DB.receipts.unshift(r);save(true);
+    const r=Object.assign({id:uid(),photos:[],files:[]},d);
+    if(pre&&pre.poItemId&&r.poRef===pre.poRef)r.poItemId=pre.poItemId;
+    if(r.items&&r.items.length)r.amount=Math.round(rcTotal(r)*100)/100;
+    DB.receipts.unshift(r);save(true);
     go('receipts',{rcFilter:'ทั้งหมด',rcQ:'',rcY:'',rcM:'',rcFrom:'',rcTo:''});toast('ออกใบเสร็จแล้ว — ยอดเข้าแดชบอร์ดทันที');openRc(r);});
 }
 
@@ -6448,7 +6493,7 @@ function pgDashboard(v){
         <div class="lm">${esc(x.label)} · ${fmtDate(x.date)}</div></div>
         <div class="lright"><div class="lamt">${num0(Math.round(x.amount))} ฿</div>
         <button class="btn sm iss">ออกใบเสร็จ</button></div></div>`);
-      r.querySelector('.iss').onclick=()=>issueReceipt({customer:x.customer,amount:Math.round(x.amount*100)/100,
+      r.querySelector('.iss').onclick=()=>x.src==='po'?issuePoReceipt(x.obj,x.item):issueReceipt({customer:x.customer,amount:Math.round(x.amount*100)/100,
         poRef:x.ref,poItemId:x.item?x.item.id:'',
         items:x.item?[{code:x.item.code||'',name:x.item.name||'',qty:x.item.qty||0,unit:x.item.unit||'',price:x.item.price||0}]:null});
       list.append(r);});
@@ -6492,7 +6537,7 @@ function pgDashboard(v){
       tip.style.top=(chart.offsetTop+Math.max(Y(months[i])*sc-54,0))+'px';
       sv.querySelectorAll('.pt').forEach(p=>p.setAttribute('opacity',+p.dataset.i===i?'1':'.4'));};
     h.onmouseleave=()=>{tip.style.opacity=0;sv.querySelectorAll('.pt').forEach(p=>p.setAttribute('opacity','1'));};
-    h.onclick=()=>{if(!cnts[i]){toast('เดือน'+MN[i]+' ยังไม่มีรายการ');return;}go('receipts',{rcY:yr,rcM:i,rcFrom:'',rcTo:'',rcFilter:'ทั้งหมด',rcQ:''});};
+    h.onclick=()=>{if(!cnts[i]){toast('เดือน'+MN[i]+' ยังไม่มีรายการ');return;}go('receipts',{rcY:String(yr),rcM:String(i),rcFrom:'',rcTo:'',rcFilter:'ทั้งหมด',rcQ:''});};
   });
   cc.append(chart);row.append(cc);
 
@@ -6503,7 +6548,7 @@ function pgDashboard(v){
   STL.filter(k=>k!=='ยกเลิก').forEach(k=>{
     const col=(CUST_ST[k]||['#f1f5f9','#64748b'])[1],n=counts[k];
     const r=el(`<div style="cursor:pointer;padding:9px 10px;margin:0 -10px;border-radius:10px">
-      <div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:6px"><span>${k}</span><b>${n}</b></div>
+      <div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:6px"><span>${esc(k)}</span><b>${n}</b></div>
       <div style="height:9px;background:#eef2f8;border-radius:99px;overflow:hidden"><div style="width:${(n/mxn*100).toFixed(0)}%;height:100%;background:${col};transition:width .3s"></div></div></div>`);
     r.onmouseenter=()=>r.style.background='#f6f9ff';r.onmouseleave=()=>r.style.background='';
     r.onclick=()=>go('customers',{custFilter:k,custQ:''});pipe.append(r);});
@@ -6609,7 +6654,7 @@ function pgTeam(v){
      กดสลับดูรายคนจึงเปลี่ยนทันที ไม่ต้องคำนวณใหม่ทั้งทีม */
   const pkey=[S.teamY,S.teamM,S.teamFrom,S.teamTo].join('|');
   const rows=TEAM.people.map(p=>{
-      if(p._k!==pkey){p._st=p.db?statsOf(p.db):null;p._k=pkey;}
+      if(p._k!==pkey||p.db===DB){p._st=p.db?statsOf(p.db):null;p._k=pkey;}
       return {p,st:p._st};})
     .sort((a,b)=>(b.st?b.st.total:-1)-(a.st?a.st.total:-1));
   const ok=rows.filter(r=>r.st);
@@ -7170,7 +7215,7 @@ function mergeDupCustomers(){
     'พบ '+groups.length+' ชื่อที่ซ้ำกัน รวมเป็นรายละ 1 รายการ (ลดลง '+n+' รายการ) '
     +'บันทึกการติดต่อ รูป และไฟล์แนบของรายที่ซ้ำจะถูกย้ายมารวมให้ ไม่หาย',
     'รวมให้เลย',()=>{
-      const backup=DB.customers.slice();
+      const backup=JSON.parse(JSON.stringify(DB.customers));
       const score=c=>[c.phone,c.email,c.address,c.taxId,c.contact].filter(Boolean).length
         +((c.timeline||[]).length?1:0);
       const drop=new Set();
@@ -7336,7 +7381,7 @@ function openCustomer(c){
       [svg('profile','ic s')+'เปิดข้อมูลเต็ม','gh',()=>go('profiles',{profSel:c.id,profTab:'info'})],
       [svg('edit','ic s')+'แก้ไข','gh',()=>openForm('แก้ไขข้อมูลลูกค้า',customerFields(),c,d=>{Object.assign(c,d);save();render();toast('บันทึกแล้ว');openCustomer(c);})],
       [svg('trash','ic s'),'dg',()=>askConfirm('ลบลูกค้า','ลบ "'+c.name+'" ออกจากระบบ?','ลบ',()=>{
-        const i=DB.customers.indexOf(c);DB.customers.splice(i,1);save();closeDrawer();render();
+        const i=DB.customers.findIndex(x=>x===c||(c.id&&x.id===c.id));if(i<0){toast('ข้อมูลถูกโหลดใหม่ — เปิดรายการอีกครั้ง');return;}DB.customers.splice(i,1);save();closeDrawer();render();
         toast('ลบลูกค้าแล้ว',()=>{DB.customers.splice(i,0,c);save();render();});})]]});
 }
 
@@ -7808,7 +7853,7 @@ function signCard(d,onSigned){
      ไม่งั้นผู้บริหารที่เปิดจากลิงก์จะเห็นช่องฝ่ายขายว่าง
      (ยกเว้นฝ่ายวิจัย ต้องปล่อยให้เขากดส่งเองพร้อมผลการพิจารณา) */
   if(d.sigDocId&&d.sigs&&d.sigs.sales)pushLocalSig(d,'sales',d.sigs.sales);
-  const roles=rolesOf(d.type),n=Object.keys(d.sigs||{}).length;
+  const roles=rolesOf(d.type),n=roles.filter(r=>(d.sigs||{})[r[0]]).length;
   const sg=el(`<div class="card pad"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px">
     <div class="h3" style="margin:0">ลายเซ็นอนุมัติ</div>
     <span class="pill" style="background:${n===roles.length?'#dcfce7':'#fef3c7'};color:${n===roles.length?'#15803d':'#b45309'}">${n}/${roles.length} ลายเซ็น</span></div></div>`);
@@ -7890,7 +7935,7 @@ function formDocDetail(v,d){
   right.append(pv);
   const del=el(`<button class="btn dg blk">${svg('trash','ic s')}ลบเอกสารนี้</button>`);
   del.onclick=()=>askConfirm('ลบเอกสาร','ลบ '+d.no+' ออกจากระบบ?','ลบ',()=>{
-    const i=DB.docs.indexOf(d);DB.docs.splice(i,1);save();go('documents',{docOpen:null});
+    const i=DB.docs.findIndex(x=>x===d||(d.id&&x.id===d.id));if(i<0){toast('ข้อมูลถูกโหลดใหม่ — เปิดรายการอีกครั้ง');return;}DB.docs.splice(i,1);save();go('documents',{docOpen:null});
     toast('ลบเอกสารแล้ว',()=>{DB.docs.splice(i,0,d);save();render();});});
   right.append(del);
   wrap.append(right);v.append(wrap);
@@ -7901,7 +7946,7 @@ function creditDetail(v,d){
   header(d.no,['เอกสารการขาย','ใบขอเครดิต']);
   backBtn('กลับ',()=>go('documents',{docOpen:null}));
   actionBtn('แก้ไขข้อมูล','edit',()=>openForm('แก้ไข '+d.no,creditFields(),d,o=>{
-    Object.assign(d,o);save();render();toast('บันทึกแล้ว');},{wide:true,okLabel:'บันทึกการแก้ไข'}),'btn gh');
+    Object.assign(d,o);d.amount=+d.approvedAmount||0;save();render();toast('บันทึกแล้ว');},{wide:true,okLabel:'บันทึกการแก้ไข'}),'btn gh');
   actionBtn('ส่งลิงก์ให้ลูกค้าเซ็น','doc',()=>shareCustomerCredit(d),'btn gh');
   actionBtn('ดูตัวอย่าง / พิมพ์','print',()=>printCredit(d));
 
@@ -7984,7 +8029,7 @@ function creditDetail(v,d){
 
   const del=el(`<button class="btn dg blk">${svg('trash','ic s')}ลบใบขอเครดิตนี้</button>`);
   del.onclick=()=>askConfirm('ลบเอกสาร','ลบ '+d.no+' ออกจากระบบ?','ลบ',()=>{
-    const i=DB.docs.indexOf(d);DB.docs.splice(i,1);save();go('documents',{docOpen:null});
+    const i=DB.docs.findIndex(x=>x===d||(d.id&&x.id===d.id));if(i<0){toast('ข้อมูลถูกโหลดใหม่ — เปิดรายการอีกครั้ง');return;}DB.docs.splice(i,1);save();go('documents',{docOpen:null});
     toast('ลบเอกสารแล้ว',()=>{DB.docs.splice(i,0,d);save();render();});});
   right.append(del);
   wrap.append(right);v.append(wrap);
@@ -8149,7 +8194,7 @@ function quoteDetail(v,d){
 
   const del=el(`<button class="btn dg blk">${svg('trash','ic s')}ลบใบเสนอราคานี้</button>`);
   del.onclick=()=>askConfirm('ลบเอกสาร','ลบ '+d.no+' ออกจากระบบ?','ลบ',()=>{
-    const i=DB.docs.indexOf(d);DB.docs.splice(i,1);save();go('documents',{docOpen:null});
+    const i=DB.docs.findIndex(x=>x===d||(d.id&&x.id===d.id));if(i<0){toast('ข้อมูลถูกโหลดใหม่ — เปิดรายการอีกครั้ง');return;}DB.docs.splice(i,1);save();go('documents',{docOpen:null});
     toast('ลบเอกสารแล้ว',()=>{DB.docs.splice(i,0,d);save();render();});});
   right.append(del);
   wrap.append(right);v.append(wrap);
@@ -8179,7 +8224,7 @@ function openDoc(d){
       [svg('edit','ic s')+'แก้ไข','gh',()=>openForm('แก้ไข '+d.no,docFields(d.type),d,o=>{Object.assign(d,o);save();render();toast('บันทึกแล้ว');openDoc(d);})],
       [svg('print','ic s')+'พิมพ์','gh',()=>doPrint()],
       [svg('trash','ic s'),'dg',()=>askConfirm('ลบเอกสาร','ลบ '+d.no+'?','ลบ',()=>{
-        const i=DB.docs.indexOf(d);DB.docs.splice(i,1);save();closeDrawer();render();
+        const i=DB.docs.findIndex(x=>x===d||(d.id&&x.id===d.id));if(i<0){toast('ข้อมูลถูกโหลดใหม่ — เปิดรายการอีกครั้ง');return;}DB.docs.splice(i,1);save();closeDrawer();render();
         toast('ลบเอกสารแล้ว',()=>{DB.docs.splice(i,0,d);save();render();});})]]});
 }
 
@@ -8362,7 +8407,7 @@ function syncCustFromPo(po){
   const from=c.status;
   c.status=next;
   c.timeline=c.timeline||[];
-  c.timeline.unshift({date:today(),title:'สถานะเปลี่ยนเป็น "'+next+'"',
+  c.timeline.push({date:today(),title:'สถานะเปลี่ยนเป็น "'+next+'"',
     note:'ตามสถานะ PO '+(po.custPoNo||po.no)+' ('+po.status+')'+(from?' · เดิม '+from:''),by:meName()});
 }
 /* กำหนดส่งมอบของ PO = วันที่เร็วที่สุดในรายการสินค้า */
@@ -8522,7 +8567,7 @@ function poDetail(v,p){
   right.append(fileList(p.files));
   const del=el(`<button class="btn dg blk">${svg('trash','ic s')}ลบ PO ใบนี้</button>`);
   del.onclick=()=>askConfirm('ลบ PO','ลบ '+p.no+' ออกจากระบบ?','ลบ',()=>{
-    const i=DB.pos.indexOf(p);DB.pos.splice(i,1);save();go('po',{poOpen:null});
+    const i=DB.pos.findIndex(x=>x===p||(p.id&&x.id===p.id));if(i<0){toast('ข้อมูลถูกโหลดใหม่ — เปิดรายการอีกครั้ง');return;}DB.pos.splice(i,1);save();go('po',{poOpen:null});
     toast('ลบ PO แล้ว',()=>{DB.pos.splice(i,0,p);save();render();});});
   right.append(del);
   wrap.append(right);v.append(wrap);
@@ -8557,7 +8602,8 @@ function pgReceipts(v){
   if(S.rcOpen){const r=DB.receipts.find(x=>x.id===S.rcOpen);if(r)return receiptDetail(v,r);S.rcOpen=null;}
   header('ใบเสร็จรับเงิน',['การเงิน']);
   actionBtn('ออกใบเสร็จ','plus',()=>openForm('ออกใบเสร็จรับเงิน',rcFields(),
-    {no:'RC-'+(new Date().getFullYear()+543)+'-'+String(DB.receipts.length+67).padStart(4,'0')},d=>{
+    {no:'RC-'+(new Date().getFullYear()+543)+'-'+String(Math.max(DB.receipts.length+66,
+      ...DB.receipts.map(r=>+((String(r.no||'').match(/^RC-\d{4}-(\d+)$/)||[])[1])||0))+1).padStart(4,'0')},d=>{
       const r=Object.assign({id:uid(),type:'receipt',sigs:{}},d);
       if(r.items&&r.items.length)r.amount=Math.round(rcTotal(r)*100)/100;
       DB.receipts.unshift(r);save();go('receipts',{rcOpen:r.id});toast('ออกใบเสร็จแล้ว');},
@@ -8662,7 +8708,7 @@ function receiptDetail(v,r){
   right.append(pv);
   const del=el(`<button class="btn dg blk">${svg('trash','ic s')}ลบใบเสร็จนี้</button>`);
   del.onclick=()=>askConfirm('ลบใบเสร็จ','ลบ '+r.no+'?','ลบ',()=>{
-    const i=DB.receipts.indexOf(r);DB.receipts.splice(i,1);save();go('receipts',{rcOpen:null});
+    const i=DB.receipts.findIndex(x=>x===r||(r.id&&x.id===r.id));if(i<0){toast('ข้อมูลถูกโหลดใหม่ — เปิดรายการอีกครั้ง');return;}DB.receipts.splice(i,1);save();go('receipts',{rcOpen:null});
     toast('ลบใบเสร็จแล้ว',()=>{DB.receipts.splice(i,0,r);save();render();});});
   right.append(del);
   wrap.append(right);v.append(wrap);
@@ -8679,7 +8725,7 @@ function openRc(r){
       [svg('edit','ic s')+'แก้ไข','gh',()=>openForm('แก้ไข '+r.no,rcFields(),r,o=>{Object.assign(r,o);save();render();toast('บันทึกแล้ว');openRc(r);})],
       [svg('print','ic s')+'พิมพ์','gh',()=>doPrint()],
       [svg('trash','ic s'),'dg',()=>askConfirm('ลบใบเสร็จ','ลบ '+r.no+'?','ลบ',()=>{
-        const i=DB.receipts.indexOf(r);DB.receipts.splice(i,1);save();closeDrawer();render();
+        const i=DB.receipts.findIndex(x=>x===r||(r.id&&x.id===r.id));if(i<0){toast('ข้อมูลถูกโหลดใหม่ — เปิดรายการอีกครั้ง');return;}DB.receipts.splice(i,1);save();closeDrawer();render();
         toast('ลบใบเสร็จแล้ว',()=>{DB.receipts.splice(i,0,r);save();render();});})]]});
 }
 
@@ -8702,7 +8748,7 @@ function sharedCustomerView(s){
       try{const res=await sbFetch('customers_shared?on_conflict=name_key',{method:'POST',
           headers:Object.assign(sbHeaders(),{Prefer:'resolution=merge-duplicates,return=representation'}),
           body:JSON.stringify([scToRow(Object.assign({},s,d,{name:s.name}),s)])});
-        (res||[]).forEach(r=>SHARED_CUST.set(r.name_key,scFromRow(r)));
+        (res||[]).forEach(r=>SHARED_CUST.set(r.name_key,scFromRow(r)));SC_LOOSE=null;
         render();toast('บันทึกแล้ว — ทุกคนในทีมเห็นข้อมูลใหม่');
       }catch(e){toast(e.message);}});};
   const ad=m.querySelector('#ad');
@@ -9088,6 +9134,7 @@ function loginScreen(msg){
 
   const go=async()=>{
     const b=w.querySelector('#lgGo');
+    if(b.disabled)return;
     const user=uEl.value.trim();
     const pass=w.querySelector('#lgPass').value;
     const adm=isAdminUser(user);
@@ -9140,7 +9187,7 @@ function userMenu(){
       ${isManager()?'<button class="btn gh blk" id="team">ดูข้อมูลของทีมขาย</button>':''}
       ${isManager()?'<button class="btn gh blk" id="emp">ข้อมูลพนักงาน</button>':''}
       ${ro?'<button class="btn blk" id="mine">กลับไปข้อมูลของฉัน</button>':''}
-      ${ro?'':`<button class="btn gh blk" id="msig">ลายเซ็นของฉัน ${mySig()?'(ตั้งไว้แล้ว)':'— ยังไม่ได้ตั้ง'}</button>`}
+      ${ro||viewingOther()?'':`<button class="btn gh blk" id="msig">ลายเซ็นของฉัน ${mySig()?'(ตั้งไว้แล้ว)':'— ยังไม่ได้ตั้ง'}</button>`}
       <button class="btn gh blk" id="pin">เปลี่ยน PIN ของฉัน</button>
       <button class="btn dg blk" id="out">ออกจากระบบ</button>
     </div></div>`);
@@ -9442,6 +9489,8 @@ async function teamPicker(){
 }
 async function viewUser(id,name,mine){
   toast('กำลังโหลดข้อมูล…');
+  try{clearTimeout(syncTimer);if(syncPending&&authed()&&!readOnly())await cloudSave();}catch(e){}
+  closeDrawer&&closeDrawer();
   try{
     const r=await cloudRow(id);const d=r&&r.data;
     cloudSeen=(r&&r.updated_at)?Date.parse(r.updated_at):0;
@@ -9533,7 +9582,7 @@ async function startApp(){
       row=await cloudRow(owner);cloud=row&&row.data;
       if(row&&row.updated_at)stamp=Date.parse(row.updated_at)||stamp;
     }
-    cloudSeen=stamp;   /* จำรุ่นที่รับรู้ ใช้เทียบตอนบันทึก */
+    cloudSeen=fresh?0:stamp;   /* จำรุ่นที่รับรู้ ใช้เทียบตอนบันทึก (ไม่ได้โหลดลงมา = ยังไม่รู้จัก ให้รวมก่อนบันทึก) */
   }catch(e){failed=true;}
   /* ใช้ของในเครื่องได้เลย ไม่ได้โหลดอะไรลงมา */
   if(quick&&!failed&&!cloud){
@@ -9548,6 +9597,9 @@ async function startApp(){
       /* ใช้ของคลาวด์เป็นหลัก แต่ถ้าในเครื่องมีงานที่คลาวด์ยังไม่มี ก็เก็บไว้ด้วย ไม่ทิ้ง */
       DB=cloud;const back=mergeCloud(local);migrate();render();
       if(back)save(true);
+    }else if(cT>lT+2000&&dirtySince){
+      if(mergeCloud(cloud))render();
+      save(true);
     }else if(lT>cT+2000){
       save(true);toast('พบงานที่ยังไม่ได้ขึ้นคลาวด์ในเครื่องนี้ — อัปโหลดให้แล้ว');
     }
@@ -9582,7 +9634,7 @@ async function startApp(){
 }
 async function boot(){
   /* ลิงก์เซ็นเอกสาร: เปิดได้เลยไม่ต้องล็อกอิน */
-  if(/^#(s=|a=|cc=|approve=|signed=)/.test(location.hash||'')){
+  if(/^#(s=|a=|cc=|approve=)/.test(location.hash||'')){
     DB=load()||seed();migrate();booted=true;
     document.querySelector('.app').style.display='none';
     await handleHash();
@@ -9597,6 +9649,7 @@ async function boot(){
     try{await sbGet('profiles?select=id&limit=1');}
     catch(e){if(!await refreshSession()){clearSession();loginScreen('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่');return;}}
     await startApp();
+    if(/^#signed=/.test(location.hash||''))handleHash();   /* ลิงก์ส่งกลับลายเซ็นแบบเดิม */
     setTimeout(()=>sweepSignatures(true),4000);   /* ลายเซ็นที่เซ็นผ่านลิงก์ระหว่างปิดโปรแกรม */
     setTimeout(()=>custSharedSync(),2500);        /* ทะเบียนลูกค้ากลาง */
   }else loginScreen();
