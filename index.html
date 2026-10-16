@@ -525,7 +525,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.16-30';
+const APP_VER='2569.10.16-31';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof LINK_MODE!=='undefined'&&LINK_MODE)return false;          /* หน้าเซ็นจากลิงก์ ไม่รีโหลดใส่คนเซ็น */
@@ -6070,6 +6070,11 @@ function statsOf(db){
       poN:pos.length,poSum:pos.reduce((a,b)=>a+poGross(b),0),
       custN:css.length,custWon:css.filter(c=>WON_ST.indexOf(c.status)>=0).length,
       ...buyerSplit(rcs),
+      /* ลูกค้าที่ปิดการขาย (ตามสถานะ) และซื้อแล้ว (มีใบเสร็จในช่วงนี้) — คนเดียวกันอยู่ได้ทั้ง 2 กลุ่ม รวมแล้วไม่นับซ้ำ */
+      ...(()=>{const closed=new Set(),bought=new Set();
+        css.forEach(c=>{if(WON_ST.includes(c.status)||c.status==='ซื้อขายแล้ว')closed.add(custKey(c.name));});
+        rcs.forEach(r=>{const k=custKey(r.customer);if(k)bought.add(k);});
+        return {custClosed:closed.size,custBought:bought.size,custCB:new Set([...closed,...bought]).size};})(),
       /* การ์ดลูกค้าที่ติดต่อเข้ามา: นับเฉพาะลูกค้าใหม่ (ป้ายเดียวกับหน้าลูกค้า) และในนั้นซื้อแล้ว (มีใบเสร็จ) กี่ราย */
       ...(()=>{const bi=buyIndex();let nn=0,nb=0;
         css.forEach(c=>{if(custKind(c,bi).kind!=='new')return;nn++;if(bi[custKey(c.name)])nb++;});
@@ -6338,7 +6343,7 @@ function pgDashboard(v){
   [['ยอดขายรวม (จากใบเสร็จ)',num0(Math.round(total))+' ฿',rcs.length+' ใบเสร็จในช่วงนี้','receipts',{rcFilter:'ทั้งหมด',rcY:'',rcM:'',rcFrom:'',rcTo:''}],
    ['รับชำระแล้ว',num0(Math.round(paid))+' ฿',rcs.filter(r=>r.status==='ชำระแล้ว').length+' ใบ','receipts',{rcFilter:'ชำระแล้ว',rcY:'',rcM:'',rcFrom:'',rcTo:''}],
    ['รอเก็บเงิน',num0(Math.round(unpaid))+' ฿',rcs.filter(r=>r.status!=='ชำระแล้ว').length+' ใบที่ยังไม่ครบ','receipts',{rcFilter:'รอชำระ',rcY:'',rcM:'',rcFrom:'',rcTo:''}],
-   ['ยอดในมือ (ยังไม่ออกใบเสร็จ)',num0(Math.round(pendSum))+' ฿',pend.length+' รายการรอออกใบเสร็จ',null,null]
+   ['ลูกค้าปิดการขาย / ซื้อแล้ว',statsOf(DB).custCB+' ราย','ปิดการขาย '+statsOf(DB).custClosed+' · ซื้อแล้ว '+statsOf(DB).custBought+' ราย · ยอดในมือ '+num0(Math.round(pendSum))+' ฿',null,null]
   ].forEach(([t,val,sub,page,extra])=>{
     const c=el(`<div class="card pad" style="cursor:pointer;transition:.15s">
       <div class="mut">${esc(t)}</div><div style="font-size:26px;font-weight:700;margin-top:4px">${val}</div>
@@ -6573,7 +6578,7 @@ function pgTeam(v){
   [['ยอดขายรวม (จากใบเสร็จ)',num0(Math.round(T('total')))+' ฿',T('rcN')+' ใบเสร็จ'],
    ['รับชำระแล้ว',num0(Math.round(T('paid')))+' ฿','เก็บเงินเรียบร้อย'],
    ['รอเก็บเงิน',num0(Math.round(T('unpaid')))+' ฿','ยังไม่ครบ'],
-   ['ยอดในมือ',num0(Math.round(T('pendSum')))+' ฿',T('pendN')+' รายการรอออกใบเสร็จ']
+   ['ลูกค้าปิดการขาย / ซื้อแล้ว',(T('custCB')||0)+' ราย','ปิดการขาย '+(T('custClosed')||0)+' · ซื้อแล้ว '+(T('custBought')||0)+' ราย · ยอดในมือ '+num0(Math.round(T('pendSum')))+' ฿']
   ].forEach(([t,val,sub])=>kp.append(el(`<div class="card pad">
     <div class="mut">${esc(t)}</div><div style="font-size:26px;font-weight:700;margin-top:4px">${esc(val)}</div>
     <div class="tiny" style="margin-top:8px">${esc(sub)}</div></div>`)));
