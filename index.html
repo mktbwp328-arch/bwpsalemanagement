@@ -290,11 +290,12 @@ a{color:var(--blue);text-decoration:none}
 .sheet.nc{font-size:14px;line-height:1.7}
 .sheet.nc .ncline{display:flex;gap:10px;margin-bottom:3mm}
 .sheet.nc .nck{width:16mm;flex:0 0 auto}
-.sheet.nc .nctb{width:100%;border-collapse:collapse;table-layout:fixed}
+.sheet.nc .nctb{width:100%;border-collapse:collapse;table-layout:auto}
 .sheet.nc .nctb th{background:#1f4e9c;color:#fff;border:1px solid #1f4e9c;padding:4px 5px;font-weight:600;font-size:13.5px}
 .sheet.nc .nctb td{border:1px solid #000;padding:5px;font-size:13.5px;vertical-align:middle}
 .sheet.nc .nctb td.c{text-align:center}
 .sheet.nc .nctb td.pre{white-space:pre-line}
+.sheet.nc .nctb td.nw{white-space:pre;padding:5px 8px}
 .sheet.nc .ncsigs{display:flex;justify-content:flex-end;gap:12mm;margin-top:6mm;text-align:center}
 .sheet.nc .ncsig{min-width:52mm}
 .sheet.nc .ncpad{height:17mm;display:flex;align-items:flex-end;justify-content:center}
@@ -525,7 +526,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.16-39';
+const APP_VER='2569.10.16-40';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof LINK_MODE!=='undefined'&&LINK_MODE)return false;          /* หน้าเซ็นจากลิงก์ ไม่รีโหลดใส่คนเซ็น */
@@ -4805,11 +4806,11 @@ function newCustSheet(d){
     <table class="nctb">
       <thead><tr>
         <th style="width:14mm">ลำดับ</th><th>รายชื่อลูกค้าที่มีการซื้อขาย</th>
-        <th style="width:30mm">ชนิดสินค้า</th><th style="width:52mm">ขนาดสินค้า</th><th style="width:16mm">เกรด</th>
+        <th style="white-space:nowrap">ชนิดสินค้า</th><th style="white-space:nowrap">ขนาดสินค้า</th><th style="width:16mm">เกรด</th>
       </tr></thead>
       <tbody>${rows.map((r,i)=>`<tr>
         <td class="c">${i+1}</td><td class="c">${esc(r.customer||'')}</td>
-        <td class="c pre">${esc(r.kind||'')}</td><td class="c pre">${esc(r.size||'')}</td>
+        <td class="c nw">${esc(r.kind||'')}</td><td class="c nw">${esc(r.size||'')}</td>
         <td class="c pre">${esc(r.grade||'')}</td></tr>`).join('')}</tbody>
     </table>
     <div style="margin:8mm 0 0;text-indent:15mm">จึงเรียนมาเพื่อทราบและโปรดดำเนินการ</div>
