@@ -525,7 +525,7 @@ a{color:var(--blue);text-decoration:none}
 /* ================= เวอร์ชันของโปรแกรม =================
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะขึ้นแถบให้กดอัปเดตเอง
    (ไม่ต้องบอกทุกคนให้กด Ctrl+F5) */
-const APP_VER='2569.10.16-2';
+const APP_VER='2569.10.16-3';
 function checkNewVersion(){
   fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():'').then(t=>{
     const m=/const APP_VER='([^']+)'/.exec(t||'');
@@ -8795,6 +8795,15 @@ async function teamPicker(){
       r.onclick=async()=>{ov.remove();await viewUser(t.id,nm,t.mine);};
       list.append(r);});
   if(!team.length)list.append(el('<div class="empty">ยังไม่มีผู้ใช้คนอื่นในระบบ</div>'));
+  /* สำเนาข้อมูลของแต่ละคนที่เก็บอยู่ในเครื่องนี้ (ใช้ยืนยันว่า ID ไหนเป็นของใคร ตอนกู้คืนบัญชี) */
+  const copies=localCopies().filter(c=>c.uid);
+  if(copies.length&&isManager()){
+    const known=new Set([me,...team.map(t=>t.id)]);
+    list.append(el(`<div style="margin-top:16px;border-top:1px solid var(--bd2);padding-top:12px">
+      <div class="tiny" style="font-weight:600;margin-bottom:6px">สำเนาข้อมูลที่เก็บอยู่ในเครื่องนี้</div>
+      ${copies.map(c=>`<div class="tiny" style="margin-bottom:5px">· ${esc(c.who)} — ลูกค้า ${c.cust} · เอกสาร ${c.docs} · ใบเสร็จ ${c.rc}${c.at?' · บันทึก '+esc(c.at):''}
+        <br><span style="opacity:.7">ID ${esc(c.uid)}${known.has(c.uid)?' · มีบัญชีแล้ว':' · <b style="color:#b45309">ยังไม่มีบัญชีในระบบ</b>'}</span></div>`).join('')}</div>`));
+  }
   m.querySelector('.close').onclick=()=>ov.remove();
   ov.append(m);$('#layer').append(ov);
 }
@@ -8805,9 +8814,16 @@ async function viewUser(id,name,mine){
     cloudSeen=(r&&r.updated_at)?Date.parse(r.updated_at):0;
     AUTH.viewing=mine?null:id;AUTH.viewingName=mine?null:name;saveSession();
     const keepProducts=allProducts();      /* คลังสินค้าเป็นของกลาง ไม่เปลี่ยนตามคนที่กำลังดู */
-    DB=d&&d.customers?d:seed();
+    /* บนคลาวด์ไม่มีข้อมูลของคนนี้ (เช่น หลังกู้คืนบัญชี) แต่ในเครื่องนี้มีสำเนาอยู่ → ใช้สำเนาแล้วส่งกลับขึ้นคลาวด์ */
+    let restoredLocal=false;
+    if(!(d&&d.customers)){
+      const local=load();
+      if(local&&local.customers&&(local.customers.length||(local.docs||[]).length)){DB=local;restoredLocal=true;}
+      else DB=seed();
+    }else DB=d;
     DB.products=keepProducts;
     migrate();
+    if(restoredLocal&&!readOnly()){save(true);toast('กู้ข้อมูลของ '+name+' จากสำเนาในเครื่องนี้ขึ้นคลาวด์แล้ว');}
     S.page='dashboard';S.docOpen=S.poOpen=S.rcOpen=S.profSel=null;
     setSync(readOnly()?'readonly':viewingOther()?'editing':'idle');render();
     autoTidyDone=false;inlineTidyDone=false;setTimeout(autoTidy,2000);
