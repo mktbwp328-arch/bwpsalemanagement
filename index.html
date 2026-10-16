@@ -525,7 +525,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.16-28';
+const APP_VER='2569.10.16-29';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof LINK_MODE!=='undefined'&&LINK_MODE)return false;          /* หน้าเซ็นจากลิงก์ ไม่รีโหลดใส่คนเซ็น */
@@ -4586,6 +4586,17 @@ function ncSize(it){
 }
 const ncGrade=name=>((String(name||'').match(/เกรด\s*(AB|A|B)/i)||[])[1]||'').toUpperCase();
 /* ลูกค้าที่เพิ่งเริ่มซื้อขายในรอบนี้ — ดูจาก PO และใบเสร็จ ถ้าเคยซื้อก่อนรอบนี้ถือว่าไม่ใช่รายใหม่ */
+/* แถวในบันทึก 1 แถว = ลูกค้า 1 ราย — รวมสินค้าจากใบเสร็จทุกใบของลูกค้ารายนั้นในรอบ
+   (ลูกค้าซื้อหลายขนาด/หลายใบ ขึ้นครบทุกขนาด ไม่ใช่แค่ 2 รายการแรกของใบแรก) */
+function ncRowFor(customer,rcs){
+  const items=[];rcs.forEach(r=>(r.items||[]).forEach(it=>items.push(it)));
+  const uniq=a=>[...new Set(a.filter(Boolean))];
+  const first=rcs[0]||{};
+  return {rcNo:first.no||'',ck:custKey(customer),customer,
+    kind:uniq(items.map(it=>NC_KIND[categoryOf(it.name,it.code)]||'')).join(', '),
+    size:uniq(items.map(ncSize)).join('\n'),
+    grade:uniq(items.map(it=>ncGrade(it.name))).join(' / ')};
+}
 function ncFindRows(period){
   /* นับจากใบเสร็จเท่านั้น (ซื้อขายกันจริง) — PO ยังไม่ถือว่าซื้อ */
   const first={};
@@ -4599,11 +4610,10 @@ function ncFindRows(period){
     /* ลูกค้าใหม่ = ใบเสร็จใบแรกกับระบบนี้อยู่ในรอบนี้ (ไม่ดูรายชื่อลูกค้าเก่าหรือวันที่ติดต่อ) */
     .sort((a,b)=>String(a.date).localeCompare(String(b.date)))
     .map(x=>{
-      const it=(x.items||[])[0]||{};
-      return {rcNo:x.no,customer:x.customer,
-        kind:NC_KIND[categoryOf(it.name,it.code)]||'',
-        size:(x.items||[]).map(ncSize).filter(Boolean).slice(0,2).join('\n'),
-        grade:ncGrade(it.name)};
+      const k=custKey(x.customer);
+      const rcs=(DB.receipts||[]).filter(r=>r.status!=='ยกเลิก'&&r.date&&r.date>=period.start&&r.date<=period.end&&custKey(r.customer)===k)
+        .sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+      return ncRowFor(x.customer,rcs.length?rcs:[x]);
     });
 }
 /* เลือกใบเสร็จเข้าบันทึก — กำหนดช่วงวันที่เอง แล้วติ๊กเลือกทีละใบ
@@ -4636,13 +4646,12 @@ function ncRowsEditor(initial){
       .sort((a,b)=>String(a.date).localeCompare(String(b.date)));
   };
   const rowFromRc=r=>{
-    const it=(r.items||[])[0]||{};
-    return {rcNo:r.no,customer:r.customer||'',
-      kind:NC_KIND[categoryOf(it.name,it.code)]||'',
-      size:(r.items||[]).map(ncSize).filter(Boolean).slice(0,2).join('\n'),
-      grade:ncGrade(it.name)};
+    const k=custKey(r.customer);
+    return ncRowFor(r.customer||'',rcInRange().filter(x=>custKey(x.customer)===k));
   };
-  const picked=no=>rows.some(x=>x.rcNo===no);
+  /* ติ๊กแล้ว = มีแถวของลูกค้ารายนี้อยู่แล้ว (ใบเสร็จเลขซ้ำกันหลายใบก็ไม่ซ้ำแถว) */
+  const rowOf=r=>{const k=custKey(r.customer);return rows.find(x=>(x.ck&&x.ck===k)||(!x.ck&&x.rcNo&&x.rcNo===r.no));};
+  const picked=r=>!!rowOf(r);
 
   function paintRows(){
     rowsEl.innerHTML='';
@@ -4674,13 +4683,14 @@ function ncRowsEditor(initial){
     const rcs=rcInRange();
     if(!rcs.length){listEl.append(el('<div class="empty" style="padding:18px">ไม่มีใบเสร็จในช่วงวันที่นี้</div>'));return;}
     rcs.forEach(r=>{
-      const on=picked(r.no);
+      const on=picked(r);
       const row=el(`<div class="lrow" style="cursor:pointer">
         <div class="lav" style="${on?'background:#dcfce7;color:#15803d':''}">${on?'✓':''}</div>
         <div class="lmain"><div class="lt">${esc(r.customer||'-')}</div>
           <div class="lm">${esc(r.no)} · ${fmtDate(r.date)} · ${num0(r.amount||0)} ฿</div></div></div>`);
       row.onclick=()=>{
-        if(picked(r.no))rows=rows.filter(x=>x.rcNo!==r.no);
+        const ex=rowOf(r);
+        if(ex)rows=rows.filter(x=>x!==ex);
         else rows.push(rowFromRc(r));
         paintRows();paintList();
       };
@@ -4689,7 +4699,7 @@ function ncRowsEditor(initial){
   }
   box.querySelector('.ncf').onchange=paintList;
   box.querySelector('.nct').onchange=paintList;
-  box.querySelector('.ncall').onclick=()=>{rcInRange().forEach(r=>{if(!picked(r.no))rows.push(rowFromRc(r));});paintRows();paintList();};
+  box.querySelector('.ncall').onclick=()=>{rcInRange().forEach(r=>{if(!picked(r))rows.push(rowFromRc(r));});paintRows();paintList();};
   box.querySelector('.ncnone').onclick=()=>{rows=rows.filter(x=>!x.rcNo);paintRows();paintList();};
   const add=el('<button type="button" class="btn gh" style="width:100%;border-style:dashed;border-color:#bfd3f5;color:var(--blue-d);background:#f8fbff;margin-top:10px">+ เพิ่มรายชื่อเอง</button>');
   add.onclick=()=>{rows.push({customer:'',kind:'',size:'',grade:''});paintRows();
