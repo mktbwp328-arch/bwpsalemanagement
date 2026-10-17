@@ -468,6 +468,33 @@ a{color:var(--blue);text-decoration:none}
 .seg{display:flex;background:#eef2f8;border-radius:10px;padding:4px;gap:3px}
 .seg button{border:0;cursor:pointer;font-size:13.5px;padding:8px 14px;border-radius:8px;white-space:nowrap;background:transparent;color:var(--mut)}
 .seg button.on{background:#fff;color:var(--blue-d);font-weight:600;box-shadow:0 1px 3px rgba(15,42,90,.14)}
+
+/* ---------- หน้าแรกแบบใหม่: แบนเนอร์ + การ์ดไอคอนสี + เมนูด่วน ---------- */
+.hero{position:relative;overflow:hidden;border-radius:18px;padding:26px 30px;min-height:150px;display:flex;align-items:center;gap:22px;
+  background:linear-gradient(120deg,#e8f2ff 0%,#cfe3ff 45%,#9cc5ff 100%);border:1px solid #d6e6ff}
+.hero:before{content:"";position:absolute;right:-60px;top:-80px;width:320px;height:320px;border-radius:50%;background:rgba(255,255,255,.35)}
+.hero:after{content:"";position:absolute;right:120px;bottom:-110px;width:240px;height:240px;border-radius:50%;background:rgba(31,78,156,.10)}
+.hero .hlogo{width:84px;height:84px;border-radius:20px;background:#fff;box-shadow:0 8px 22px rgba(15,42,90,.15);display:flex;align-items:center;justify-content:center;flex:0 0 auto;z-index:1;overflow:hidden}
+.hero .hlogo img{width:78%;height:78%;object-fit:contain}
+.hero .htxt{z-index:1;min-width:0}
+.hero h1{margin:0;font-size:28px;line-height:1.25;color:#123f9e;font-weight:800}
+.hero .hsub{font-size:17px;color:#1f4e9c;font-weight:600;margin-top:2px}
+.hero .hq{font-size:14px;color:#3b5b8f;margin-top:8px;font-style:italic}
+.hero .hhi{margin-left:auto;z-index:1;text-align:right;color:#123f9e;font-size:14px}
+.hero .hhi b{display:block;font-size:20px}
+.kpi{display:flex;gap:14px;align-items:center;cursor:pointer;transition:.15s}
+.kpi:hover{box-shadow:0 8px 22px rgba(15,42,90,.11);transform:translateY(-2px)}
+.kpi .kic{width:56px;height:56px;border-radius:15px;display:flex;align-items:center;justify-content:center;color:#fff;flex:0 0 auto}
+.kpi .kic svg{width:28px;height:28px}
+.kpi .kt{font-size:13.5px;font-weight:600}
+.kpi .kv{font-size:24px;font-weight:800;margin-top:2px;line-height:1.2}
+.kpi .ks{font-size:12px;color:var(--mut);margin-top:4px}
+.qm{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.qm button{display:flex;align-items:center;gap:10px;border:1px solid var(--bd);border-radius:12px;padding:12px;background:#fff;font:inherit;font-weight:600;cursor:pointer;text-align:left}
+.qm button:hover{background:#f8fbff}
+.qm .qi{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;flex:0 0 auto}
+.qm .qi svg{width:18px;height:18px}
+@media(max-width:760px){.hero{padding:18px;gap:14px}.hero h1{font-size:21px}.hero .hsub{font-size:14px}.hero .hhi{display:none}.hero .hlogo{width:60px;height:60px}.qm{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
 </head>
 <body>
@@ -526,7 +553,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.17-07';
+const APP_VER='2569.10.17-08';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -6452,6 +6479,17 @@ function pgDashboard(v){
   const pend=pending().filter(x=>inPeriod(x.date));
   const pendSum=pend.reduce((a,b)=>a+b.amount,0);
 
+  {const co=DB.company||COMPANY,lg=logoSrc(),hr=new Date().getHours();
+   const nm=(AUTH.profile&&AUTH.profile.name)||'';
+   v.append(el(`<div class="hero"><div class="hlogo">${lg?`<img src="${imgSrc(lg)}">`:'<b style="color:#123f9e;font-size:22px">BWP</b>'}</div>
+     <div class="htxt"><h1>ระบบจัดการงานขาย</h1><div class="hsub">${esc(co.nameTh||'')}</div>
+       <div class="hq">"ทุกการขาย เริ่มต้นที่การดูแลลูกค้า"</div></div>
+     <div class="hhi">${hr<12?'สวัสดีตอนเช้า':hr<17?'สวัสดีตอนบ่าย':'สวัสดีตอนเย็น'}<b>${esc(nm)}</b>${esc(thaiDate(today()))}</div></div>`));
+   const qm=el('<div class="card pad"><div class="h3" style="margin:0 0 12px">เมนูด่วน</div><div class="qm"></div></div>');
+   [['เพิ่มลูกค้าใหม่','plus','#22a35a',()=>go('customers')],['ใบเสนอราคา','doc','#2563eb',()=>go('documents',{docType:'quotation',docOpen:null})],
+    ['PO ลูกค้า','cart','#f59e0b',()=>go('po',{poOpen:null})],['ใบเสร็จรับเงิน','receipt','#8b5cf6',()=>go('receipts',{rcOpen:null})]
+   ].forEach(([t,ic,col,fn])=>{const b=el(`<button type="button"><span class="qi" style="background:${col}">${svg(ic,'ic s')}</span>${esc(t)}</button>`);b.onclick=fn;qm.querySelector('.qm').append(b);});
+   v.append(qm);}
   v.append(hint('ยอดขายนับจาก "ใบเสร็จรับเงิน" เท่านั้น จึงไม่นับซ้ำกับ PO — งานที่ปิดแล้วแต่ยังไม่ออกใบเสร็จดูได้ที่การ์ด "ยอดในมือ"'));
 
   const kp=el('<div class="grid g4"></div>');
@@ -6459,12 +6497,11 @@ function pgDashboard(v){
    ['รับชำระแล้ว',num0(Math.round(paid))+' ฿',rcs.filter(r=>r.status==='ชำระแล้ว').length+' ใบ','receipts',{rcFilter:'ชำระแล้ว',rcY:'',rcM:'',rcFrom:'',rcTo:''}],
    ['รอเก็บเงิน',num0(Math.round(unpaid))+' ฿',rcs.filter(r=>r.status!=='ชำระแล้ว').length+' ใบที่ยังไม่ครบ','receipts',{rcFilter:'รอชำระ',rcY:'',rcM:'',rcFrom:'',rcTo:''}],
    ['ลูกค้าปิดการขาย / ซื้อแล้ว',statsOf(DB).custCB+' ราย','ซื้อแล้ว '+statsOf(DB).custBought+' (ใหม่ '+statsOf(DB).custNew+' · เก่า '+statsOf(DB).custOld+') · ปิดการขาย ยังไม่ซื้อ '+statsOf(DB).custClosed+' ราย',null,null]
-  ].forEach(([t,val,sub,page,extra])=>{
-    const c=el(`<div class="card pad" style="cursor:pointer;transition:.15s">
-      <div class="mut">${esc(t)}</div><div style="font-size:26px;font-weight:700;margin-top:4px">${val}</div>
-      <div class="tiny" style="margin-top:8px">${esc(sub)} →</div></div>`);
-    c.onmouseenter=()=>{c.style.boxShadow='0 8px 22px rgba(15,42,90,.11)';c.style.transform='translateY(-2px)';};
-    c.onmouseleave=()=>{c.style.boxShadow='';c.style.transform='';};
+  ].forEach(([t,val,sub,page,extra],i)=>{
+    const K=[['#2563eb','up'],['#22a35a','receipt'],['#f59e0b','doc'],['#8b5cf6','users']][i];
+    const c=el(`<div class="card pad kpi"><div class="kic" style="background:${K[0]}">${svg(K[1],'ic')}</div>
+      <div style="min-width:0"><div class="kt" style="color:${K[0]}">${esc(t)}</div><div class="kv">${val}</div>
+      <div class="ks">${esc(sub)} →</div></div></div>`);
     c.onclick=()=>page?go(page,extra):document.getElementById('pendingCard')?.scrollIntoView({behavior:'smooth',block:'center'});
     kp.append(c);});
   v.append(kp);
@@ -6476,12 +6513,11 @@ function pgDashboard(v){
    ['PO ลูกค้า',st.poN+' ใบ','มูลค่ารวม '+num0(Math.round(st.poSum))+' ฿','po',{poFilter:'ทั้งหมด',poQ:'',poOpen:null}],
    ['ใบเสร็จรับเงิน',st.rcN+' ใบ','ออกแล้วในช่วงนี้','receipts',{rcFilter:'ทั้งหมด',rcY:'',rcM:'',rcFrom:'',rcTo:'',rcQ:''}],
    ['ลูกค้าใหม่ที่ติดต่อเข้ามา',st.custNewN+' ราย','ซื้อแล้ว '+st.custNew+' ราย','customers',{custFilter:'ทั้งหมด',custQ:'',custKind:'ลูกค้าใหม่'}]
-  ].forEach(([t,val,sub,page,extra])=>{
-    const c=el(`<div class="card pad" style="cursor:pointer;transition:.15s">
-      <div class="mut">${esc(t)}</div><div style="font-size:26px;font-weight:700;margin-top:4px">${esc(val)}</div>
-      <div class="tiny" style="margin-top:8px">${esc(sub)} →</div></div>`);
-    c.onmouseenter=()=>{c.style.boxShadow='0 8px 22px rgba(15,42,90,.11)';c.style.transform='translateY(-2px)';};
-    c.onmouseleave=()=>{c.style.boxShadow='';c.style.transform='';};
+  ].forEach(([t,val,sub,page,extra],i)=>{
+    const K=[['#0ea5e9','doc'],['#ef4444','cart'],['#14b8a6','receipt'],['#ec4899','plus']][i];
+    const c=el(`<div class="card pad kpi"><div class="kic" style="background:${K[0]}">${svg(K[1],'ic')}</div>
+      <div style="min-width:0"><div class="kt" style="color:${K[0]}">${esc(t)}</div><div class="kv">${esc(val)}</div>
+      <div class="ks">${esc(sub)} →</div></div></div>`);
     c.onclick=()=>go(page,extra);
     kp2.append(c);});
   v.append(kp2);
