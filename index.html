@@ -526,7 +526,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.16-43';
+const APP_VER='2569.10.17-01';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -9059,6 +9059,41 @@ function localCopies(){
   }catch(e){}
   return out.sort((a,b)=>b.cust+b.docs-(a.cust+a.docs));
 }
+/* นำเข้าข้อมูลจากสำเนาในเครื่องนี้ (เช่น บัญชีเดิมที่ถูกลบไปแล้วสมัครใหม่ ได้ ID ใหม่ ข้อมูลเก่ายังค้างในเครื่องภายใต้ ID เดิม)
+   รวมเข้าบัญชีที่เปิดอยู่ — เพิ่มอย่างเดียว ไม่ลบของที่มีอยู่ */
+const dbCount=x=>x?(x.customers||[]).length+(x.docs||[]).length+(x.pos||[]).length+(x.receipts||[]).length:0;
+function importLocalCopy(auto){
+  if(readOnly()){toast('โหมดดูอย่างเดียว');return;}
+  const cur=localKey();
+  const copies=localCopies().filter(c=>c.key!==cur&&c.key!==KEY+'_'+(AUTH.user&&AUTH.user.id)&&(c.cust+c.docs+c.rc)>0);
+  if(!copies.length){if(!auto)toast('ไม่พบสำเนาข้อมูลของบัญชีอื่นในเครื่องนี้');return;}
+  const who=viewingOther()?(AUTH.viewingName||'บัญชีที่เปิดอยู่'):'บัญชีของฉัน';
+  const ov=el('<div class="ov"></div>');
+  const m=el(`<div class="modal" style="max-width:560px"><header><div><b>${auto?'พบข้อมูลเดิมในเครื่องนี้':'นำเข้าข้อมูลจากสำเนาในเครื่องนี้'}</b>
+      <div class="tiny" style="margin-top:2px">${auto?'บัญชีนี้ยังไม่มีข้อมูล แต่ในเครื่องนี้มีข้อมูลงานขายของบัญชีเดิมเก็บไว้ · ':''}นำเข้ารวมกับ <b>${esc(who)}</b> (เพิ่มอย่างเดียว ไม่ลบของเดิม)</div></div>
+      <button class="close">✕</button></header><div class="mb"><div class="list"></div>
+      <div class="tiny" style="margin-top:10px">เลือกเฉพาะข้อมูลที่เป็นของบัญชีนี้จริง ๆ — ถ้าเครื่องนี้มีคนอื่นใช้ร่วม อย่านำเข้าข้อมูลของคนอื่น</div></div>
+    <footer><div style="flex:1"></div><button class="btn gh" id="c">${auto?'ไม่ใช่ของฉัน / ข้ามไป':'ปิด'}</button></footer></div>`);
+  const list=m.querySelector('.list');
+  copies.forEach(c=>{
+    const r=el(`<div class="lrow" style="cursor:default"><div class="lmain"><div class="lt">${esc(c.who)}</div>
+      <div class="lm">ลูกค้า ${c.cust} ราย · เอกสาร ${c.docs} ใบ · ใบเสร็จ ${c.rc} ใบ${c.at?' · บันทึกล่าสุด '+esc(c.at):''} · ID ${esc((c.uid||'-').slice(0,8))}</div></div>
+      <button class="btn sm">นำเข้า</button></div>`);
+    r.querySelector('button').onclick=()=>askConfirm('นำเข้าข้อมูล','นำข้อมูลของ "'+c.who+'" (ลูกค้า '+c.cust+' · เอกสาร '+c.docs+' · ใบเสร็จ '+c.rc+') เข้า '+who+'?','นำเข้า',()=>{
+      let src;try{src=unpackDB(JSON.parse(localStorage.getItem(c.key)));}catch(e){toast('อ่านสำเนาไม่ได้');return;}
+      if(!src){toast('อ่านสำเนาไม่ได้');return;}
+      const before=dbCount(DB);
+      MERGE_KEYS.forEach(k=>{DB[k]=mergeList(DB[k],src[k],null).list;});
+      if(!mySig()&&src.mySig&&src.mySig.img)DB.mySig=src.mySig;
+      migrate();save(true);ov.remove();render();
+      toast('นำเข้าแล้ว '+(dbCount(DB)-before)+' รายการ — บันทึกขึ้นคลาวด์ให้แล้ว');
+    });
+    list.append(r);
+  });
+  const close=()=>{ov.remove();if(auto)try{localStorage.setItem('bwp_imp_skip_'+cur,'1');}catch(e){}};
+  m.querySelector('.close').onclick=close;m.querySelector('#c').onclick=close;
+  ov.append(m);$('#layer').append(ov);
+}
 function loginScreen(msg){
   document.querySelector('.app').style.display='none';
   const old=document.getElementById('loginWrap');if(old)old.remove();
@@ -9178,6 +9213,7 @@ function loginScreen(msg){
       }
       w.remove();document.querySelector('.app').style.display='';
       await startApp();
+      setTimeout(()=>{try{if(!viewingOther()&&!dbCount(DB)&&!localStorage.getItem('bwp_imp_skip_'+localKey()))importLocalCopy(true);}catch(e){}},1500);
       setTimeout(()=>sweepSignatures(true),4000);
       setTimeout(()=>custSharedSync(),2500);
     }catch(e){b.disabled=false;syncMode();err(e.message);}
@@ -9199,6 +9235,7 @@ function userMenu(){
       ${isManager()?'<button class="btn gh blk" id="team">ดูข้อมูลของทีมขาย</button>':''}
       ${isManager()?'<button class="btn gh blk" id="emp">ข้อมูลพนักงาน</button>':''}
       ${ro?'<button class="btn blk" id="mine">กลับไปข้อมูลของฉัน</button>':''}
+      ${ro?'':'<button class="btn gh blk" id="imp">นำเข้าข้อมูลจากสำเนาในเครื่องนี้</button>'}
       ${ro||viewingOther()?'':`<button class="btn gh blk" id="msig">ลายเซ็นของฉัน ${mySig()?'(ตั้งไว้แล้ว)':'— ยังไม่ได้ตั้ง'}</button>`}
       <button class="btn gh blk" id="pin">เปลี่ยน PIN ของฉัน</button>
       <button class="btn dg blk" id="out">ออกจากระบบ</button>
@@ -9209,6 +9246,7 @@ function userMenu(){
   if(m.querySelector('#emp'))m.querySelector('#emp').onclick=()=>{close();employeePage();};
   if(m.querySelector('#mine'))m.querySelector('#mine').onclick=()=>{close();viewUser(AUTH.user.id,'ฉัน',true);};
   if(m.querySelector('#msig'))m.querySelector('#msig').onclick=()=>{close();mySigManager();};
+  if(m.querySelector('#imp'))m.querySelector('#imp').onclick=()=>{close();importLocalCopy(false);};
   m.querySelector('#out').onclick=()=>{close();logout();};
   m.querySelector('#pin').onclick=()=>{close();changePinForm();};
   ov.append(m);$('#layer').append(ov);
@@ -9661,6 +9699,7 @@ async function boot(){
     try{await sbGet('profiles?select=id&limit=1');}
     catch(e){if(!await refreshSession()){clearSession();loginScreen('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่');return;}}
     await startApp();
+    setTimeout(()=>{try{if(!viewingOther()&&!dbCount(DB)&&!localStorage.getItem('bwp_imp_skip_'+localKey()))importLocalCopy(true);}catch(e){}},1500);
     if(/^#signed=/.test(location.hash||''))handleHash();   /* ลิงก์ส่งกลับลายเซ็นแบบเดิม */
     setTimeout(()=>sweepSignatures(true),4000);   /* ลายเซ็นที่เซ็นผ่านลิงก์ระหว่างปิดโปรแกรม */
     setTimeout(()=>custSharedSync(),2500);        /* ทะเบียนลูกค้ากลาง */
