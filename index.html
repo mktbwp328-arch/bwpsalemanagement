@@ -526,7 +526,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.17-06';
+const APP_VER='2569.10.17-07';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -8780,17 +8780,22 @@ function purchaseSummary(c){
   const codeK=it=>String(it.code||'').trim().toUpperCase();
   const nameK=it=>String(it.name||'').split('\n')[0].toLowerCase().replace(/plastic|พลาสติก/g,'').replace(/[\s.,()\-]/g,'');
   const pkey=it=>codeK(it)||nameK(it).slice(0,60);
-  const prods=new Map(),byCode=new Map(),byName=new Map();
+  /* ขนาด = ตัวเลขในชื่อสินค้าเรียงกัน ("36 x 85 Micron" กับ "36 cm x 85 Micron" = 36x85) — รหัสเดียวกันแต่คนละขนาด (36x85 / 38x85) แยกกล่อง */
+  const sizeK=it=>{const n=(String(it.name||'').split('\n')[0].match(/\d+(?:\.\d+)?/g)||[]).map(x=>String(+x));return n.length?n.join('x'):nameK(it);};
+  const prods=new Map(),byCS=new Map(),bySize=new Map(),byCode=new Map();
   const P=(it,fromRc)=>{
     let g=null;
-    const ck=codeK(it),nk=nameK(it);
-    /* รหัสที่มีใน PO → ใช้รหัส · ไม่มี → หาจากชื่อ/ขนาด (รหัสกลาง ๆ อย่าง F-001 ใช้กับหลายขนาด จึงไม่ยึดรหัส) */
-    if(ck&&byCode.has(ck))g=byCode.get(ck);
-    if(!g&&nk&&byName.has(nk))g=byName.get(nk);
-    if(!g){const k=(ck||'')+'|'+nk;if(k==='|')return null;
+    const ck=codeK(it),sz=sizeK(it);
+    if(!ck&&!sz)return null;
+    /* รหัส+ขนาดตรงกัน → ขนาดตรงกัน → รหัสตรงกัน (เฉพาะรหัสที่มีขนาดเดียว) */
+    g=byCS.get(ck+'|'+sz)||null;
+    if(!g&&fromRc&&sz&&bySize.has(sz))g=bySize.get(sz);
+    if(!g&&fromRc&&ck&&byCode.has(ck)&&byCode.get(ck).length===1)g=byCode.get(ck)[0];
+    if(!g){const k=ck+'|'+sz;
       g=prods.get(k);
       if(!g){g={code:it.code||'',name:it.name||'',lines:[],poMap:new Map()};prods.set(k,g);}}
-    if(!fromRc){if(ck&&!byCode.has(ck))byCode.set(ck,g);if(nk&&!byName.has(nk))byName.set(nk,g);}
+    if(!fromRc){if(!byCS.has(ck+'|'+sz))byCS.set(ck+'|'+sz,g);if(sz&&!bySize.has(sz))bySize.set(sz,g);
+      if(ck){const a=byCode.get(ck)||[];if(!a.includes(g))a.push(g);byCode.set(ck,a);}}
     return g;};
   /* PO */
   pos.forEach(p=>(p.items||[]).forEach(it=>{const g=P(it,false);if(!g)return;
@@ -8810,6 +8815,8 @@ function purchaseSummary(c){
     const allot=(lines,first)=>{
       const same=lines.filter(l=>l.unit===del.unit);
       if(!same.length||!(del.qty>0)){first.dels.push(del);return;}
+      /* ส่งเกินเล็กน้อย (ไม่เกิน 5% ของแถว) ถือเป็นการส่งครบแถวนั้น ไม่แบ่งไปแถวอื่น */
+      if(first.unit===del.unit&&del.qty-Math.max(0,leftOf(first))<=Math.max(0.0001,first.order*0.05)){first.dels.push(del);return;}
       const order=[first,...same.filter(l=>l!==first)];
       let rest=del.qty,parts=[];
       for(const l of order){const can=Math.max(0,leftOf(l));if(rest<=0.0001)break;
@@ -8826,7 +8833,7 @@ function purchaseSummary(c){
         const sameUnit=all.filter(l=>l.unit===del.unit);cand=sameUnit.length?sameUnit:all;}
       const byItem=r.poItemId&&cand.find(l=>l.it&&l.it.id===r.poItemId);
       line=byItem
-        ||cand.find(l=>Math.abs(leftOf(l)-del.qty)<0.0001&&l.unit===del.unit)   /* ยอดค้างพอดีกับที่ส่ง */
+        ||cand.find(l=>l.unit===del.unit&&leftOf(l)>0.0001&&Math.abs(leftOf(l)-del.qty)<=Math.max(0.0001,l.order*0.05))   /* ยอดค้างใกล้เคียงกับที่ส่ง (±5%) */
         ||cand.find(l=>leftOf(l)>0.0001)
         ||cand[cand.length-1]||null;
       if(line&&!byItem)pool=cand;
