@@ -526,7 +526,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.17-03';
+const APP_VER='2569.10.17-04';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -8995,13 +8995,14 @@ function pgProfiles(v){
       const inner=listCard(items,Object.assign({empty:el('<div class="empty">ไม่มีข้อมูล</div>')},cfg));
       card.append(inner.querySelector('.list')||inner.querySelector('.empty'));
       return card;};
-    v.append(mk('เอกสารการขาย',DB.docs.filter(d=>d.customer===c.name),{
+    const ckh=custKey(c.name),mineC=x=>custKey(x.customer)===ckh;   /* ชื่อสะกดต่างกันเล็กน้อย (บริษัท/จำกัด/เว้นวรรค) ก็นับเป็นรายเดียวกัน */
+    v.append(mk('เอกสารการขาย (ใบเสนอราคา / ขอเครดิต / ขอตัวอย่าง ฯลฯ)',DB.docs.filter(mineC),{
       avatar:()=>svg('doc','ic s'),title:d=>esc(d.no),meta:d=>docTypeName(d.type)+' · '+fmtDate(d.date),
       amount:d=>num0(d.amount)+' ฿',status:d=>pill(d.status,DOC_ST),onOpen:openDocSmart}));
-    v.append(mk('PO ลูกค้า',DB.pos.filter(p=>p.customer===c.name),{
+    v.append(mk('PO ลูกค้า',DB.pos.filter(mineC),{
       avatar:()=>svg('cart','ic s'),title:p=>esc(p.custPoNo||p.no),meta:p=>'รับ '+fmtDate(p.date)+' · ส่ง '+fmtDate(poDue(p)),
       amount:p=>num0(poTotal(p))+' ฿',status:p=>pill(p.status,PO_ST),onOpen:p=>go('po',{poOpen:p.id})}));
-    v.append(mk('ใบเสร็จรับเงิน',DB.receipts.filter(r=>r.customer===c.name),{
+    v.append(mk('ใบเสร็จรับเงิน',DB.receipts.filter(mineC),{
       avatar:()=>svg('receipt','ic s'),title:r=>esc(r.no),meta:r=>fmtDate(r.date)+' · '+esc(r.method||'-'),
       amount:r=>num0(r.amount)+' ฿',status:r=>pill(r.status,RC_ST),onOpen:openRc}));
   }
