@@ -553,7 +553,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.17-09';
+const APP_VER='2569.10.17-10';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -6401,7 +6401,7 @@ function categoryCard(items){
       /* รายละเอียดในประเภท: สินค้าแต่ละตัว ยอดเงิน / จำนวน / น้ำหนัก / สัดส่วนในประเภท */
       const mp={};
       (items||[]).filter(p=>categoryOf(p.name,p.code)===r.cat).forEach(p=>{
-        const k=String(p.name||'').split('\n')[0].trim()||p.code||'-';
+        const k=ncKind(p)||p.code||'-';   /* ชื่อสินค้าไม่รวมขนาด */
         const e=mp[k]||(mp[k]={name:k,amount:0,kg:0,units:{}});
         e.amount+=p.amount||0;e.kg+=p.kg||0;
         const u=String(p.unit||'').trim()||'หน่วย';e.units[u]=(e.units[u]||0)+(+p.qty||0);});
