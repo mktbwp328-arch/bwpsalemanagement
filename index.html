@@ -526,7 +526,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.17-01';
+const APP_VER='2569.10.17-02';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -2136,6 +2136,10 @@ const isAdminUser=v=>String(v||'').trim().toLowerCase()===ADMIN_USER;
 const AUTH={token:null,refresh:null,user:null,profile:null,viewing:null};
 const authed=()=>!!AUTH.token;
 const isManager=()=>!!(AUTH.profile&&/manager|admin/.test(AUTH.profile.role));
+/* หัวหน้าฝ่ายขาย: เห็นภาพรวมทีม และเปิดดูข้อมูลของแต่ละคนได้ (ดูอย่างเดียว) — ต้องรัน supabase-setup-21.sql */
+const isLead=()=>!!(AUTH.profile&&AUTH.profile.role==='lead');
+const canSeeTeam=()=>isManager()||isLead();
+const userRoleName=r=>r==='lead'?'หัวหน้าฝ่ายขาย':/manager/.test(r||'')?'ผู้จัดการ':/admin/.test(r||'')?'ผู้ดูแล':'พนักงานขาย';
 /* กำลังเปิดข้อมูลของคนอื่นอยู่หรือไม่ */
 const viewingOther=()=>!!(AUTH.viewing&&AUTH.viewing!==(AUTH.user&&AUTH.user.id));
 /* ดูอย่างเดียว = เปิดข้อมูลคนอื่น และไม่ใช่ผู้จัดการ/ผู้ดูแล */
@@ -5068,7 +5072,7 @@ function reportSummary(R,ym){
 function pgReport(v){
   header('รายงานยอดขาย',['สรุปประจำเดือน จากใบเสร็จรับเงิน']);
   /* เลือกข้อมูลของใคร — ผู้จัดการเลือกได้ทั้งรายคนและรวมทั้งทีม */
-  const mgr=isManager()&&!viewingOther();
+  const mgr=canSeeTeam()&&!viewingOther();
   let sources=[{id:'',name:'ข้อมูลของฉัน',db:DB}];
   if(mgr){
     if(!TEAM.loaded){
@@ -5707,7 +5711,7 @@ document.addEventListener('keydown',e=>{
 /* ================= routing ================= */
 const PAGES=[
   {id:'dashboard',label:'หน้าแรก',icon:'home',count:()=>null},
-  {id:'team',label:'ภาพรวมทีมขาย',icon:'up',count:()=>null,mgr:true},
+  {id:'team',label:'ภาพรวมทีมขาย',icon:'up',count:()=>null,team:true},
   {id:'report',label:'รายงานยอดขาย',icon:'doc',count:()=>null},
   {id:'customers',label:'ลูกค้าติดต่อเข้ามา',icon:'users',count:()=>DB.customers.length},
   {id:'documents',label:'เอกสารการขาย',icon:'doc',count:()=>DB.docs.filter(d=>DOC_TYPES.some(t=>t[0]===d.type)).length},
@@ -5881,7 +5885,7 @@ function render(){
   }else searchFocus=false;
   /* sidebar */
   const nav=$('#nav');nav.innerHTML='';
-  PAGES.filter(p=>!p.mgr||isManager()).forEach(p=>{
+  PAGES.filter(p=>(!p.mgr||isManager())&&(!p.team||canSeeTeam())).forEach(p=>{
     const c=p.count();
     const b=el(`<button class="nv ${S.page===p.id?'on':''}">${svg(p.icon)}<span>${esc(p.label)}</span>${c!=null?`<span class="cnt">${c}</span>`:''}</button>`);
     b.onclick=()=>go(p.id,p.id==='profiles'?{profSel:null}:p.id==='po'?{poOpen:null}
@@ -5908,7 +5912,7 @@ function render(){
   const demo=$('#demoBtn');if(demo)demo.style.display=(isDemoAccount()&&!viewingOther())?'':'none';
 
   const v=$('#view');v.innerHTML='';$('#topActions').innerHTML='';
-  if(S.page==='team'&&!isManager())S.page='dashboard';
+  if(S.page==='team'&&!canSeeTeam())S.page='dashboard';
   ({dashboard:pgDashboard,team:pgTeam,report:pgReport,customers:pgCustomers,documents:pgDocuments,po:pgPO,
     receipts:pgReceipts,newcust:pgNewCust,profiles:pgProfiles,products:pgProducts,
     employees:pgEmployees}[S.page]||pgDashboard)(v);
@@ -9228,11 +9232,11 @@ function userMenu(){
   const p=AUTH.profile||{},ro=readOnly();
   const ov=el('<div class="ov"></div>');
   const m=el(`<div class="modal" style="max-width:430px"><header><div><b>${esc(p.name||toUsername(p.email)||'ผู้ใช้')}</b>
-      <div class="tiny" style="margin-top:2px">ชื่อผู้ใช้: ${esc(toUsername(p.email))} · ${isManager()?'ผู้จัดการ':'พนักงานขาย'}</div></div>
+      <div class="tiny" style="margin-top:2px">ชื่อผู้ใช้: ${esc(toUsername(p.email))} · ${esc(userRoleName(p.role))}</div></div>
       <button class="close">✕</button></header>
     <div class="mb" style="display:flex;flex-direction:column;gap:10px">
       ${ro?'<div class="hint">กำลังดูข้อมูลของคนอื่นอยู่ แก้ไขไม่ได้ กดปุ่มด้านล่างเพื่อกลับมาที่ข้อมูลของคุณ</div>':''}
-      ${isManager()?'<button class="btn gh blk" id="team">ดูข้อมูลของทีมขาย</button>':''}
+      ${canSeeTeam()?'<button class="btn gh blk" id="team">ดูข้อมูลของทีมขาย</button>':''}
       ${isManager()?'<button class="btn gh blk" id="emp">ข้อมูลพนักงาน</button>':''}
       ${ro?'<button class="btn blk" id="mine">กลับไปข้อมูลของฉัน</button>':''}
       ${ro?'':'<button class="btn gh blk" id="imp">นำเข้าข้อมูลจากสำเนาในเครื่องนี้</button>'}
@@ -9520,7 +9524,7 @@ async function teamPicker(){
       const r=el(`<div class="lrow" style="border-radius:10px;${on?'background:var(--blue-l);box-shadow:inset 3px 0 0 var(--blue)':''}">
         <div class="lav">${esc(initials(nm))}</div>
         <div class="lmain"><div class="lt">${esc(label)}</div>
-          <div class="lm">${esc(nm===login?'':fmtPhone(login)+' · ')}${esc(t.role==='sales'?'พนักงานขาย':t.role==='manager'?'ผู้จัดการ':'ผู้ดูแล')}${t.updated_at?' · แก้ล่าสุด '+ago(t.updated_at):''}${t.size_kb?' · '+t.size_kb+' KB':''}</div></div>
+          <div class="lm">${esc(nm===login?'':fmtPhone(login)+' · ')}${esc(userRoleName(t.role))}${t.updated_at?' · แก้ล่าสุด '+ago(t.updated_at):''}${t.size_kb?' · '+t.size_kb+' KB':''}</div></div>
         <div class="lright">${on?'<span class="pill" style="background:#dbeafe;color:#1d4ed8">กำลังดู</span>':''}</div></div>`);
       r.onclick=async()=>{ov.remove();await viewUser(t.id,nm,t.mine);};
       list.append(r);});
@@ -9603,13 +9607,13 @@ function migrate(){
 function paintUser(){
   const nm=(AUTH.profile&&AUTH.profile.name)||toUsername(AUTH.user.email);
   $('#userName').textContent=nm;
-  $('#userRole').textContent=isManager()?'ผู้จัดการ':'พนักงานขาย';
+  $('#userRole').textContent=userRoleName(AUTH.profile&&AUTH.profile.role);
   $('#userAv').textContent=initials(nm);
 }
 async function startApp(){
   try{await loadProfile();}catch(e){}
   /* รีเฟรชแล้วยังอยู่ที่ข้อมูลของคนที่เปิดดูค้างไว้ — เฉพาะผู้ดูแลเท่านั้น */
-  if(AUTH.viewing&&(!isManager()||AUTH.viewing===(AUTH.user&&AUTH.user.id))){
+  if(AUTH.viewing&&(!canSeeTeam()||AUTH.viewing===(AUTH.user&&AUTH.user.id))){
     AUTH.viewing=null;AUTH.viewingName=null;saveSession();
   }
   const owner=dataOwner();
