@@ -526,7 +526,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.17-04';
+const APP_VER='2569.10.17-05';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -7353,6 +7353,7 @@ function timelineEdit(c,t,after){
     if(after)after();}}});
 }
 /* แถวบันทึกหนึ่งรายการ พร้อมปุ่มแก้ไข */
+const isAutoStatus=t=>/^สถานะเปลี่ยนเป็น/.test(String(t&&t.title||''));
 function timelineRow(c,t,last,after,big){
   const r=el(`<div class="tl"><div class="dot"><i></i>${last?'':'<s></s>'}</div>
     <div style="padding-bottom:${big?'15px':'14px'};flex:1;min-width:0">
@@ -7371,8 +7372,9 @@ function timelineRow(c,t,last,after,big){
 function openCustomer(c){
   const tl=el('<div></div>');
   tl.append(el('<div style="font-size:14px;font-weight:700;margin-bottom:10px">ดำเนินการถึงไหนแล้ว</div>'));
-  c.timeline.forEach((t,i)=>tl.append(
-    timelineRow(c,t,i===c.timeline.length-1,()=>openCustomer(c),false)));
+  const tls=(c.timeline||[]).filter(t=>!isAutoStatus(t));
+  tls.forEach((t,i)=>tl.append(
+    timelineRow(c,t,i===tls.length-1,()=>openCustomer(c),false)));
   tl.append(el(`<div class="tl pend"><div class="dot"><i></i></div><div><div style="font-size:14px;font-weight:600;color:var(--mut2)">ขั้นถัดไป: ${esc(c.status)}</div></div></div>`));
   const addBtn=el(`<button class="btn gh blk">${svg('plus','ic s')}บันทึกการดำเนินการ</button>`);
   addBtn.onclick=()=>openForm('บันทึกการดำเนินการ — '+c.name,[
@@ -8419,9 +8421,7 @@ function syncCustFromPo(po){
   if(!next||c.status===next)return;
   const from=c.status;
   c.status=next;
-  c.timeline=c.timeline||[];
-  c.timeline.push({date:today(),title:'สถานะเปลี่ยนเป็น "'+next+'"',
-    note:'ตามสถานะ PO '+(po.custPoNo||po.no)+' ('+po.status+')'+(from?' · เดิม '+from:''),by:meName()});
+  /* ไม่ลงบันทึกกิจกรรม — บันทึกกิจกรรมเก็บเฉพาะสิ่งที่ผู้ใช้ทำเอง */
 }
 /* กำหนดส่งมอบของ PO = วันที่เร็วที่สุดในรายการสินค้า */
 function poDue(p){
@@ -9016,8 +9016,9 @@ function pgProfiles(v){
       {key:'by',label:'ผู้บันทึก',def:meName()},{key:'note',label:'หมายเหตุ',type:'textarea',full:true}
     ],{},d=>{c.timeline.push(d);save();render();toast('บันทึกแล้ว');});
     h.append(b);card.append(h);
-    if(!c.timeline.length)card.append(el('<div class="empty">ยังไม่มีบันทึก</div>'));
-    [...c.timeline].reverse().forEach((t,i,arr)=>
+    const tls=c.timeline.filter(t=>!isAutoStatus(t));
+    if(!tls.length)card.append(el('<div class="empty">ยังไม่มีบันทึก</div>'));
+    [...tls].reverse().forEach((t,i,arr)=>
       card.append(timelineRow(c,t,i===arr.length-1,null,true)));
     v.append(card);
   }
