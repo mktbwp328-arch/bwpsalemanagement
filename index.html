@@ -526,7 +526,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.17-02';
+const APP_VER='2569.10.17-03';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -8800,8 +8800,24 @@ function purchaseSummary(c){
   /* เรียงใบเสร็จตามวันที่ จะได้ตัดยอด PO ตามลำดับที่ส่งจริง */
   rcs.slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.no||'').localeCompare(String(b.no||''),'en',{numeric:true})).forEach(r=>(r.items||[]).forEach(it=>{const g=P(it,true);if(!g)return;
     const del={date:r.date||'',no:r.no||'',inv:r.invNo||'',qty:+it.qty||0,unit:it.unit||'',price:+it.price||0,it};
-    let line=(r.poRef&&(g.poMap.get(r.poRef+'|'+(r.poItemId||''))||g.poMap.get(r.poRef+'|'+pkey(it))))||null;
-    /* ไม่ได้อ้างอิง PO → ตัดจาก PO ของสินค้านี้ที่ยังส่งไม่ครบ (PO เก่าก่อน) */
+    /* ยึด "อ้างอิง PO" ในใบเสร็จก่อนเสมอ — เทียบได้ทั้งเลขที่ PO ในระบบและเลขที่ PO ของลูกค้า */
+    const refK=s=>String(s||'').toUpperCase().replace(/[s.]/g,'');
+    const refs=String(r.poRef||'').split(/[,;/]|s{2,}/).map(refK).filter(Boolean);
+    const refPo=refs.length?pos.find(p=>refs.includes(refK(p.no))||refs.includes(refK(p.custPoNo))):null;
+    const leftOf=l=>l.order-l.dels.reduce((a,d)=>a+(d.unit===l.unit?d.qty:0),0);
+    let line=null;
+    if(refPo){
+      /* แถวของ PO นั้นในสินค้านี้ ถ้าไม่มี (รหัส/ชื่อในใบเสร็จต่างจาก PO) หาจากทุกสินค้าของ PO นั้น */
+      let cand=g.lines.filter(l=>!l.free&&l.po===refPo);
+      if(!cand.length){const all=[...prods.values()].flatMap(x=>x.lines.filter(l=>!l.free&&l.po===refPo));
+        const sameUnit=all.filter(l=>l.unit===del.unit);cand=sameUnit.length?sameUnit:all;}
+      line=(r.poItemId&&cand.find(l=>l.it&&l.it.id===r.poItemId))
+        ||cand.find(l=>Math.abs(leftOf(l)-del.qty)<0.0001&&l.unit===del.unit)   /* ยอดค้างพอดีกับที่ส่ง */
+        ||cand.find(l=>leftOf(l)>0.0001)
+        ||cand[cand.length-1]||null;
+      if(!line&&r.poRef)del.refMiss=r.poRef;
+    }else if(r.poRef)del.refMiss=r.poRef;
+    /* ไม่ได้อ้างอิง PO (หรืออ้างอิงเลขที่ไม่พบ) → ตัดจาก PO ของสินค้านี้ที่ยังส่งไม่ครบ (PO เก่าก่อน) */
     if(!line){
       const open=g.lines.filter(l=>!l.free&&l.unit===del.unit&&l.order-l.dels.reduce((a,d)=>a+(d.unit===l.unit?d.qty:0),0)>0.0001)
         .sort((a,b)=>String(a.date).localeCompare(String(b.date)));
@@ -8855,7 +8871,8 @@ function purchaseSummary(c){
         rows+='<tr data-d="'+esc(d.date)+'" data-t="'+esc((d.no+' '+d.inv).toLowerCase())+'"><td style="'+td+'">'+esc(fmtDate(d.date))+'</td><td style="'+td+'"></td><td style="'+td+'">'+esc(d.no)+'</td><td style="'+td+';text-align:right">'
           +(d.unit!==l.unit&&!l.free?fmtQ(d.qty,d.unit):'')+'</td><td style="'+td+';text-align:right">'+(ok?fmtQ(sent,l.free?d.unit:l.unit):fmtQ(d.qty,d.unit))
           +'</td><td style="'+td+';text-align:right">'+(l.free?'':(ok?fmtL(left,l.unit):'-'))+'</td><td style="'+td+';text-align:right">'+(d.price?num(d.price):'')
-          +'</td><td style="'+td+';font-weight:600">'+esc(d.inv&&d.inv!==d.no?d.inv:'')+(d.auto?'<span class="tiny" style="font-weight:400;margin-left:6px">(จับคู่ PO ให้อัตโนมัติ)</span>':'')+'</td></tr>';
+          +'</td><td style="'+td+';font-weight:600">'+esc(d.inv&&d.inv!==d.no?d.inv:'')+(d.refMiss?'<span class="tiny" style="font-weight:400;margin-left:6px;color:#b45309">(อ้างอิง '+esc(d.refMiss)+' ไม่พบ PO นี้'+(d.auto?' — จับคู่ให้อัตโนมัติ':'')+')</span>'
+  :d.auto?'<span class="tiny" style="font-weight:400;margin-left:6px">(ใบเสร็จไม่ได้อ้างอิง PO — จับคู่ให้อัตโนมัติ)</span>':'')+'</td></tr>';
       });
       if(!l.free)tLeft+=left;
     });
