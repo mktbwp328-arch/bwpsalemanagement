@@ -555,7 +555,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.20-03';
+const APP_VER='2569.10.20-04';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -1605,12 +1605,20 @@ function quoteSheets(d){
     let need=t.tHead?t.tHead.offsetHeight:0;
     t.querySelectorAll('tbody tr:not(.fill)').forEach(r=>{need+=r.offsetHeight;});
     const ok=need<=w.clientHeight-14;
+    lastRatio=(w.clientHeight-14)/Math.max(1,need);
     s.remove();return ok;
   };
+  let lastRatio=1;
   try{
     if(all.length<=1||fits())return [quoteSheet(d)];
     /* เกินหน้าเดียวไม่มาก: ลดระยะบรรทัด/ตัวอักษรในตารางเล็กน้อย ให้จบในหน้าเดียว ไม่ต้องขึ้นหน้าใหม่เพื่อรายการเดียว */
     if(fits({compact:true})){const s=quoteSheet(d,{compact:true});s.classList.add('qcompact');return [s];}
+    /* ย่อแล้วยังเกินไม่เกิน ~35% → ย่อตารางรายการทั้งตารางลงตามสัดส่วนที่ขาด ให้จบหน้าเดียว */
+    if(lastRatio>=0.65){const z=Math.max(0.65,lastRatio*0.97);
+      const s=quoteSheet(d,{compact:true});s.classList.add('qcompact');
+      const t=s.querySelector('table.items');if(t){t.querySelectorAll('tbody tr:not(.fill) td').forEach(td=>{td.style.setProperty('font-size',(11.5*z).toFixed(2)+'px','important');
+        td.style.setProperty('padding-bottom',Math.round(9*z)+'px','important');});}
+      return [s];}
     const pages=[];let start=0;
     while(start<all.length){
       const rest=all.slice(start);
