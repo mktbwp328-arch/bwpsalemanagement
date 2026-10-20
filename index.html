@@ -495,7 +495,7 @@ a{color:var(--blue);text-decoration:none}
 .qm .qi{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;flex:0 0 auto}
 .qm .qi svg{width:18px;height:18px}
 @media(max-width:760px){.hero{padding:18px;gap:14px}.hero h1{font-size:21px}.hero .hsub{font-size:14px}.hero .hhi{display:none}.hero .hlogo{width:60px;height:60px}.qm{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.qcompact table.items td{font-size:12px !important;line-height:1.22 !important;padding-top:1px !important;padding-bottom:1px !important}
+.qcompact table.items td{font-size:11.5px !important;line-height:1.18 !important;padding-top:1px !important;padding-bottom:1px !important}
 </style>
 </head>
 <body>
@@ -554,7 +554,7 @@ a{color:var(--blue);text-decoration:none}
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.20-01';
+const APP_VER='2569.10.20-02';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -1609,7 +1609,7 @@ function quoteSheets(d){
   try{
     if(all.length<=1||fits())return [quoteSheet(d)];
     /* เกินหน้าเดียวไม่มาก: ลดระยะบรรทัด/ตัวอักษรในตารางเล็กน้อย ให้จบในหน้าเดียว ไม่ต้องขึ้นหน้าใหม่เพื่อรายการเดียว */
-    if(fits({compact:true})){const s=quoteSheet(d);s.classList.add('qcompact');return [s];}
+    if(fits({compact:true})){const s=quoteSheet(d,{compact:true});s.classList.add('qcompact');return [s];}
     const pages=[];let start=0;
     while(start<all.length){
       const rest=all.slice(start);
@@ -1641,7 +1641,8 @@ function quoteSheet(d,opt){
   const list=opt.items?opt.items:(d.items.length?d.items:[{name:'',qty:'',unit:'',price:0}]);
   const rowsHtml=list.map((it,i)=>{
     const amt=(+it.qty||0)*(+it.price||0);
-    const detail=[it.code,it.name].filter(Boolean).join('\n');
+    let detail=[it.code,it.name].filter(Boolean).join('\n');
+    if(opt.compact)detail=detail.split('\n').filter(x=>x.trim()).join('\n');   /* ย่อ: ตัดบรรทัดว่าง */
     return `<tr><td class="no">${detail?start+i+1:''}</td>
       <td class="dt">${esc(detail)}</td>
       <td class="qt">${it.qty!==''&&it.qty!=null?num(it.qty)+' '+esc(it.unit||''):''}</td>
