@@ -559,7 +559,7 @@ html,body,.sheet,.sheet *{-webkit-text-size-adjust:100% !important;text-size-adj
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.11.03-02';
+const APP_VER='2569.11.03-03';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -3365,9 +3365,20 @@ async function findOtherApproval(d,silent){
   try{
     const rows=await sbRpc('find_quote_approvals',{p_doc_no:d.no})||[];
     const since=d.approvalSince?Date.parse(d.approvalSince):0;
-    const hit=rows.find(r=>r.status!=='pending'&&r.id!==d.approvalId
+    let hit=rows.find(r=>r.status!=='pending'&&r.id!==d.approvalId
       &&(!r.customer||!d.customer||r.customer===d.customer)
       &&(!since||(r.decided_at&&Date.parse(r.decided_at)>since)));
+    /* ผู้บริหารอนุมัติลิงก์เก่าไปแล้ว แต่มีการส่งลิงก์ใหม่ทีหลัง (เพราะลายเซ็นยังไม่ขึ้น) —
+       ถ้าเนื้อหาใบที่อนุมัติ (ยอดเงิน/จำนวนรายการ) ตรงกับใบปัจจุบัน ใช้ลายเซ็นนั้นได้เลย ไม่ต้องให้เซ็นซ้ำ */
+    if(!hit&&since){
+      const cur=Math.round((qtTotal(d)||+d.amount||0)*100),nIt=(d.items||[]).length;
+      for(const r of rows.filter(x=>x.status==='approved'&&x.id!==d.approvalId&&(!x.customer||!d.customer||x.customer===d.customer))){
+        try{const q=await sbRpc('get_quote_approval',{p_id:r.id});const row=Array.isArray(q)?q[0]:q;const p=row&&row.payload||{};
+          const amt=Math.round((((p.items||[]).reduce((a,i)=>a+(+i.qty||0)*(+i.price||0),0))||+p.amount||0)*100);
+          if(amt===cur&&(p.items||[]).length===nIt){hit=Object.assign({},r,{approver_sig:r.approver_sig||(row&&row.approver_sig)});break;}
+        }catch(e){}
+      }
+    }
     if(!hit)return null;
     if(hit.status==='rejected'&&d.approvalSeen===hit.id+'|rejected')return null;
     d.approvalId=hit.id;d.approvalSeen=hit.id+'|'+hit.status;
