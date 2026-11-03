@@ -559,7 +559,7 @@ html,body,.sheet,.sheet *{-webkit-text-size-adjust:100% !important;text-size-adj
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.11.03-01';
+const APP_VER='2569.11.03-02';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -785,6 +785,11 @@ function mergeSigsInto(mine,theirs){
   }
   for(const f of ['sigApprover','sigSales'])
     if(!mine[f]&&theirs[f]&&theirs[f].img&&!del[f])mine[f]=theirs[f];
+  /* ลิงก์อนุมัติ/ลิงก์เซ็นที่อีกเครื่องส่งไป — เครื่องนี้ต้องรู้ด้วย ไม่งั้นจะไม่ไปเช็คลายเซ็นที่กลับมา */
+  for(const f of ['approvalId','approvalSince','sigDocId'])
+    if(!mine[f]&&theirs[f])mine[f]=theirs[f];
+  if(mine.approvalId&&theirs.approvalId&&mine.approvalId!==theirs.approvalId&&String(theirs.approvalSince||'')>String(mine.approvalSince||'')){
+    mine.approvalId=theirs.approvalId;mine.approvalSince=theirs.approvalSince;}
 }
 const sigDelMark=(d,k)=>{d.sigDel=Object.assign({},d.sigDel||{},{[k]:Date.now()});};
 const sigDelClear=(d,k)=>{if(d.sigDel&&d.sigDel[k]){d.sigDel=Object.assign({},d.sigDel);delete d.sigDel[k];}};
@@ -3378,6 +3383,10 @@ function strHash(s){let h=5381;for(let i=0;i<s.length;i++)h=((h<<5)+h+s.charCode
 let pollTimer=null;
 function startPolling(d){
   clearInterval(pollTimer);
+  /* ใบนี้ไม่รู้เลขลิงก์อนุมัติ (ส่งลิงก์จากอีกเครื่อง/ข้อมูลถูกรวมมา) → ค้นลิงก์ที่ผู้บริหารเซ็นแล้วจากเลขที่เอกสาร */
+  if(!d.approvalId&&!d.sigApprover&&sbOn()&&d.type==='quotation'){
+    setTimeout(async()=>{if(S.docOpen===d.id&&!d.sigApprover){FIND_TRIED.delete(d.id);await findOtherApproval(d,true);if(d.sigApprover)save(true);}},800);
+    return;}
   if(!d.approvalId||d.sigApprover||!sbOn())return;
   /* เปิดเอกสารแล้วตรวจทันที ไม่ต้องรอรอบแรก 1 นาที */
   setTimeout(()=>{if(S.docOpen===d.id&&!d.sigApprover)checkApproval(d,true);},800);
