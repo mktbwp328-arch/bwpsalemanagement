@@ -559,7 +559,7 @@ html,body,.sheet,.sheet *{-webkit-text-size-adjust:100% !important;text-size-adj
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.11.03-03';
+const APP_VER='2569.11.03-05';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -688,10 +688,23 @@ function paintSync(e){
   e.title=syncState==='offline'?'กดเพื่อดูสาเหตุและลองบันทึกใหม่':'';
   e.onclick=m[1]?syncDetail:null;
 }
+/* จำ "ลายนิ้วมือ" ของแต่ละรายการ (ต่อก้อนข้อมูล) — รายการไหนเปลี่ยนตั้งแต่ครั้งก่อน ประทับเวลาแก้ไข _m
+   ตอนรวมกับอีกเครื่อง ฉบับที่แก้ทีหลังชนะ (เดิมยึดของเครื่องตัวเองเสมอ → สถานะ/รายการที่อีกเครื่องแก้ถูกย้อนกลับ) */
+const REC_H=new WeakMap();
+function stampChanges(seedOnly){
+  if(!DB)return;
+  let map=REC_H.get(DB);const fresh=!map;if(fresh){map=new Map();REC_H.set(DB,map);}
+  const now=Date.now();
+  MERGE_KEYS.forEach(k=>(DB[k]||[]).forEach(x=>{if(!x||!x.id)return;
+    const {_m,...rest}=x;const hh=strHash(JSON.stringify(rest));const p=map.get(x.id);
+    if(!seedOnly&&!fresh&&p!==undefined&&p!==hh)x._m=now;
+    map.set(x.id,hh);}));
+}
 function save(now){
   /* โหมดดูข้อมูลของคนอื่น: ห้ามเขียนทับข้อมูลตัวเองในเครื่อง และไม่ส่งขึ้นคลาวด์
      (ของเดิมเขียนลงเครื่อง ทำให้ดูเหมือนบันทึกได้ แต่พอรีเฟรชแล้วหาย) */
   if(booted&&readOnly()){setSync('readonly');return;}
+  try{stampChanges();}catch(e){}
   DB._t=Date.now();dirtySince=DB._t;                       /* ใช้เทียบว่าข้อมูลในเครื่องใหม่กว่าบนคลาวด์ไหม */
   try{noteIds();}catch(e){}                                /* จำ id ที่มีอยู่ ใช้กันของที่ลบแล้วกลับมา */
   try{saveLocalCopy();}
@@ -796,7 +809,13 @@ const sigDelClear=(d,k)=>{if(d.sigDel&&d.sigDel[k]){d.sigDel=Object.assign({},d.
 function mergeList(mine,theirs,known){
   const out=(mine||[]).slice();
   const byId=new Map(out.filter(x=>x&&x.id).map(x=>[x.id,x]));
-  (theirs||[]).forEach(x=>{if(x&&x.id&&byId.has(x.id))mergeSigsInto(byId.get(x.id),x);});
+  let changed=0;
+  (theirs||[]).forEach(x=>{if(!x||!x.id||!byId.has(x.id))return;const m=byId.get(x.id);
+    if((+x._m||0)>(+m._m||0)){
+      const old=Object.assign({},m);
+      Object.keys(m).forEach(k=>delete m[k]);Object.assign(m,JSON.parse(JSON.stringify(x)));
+      mergeSigsInto(m,old);changed++;
+    }else mergeSigsInto(m,x);});
   const seen=new Set(out.map(x=>x&&x.id).filter(Boolean));
   /* กันซ้ำอีกชั้นด้วยเลขที่เอกสาร เผื่อ id คนละตัวแต่เป็นใบเดียวกัน */
   const noKey=x=>x&&x.no?String(x.type||'')+'|'+x.no+'|'+custKey(x.customer||''):null;
@@ -813,7 +832,7 @@ function mergeList(mine,theirs,known){
     if(x.id)seen.add(x.id);
     if(k)nos.add(k);
   });
-  return {list:out,added};
+  return {list:out,added:added+changed};
 }
 function mergeCloud(remote){
   let total=0;
@@ -822,6 +841,7 @@ function mergeCloud(remote){
     const r=mergeList(DB[k],remote&&remote[k],known);
     DB[k]=r.list;total+=r.added;
   });
+  try{stampChanges(true);}catch(e){}   /* ของที่รับมาจากอีกเครื่อง ไม่นับเป็นการแก้ของเครื่องนี้ */
   /* รับรู้ id ที่อีกเครื่องเคยมีด้วย ของที่เขาลบไปแล้วเราจะได้ไม่เอากลับมา */
   if(remote&&remote.ids&&remote.ids.length){
     const set=new Set(DB.ids||[]);remote.ids.forEach(i=>set.add(i));DB.ids=[...set];
@@ -1001,6 +1021,24 @@ document.addEventListener('visibilitychange',()=>{
     clearTimeout(syncTimer);cloudSave();
   }
 });
+let pullBusy=false;
+async function cloudPull(){
+  if(pullBusy||!booted||!authed()||readOnly()||saveBusy||syncPending||LINK_MODE)return;
+  if(document.querySelector('.ov input:focus,.ov textarea:focus'))return;
+  pullBusy=true;
+  try{const own=dataOwner();const t=await cloudStamp(own);
+    if(t&&t!==cloudSeen&&dataOwner()===own&&!syncPending&&!saveBusy){
+      const r=await cloudRow(own);
+      if(r&&r.data&&r.data.customers&&dataOwner()===own&&!syncPending&&!saveBusy){
+        const n=mergeCloud(r.data);
+        cloudSeen=(r.updated_at&&Date.parse(r.updated_at))||t;
+        if(n){try{saveLocalCopy();}catch(e){}if(!document.querySelector('.ov'))render();}
+      }
+    }
+  }catch(e){}finally{pullBusy=false;}
+}
+setInterval(cloudPull,60000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')setTimeout(cloudPull,1200);});
 window.addEventListener('pagehide',()=>{
   if(syncPending&&authed()&&!readOnly()){clearTimeout(syncTimer);cloudSave();}
 });
@@ -2622,8 +2660,8 @@ function approveView(p,onlineId){
   bNo.onclick=()=>askConfirm('ไม่อนุมัติ','บันทึกว่าไม่อนุมัติใบเสนอราคานี้?','ยืนยัน',()=>finish(false));
 }
 /* ---- รับลายเซ็นกลับเข้าระบบฝ่ายขาย ---- */
-function applySignature(b,silent){
-  const d=DB.docs.find(x=>x.no===b.no&&x.type==='quotation');
+function applySignature(b,silent,target){
+  const d=target||DB.docs.find(x=>x.no===b.no&&x.type==='quotation');
   if(!d){if(!silent)toast('ไม่พบใบเสนอราคาเลขที่ '+b.no+' ในระบบนี้');return false;}
   if(b.ok){d.sigApprover={img:b.img,name:b.name,date:b.date};d.status='อนุมัติแล้ว';sigDelClear(d,'sigApprover');}
   else{d.sigApprover=null;sigDelMark(d,'sigApprover');d.status='ยกเลิก';d.rejectNote='ผู้บริหารไม่อนุมัติ '+fmtDate(b.date);}
@@ -3183,6 +3221,7 @@ async function syncLocalSigs(d,cloudSigs){
 function applyCreditSigs(no,sigs,status,silent,type){
   const d=(type==='receipt'?DB.receipts:DB.docs).find(x=>x.no===no&&(type==='receipt'||x.type===(type||'credit')));
   if(!d)return false;
+  const before0=JSON.stringify([d.sigs||{},d.status,d.products,d.canMake,d.suggestion]);
   ensureByType(Object.assign(d,{type:d.type||type}));
   /* รวมกับลายเซ็นที่เซ็นไว้ในเครื่อง ไม่ให้ของที่ยังไม่ทันขึ้นคลาวด์หายไป */
   d.sigs=Object.assign({},d.sigs||{},sigs||{});
@@ -3219,8 +3258,9 @@ function applyCreditSigs(no,sigs,status,silent,type){
   const isRc=d.type==='receipt'||DB.receipts.includes(d);
   if(status==='complete')d.status=isRc?d.status:'อนุมัติแล้ว';
   else if(status==='rejected')d.status='ยกเลิก';
-  else if(Object.keys(d.sigs).length&&!isRc)d.status='รออนุมัติ';
-  save();if(!silent)render();
+  else if(Object.keys(d.sigs).length&&!isRc&&(!d.status||d.status==='ร่าง'||d.status==='ส่งแล้ว'))d.status='รออนุมัติ';
+  if(JSON.stringify([d.sigs||{},d.status,d.products,d.canMake,d.suggestion])!==before0)save();
+  if(!silent)render();
   return true;
 }
 /* จำสถานะล่าสุดที่เห็น ไว้เทียบว่ามีอะไรเปลี่ยนไหม */
@@ -3307,7 +3347,9 @@ async function sweepSignatures(force){
       if(DB!==db)break;                          /* สลับไปดูข้อมูลคนอื่นแล้ว หยุด */
       if(!d)continue;
       if(d.sigDocId&&!sigDone(d))await checkCredit(d,true);
-      if(d.type==='quotation'&&d.approvalId&&!d.sigApprover&&d.status!=='ยกเลิก')await checkApproval(d,true);
+      if(d.type==='quotation'&&!d.sigApprover&&d.status!=='ยกเลิก'){
+        if(d.approvalId)await checkApproval(d,true);
+        else if(d.status==='รออนุมัติ'||d.status==='ร่าง'){if(await findOtherApproval(d,true))save();}}
     }
   }catch(e){}
   finally{sweepBusy=false;}
@@ -3349,7 +3391,7 @@ async function checkApproval(d,silent){
     if(row.status==='rejected'&&d.approvalSeen===seenKey)return row.status;
     d.approvalSeen=seenKey;
     applySignature({no:d.no,ok:row.status==='approved',name:row.approver_name,
-      date:localDay(row.decided_at)||today(),img:row.approver_sig},true);
+      date:localDay(row.decided_at)||today(),img:row.approver_sig},true,d);
     render();
     toast(row.status==='approved'?'ผู้บริหารเซ็นอนุมัติแล้ว ✓':'ผู้บริหารไม่อนุมัติเอกสารนี้');
     return row.status;
@@ -3381,9 +3423,9 @@ async function findOtherApproval(d,silent){
     }
     if(!hit)return null;
     if(hit.status==='rejected'&&d.approvalSeen===hit.id+'|rejected')return null;
-    d.approvalId=hit.id;d.approvalSeen=hit.id+'|'+hit.status;
+    d.approvalId=hit.id;d.approvalSeen=hit.id+'|'+hit.status;d.approvalSince=new Date().toISOString();
     applySignature({no:d.no,ok:hit.status==='approved',name:hit.approver_name,
-      date:localDay(hit.decided_at)||today(),img:hit.approver_sig},true);
+      date:localDay(hit.decided_at)||today(),img:hit.approver_sig},true,d);
     render();
     toast(hit.status==='approved'?'พบลายเซ็นผู้บริหารจากลิงก์ที่ส่งไปก่อนหน้า — ใส่ให้แล้ว ✓':'ผู้บริหารไม่อนุมัติเอกสารนี้ (จากลิงก์ที่ส่งไปก่อนหน้า)');
     return hit.status;
@@ -4880,7 +4922,7 @@ function ncFields(){return [
 /* ---------- แผ่นพิมพ์ ---------- */
 function newCustSheet(d){
   ensureNewCust(d);
-  if(!LINK_MODE&&ncFillRows(d))save();
+  if(!LINK_MODE&&!readOnly()&&ncFillRows(d))save();
   const co=DB.company||COMPANY,lg=logoSrc(),s=d.sigs||{};
   const sig=k=>s[k]&&s[k].img?`<img src="${imgSrc(s[k].img)}" style="max-height:15mm;max-width:46mm">`:'';
   const rows=(d.rows||[]).length?d.rows:[{customer:'',kind:'',size:'',grade:''}];
@@ -6029,16 +6071,21 @@ function rcIndex(){
   if(_rci&&_rcv===dirtySince&&_rcSrc===DB.receipts)return _rci;
   const live=DB.receipts.filter(r=>r.status!=='ยกเลิก');
   const byRef=new Set(),byItem=new Set();
-  const poBy=new Map();(DB.pos||[]).forEach(p=>{if(p.no)poBy.set(p.no,p);});
+  /* อ้างอิง PO: เทียบได้ทั้งเลขที่ในระบบและเลขที่ PO ลูกค้า ใส่หลายเลขคั่นด้วย , ; / ได้ (ตรงกับหน้าสรุปการสั่งซื้อ) */
+  const refK=s=>String(s||'').toUpperCase().replace(/[s.]/g,'');
+  const poBy=new Map(),poByK=new Map();(DB.pos||[]).forEach(p=>{if(p.no){poBy.set(p.no,p);poByK.set(refK(p.no),p);}if(p.custPoNo&&!poByK.has(refK(p.custPoNo)))poByK.set(refK(p.custPoNo),p);});
   const nk=it=>String(it.name||'').split('\n')[0].toLowerCase().replace(/plastic|พลาสติก/g,'').replace(/[\s.,()\-]/g,'');
   const ck=it=>String(it.code||'').trim().toUpperCase();
-  live.forEach(r=>{const k=rcRef(r);if(!k)return;byRef.add(k);
+  live.forEach(r=>{const raw=rcRef(r);if(!raw)return;byRef.add(raw);
+    const keys=[...new Set(String(raw).split(/[,;/]|s{2,}/).map(refK).filter(Boolean).map(x=>(poByK.get(x)||{}).no||x))];
+    keys.forEach(k=>{byRef.add(k);
     if(r.poItemId){byItem.add(k+'|'+r.poItemId);return;}
     const po=poBy.get(k);if(!po||!(po.items||[]).length)return;
     const its=(r.items||[]).filter(it=>it.name||it.code);
     if(!its.length){po.items.forEach(x=>{if(x.id)byItem.add(k+'|'+x.id);});return;}
     its.forEach(it=>{const m=po.items.find(x=>x.id&&ck(x)&&ck(x)===ck(it))||po.items.find(x=>x.id&&nk(x)&&nk(x)===nk(it));
       if(m)byItem.add(k+'|'+m.id);});
+    });
   });
   _rci={live,byRef,byItem,n:DB.receipts.length};_rcv=dirtySince;_rcSrc=DB.receipts;
   return _rci;
@@ -6059,9 +6106,9 @@ function poHasReceipt(po){
   if(items.some(it=>!it.id))return rcIndex().byRef.has(po.no);
   return poItemsLeft(po).length===0;
 }
-let _qv=-1,_qmap=null;
+let _qv=-1,_qmap=null,_qSrc=null;
 function quoteHasReceipt(q){
-  if(!_qmap||_qv!==dirtySince){          /* จับคู่ใบเสนอราคา -> PO ไว้ล่วงหน้า */
+  if(!_qmap||_qv!==dirtySince||_qSrc!==DB.pos){_qSrc=DB.pos;          /* จับคู่ใบเสนอราคา -> PO ไว้ล่วงหน้า */
     _qmap={};DB.pos.forEach(p=>{if(p.quoteRef)(_qmap[p.quoteRef]=_qmap[p.quoteRef]||[]).push(p.no);});
     _qv=dirtySince;
   }
@@ -6074,7 +6121,7 @@ function pending(){
   const out=[];
   DB.pos.filter(p=>p.status!=='ยกเลิก'&&!poHasReceipt(p)).forEach(p=>{
     const items=(p.items||[]).filter(it=>it.id);
-    if(!items.length){
+    if(!items.length||(p.items||[]).some(it=>!it.id)){
       out.push({src:'po',label:'PO',ref:p.no,customer:p.customer,date:p.date,amount:poGross(p),obj:p});
       return;
     }
@@ -6086,7 +6133,7 @@ function pending(){
   DB.docs.filter(d=>d.type==='quotation'&&d.status==='อนุมัติแล้ว'
       &&!DB.pos.some(p=>p.status!=='ยกเลิก'&&p.quoteRef===d.no)&&!quoteHasReceipt(d))
     .forEach(d=>out.push({src:'quote',label:'ใบเสนอราคา (ไม่มี PO)',ref:d.no,customer:d.customer,date:d.date,amount:d.amount,obj:d}));
-  return out.sort((a,b)=>b.date.localeCompare(a.date));
+  return out.sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
 }
 /* ออกใบเสร็จจาก PO — ถ้ามีหลายรายการให้เลือกก่อนว่าจะออกของรายการไหน */
 function issuePoReceipt(p,item){
@@ -6334,7 +6381,7 @@ function productDeals(db,name){
       (r.items||[]).forEach((i,n)=>{if(!hit(i))return;
         out.push({label:'ใบเสร็จ '+r.no,customer:r.customer,date:r.date,
           qty:+i.qty||0,unit:i.unit||'',kg:itemKg(i),amount:amts[n]||0});});});
-    return out.sort((a,b)=>b.date.localeCompare(a.date));
+    return out.sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
   });
 }
 /* ---------- แยกประเภทสินค้า สำหรับกราฟวงกลม ----------
@@ -8982,7 +9029,7 @@ function purchaseSummary(c){
         if(!l.free&&d.unit!==l.unit){const a=amt(d.qty,d.unit,d.it),b=amt(l.order,l.unit,l.it||d.it);
           if(a.kg!=null&&b.kg!=null&&b.kg>0&&isKgUnit(l.unit))sent=a.kg;else ok=false;}
         if(!l.free&&ok)left=Math.max(0,left-sent);
-        tDel+=ok?sent:0;
+        if(!l.free)tDel+=ok?sent:0;
         rows+='<tr data-d="'+esc(d.date)+'" data-t="'+esc((d.no+' '+d.inv).toLowerCase())+'"><td style="'+td+'">'+esc(fmtDate(d.date))+'</td><td style="'+td+'"></td><td style="'+td+'">'+esc(d.no)+'</td><td style="'+td+';text-align:right">'
           +(d.unit!==l.unit&&!l.free?fmtQ(d.qty,d.unit):'')+'</td><td style="'+td+';text-align:right">'+(ok?fmtQ(sent,l.free?d.unit:l.unit):fmtQ(d.qty,d.unit))
           +'</td><td style="'+td+';text-align:right">'+(l.free?'':(ok?fmtL(left,l.unit):'-'))+'</td><td style="'+td+';text-align:right">'+(d.price?num(d.price):'')
@@ -9123,6 +9170,7 @@ function pgProfiles(v){
   }
 
   if(S.profTab==='activity'){
+    c.timeline=c.timeline||[];
     const card=el('<div class="card pad"></div>');
     const h=el('<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px"><div class="h3" style="margin:0">บันทึกกิจกรรม</div></div>');
     const b=el(`<button class="btn sm">${svg('plus','ic s')}เพิ่มบันทึก</button>`);
@@ -9692,7 +9740,8 @@ async function viewUser(id,name,mine){
       const local=load();
       if(local&&local.customers&&cnt(local)){DB=local;restoredLocal=true;}
       else DB=d&&d.customers?d:seed();
-    }else DB=d;
+    }else{DB=d;
+      if(mine){const local=load();if(local&&local.customers&&mergeCloud(local))restoredLocal=true;}}
     DB.products=keepProducts;
     migrate();
     if(restoredLocal&&!readOnly()){save(true);toast('กู้ข้อมูลของ '+name+' จากสำเนาในเครื่องนี้ขึ้นคลาวด์แล้ว');}
@@ -9707,6 +9756,7 @@ async function viewUser(id,name,mine){
 
 /* ================= boot ================= */
 function migrate(){
+  try{if(!REC_H.has(DB))stampChanges(true);}catch(e){}
   if(!DB.company)DB.company=Object.assign({},COMPANY);
   if(!DB.products)DB.products=[];
   if(!DB.roleSigs)DB.roleSigs={};   /* ลายเซ็นประจำตำแหน่งที่ล็อกไว้ เช่น ฝ่ายวิจัย */
