@@ -559,7 +559,7 @@ html,body,.sheet,.sheet *{-webkit-text-size-adjust:100% !important;text-size-adj
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.10.22-01';
+const APP_VER='2569.11.03-01';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -7840,6 +7840,8 @@ async function recoverFromCloud(){
   ov.append(m);$('#layer').append(ov);
 }
 function openDocSmart(d){go('documents',{docType:d.type,docOpen:d.id});}
+/* เรียงใหม่สุดไว้บน: วันที่ก่อน แล้วเลขที่ (เลขมากอยู่บน) — ของที่รวมมาจากอีกเครื่อง/กู้จากคลาวด์จะไม่ไปตกท้าย */
+const byNewest=(a,b)=>String(b.date||'').localeCompare(String(a.date||''))||String(b.no||'').localeCompare(String(a.no||''),'en',{numeric:true});
 function pgDocuments(v){
   if(S.docOpen){const d=DB.docs.find(x=>x.id===S.docOpen);
     if(d)return d.type==='credit'?creditDetail(v,d)
@@ -7888,7 +7890,7 @@ function pgDocuments(v){
 
   const q=S.docQ.toLowerCase();
   const items=inType.filter(d=>(S.docFilter==='ทั้งหมด'||d.status===S.docFilter)&&dateFilterPass(d,'doc')&&
-    (!q||[d.no,d.customer].join(' ').toLowerCase().includes(q)));
+    (!q||[d.no,d.customer].join(' ').toLowerCase().includes(q))).sort(byNewest);
   const money=S.docType==='quotation'||S.docType==='credit';
   v.append(el(`<div class="tiny">พบ ${items.length} รายการ${money?' · ยอดรวม '+num0(items.reduce((a,b)=>a+b.amount,0))+' ฿':''}</div>`));
   v.append(listCard(items,{
@@ -8563,7 +8565,7 @@ function pgPO(v){
 
   const q=S.poQ.toLowerCase();
   const items=DB.pos.filter(p=>(S.poFilter==='ทั้งหมด'||p.status===S.poFilter)&&dateFilterPass(p,'po')&&
-    (!q||[p.no,p.custPoNo,p.customer].join(' ').toLowerCase().includes(q)));
+    (!q||[p.no,p.custPoNo,p.customer].join(' ').toLowerCase().includes(q))).sort(byNewest);
   v.append(el(`<div class="tiny">พบ ${items.length} รายการ · ยอดรวม ${num0(items.reduce((a,b)=>a+poTotal(b),0))} ฿</div>`));
   v.append(listCard(items,{
     avatar:()=>svg('cart','ic s'),
@@ -8720,7 +8722,7 @@ function pgReceipts(v){
   const items=DB.receipts.filter(r=>{
     if(S.rcFilter!=='ทั้งหมด'&&r.status!==S.rcFilter)return false;
     if(!dateFilterPass(r,'rc'))return false;
-    return !q||[r.no,r.invNo,r.customer].join(' ').toLowerCase().includes(q);});
+    return !q||[r.no,r.invNo,r.customer].join(' ').toLowerCase().includes(q);}).sort(byNewest);
   v.append(el(`<div class="tiny">พบ ${items.length} รายการ · ยอดรวม ${num0(items.reduce((a,b)=>a+b.amount,0))} ฿</div>`));
   v.append(listCard(items,{
     avatar:()=>svg('receipt','ic s'),
