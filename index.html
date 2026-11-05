@@ -559,7 +559,7 @@ html,body,.sheet,.sheet *{-webkit-text-size-adjust:100% !important;text-size-adj
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.11.03-05';
+const APP_VER='2569.11.05-01';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -6076,14 +6076,18 @@ function rcIndex(){
   const poBy=new Map(),poByK=new Map();(DB.pos||[]).forEach(p=>{if(p.no){poBy.set(p.no,p);poByK.set(refK(p.no),p);}if(p.custPoNo&&!poByK.has(refK(p.custPoNo)))poByK.set(refK(p.custPoNo),p);});
   const nk=it=>String(it.name||'').split('\n')[0].toLowerCase().replace(/plastic|พลาสติก/g,'').replace(/[\s.,()\-]/g,'');
   const ck=it=>String(it.code||'').trim().toUpperCase();
-  live.forEach(r=>{const raw=rcRef(r);if(!raw)return;byRef.add(raw);
+  live.slice().sort((a,b)=>(b.poItemId?1:0)-(a.poItemId?1:0)||String(a.date||'').localeCompare(String(b.date||''))||String(a.no||'').localeCompare(String(b.no||''),'en',{numeric:true})).forEach(r=>{const raw=rcRef(r);if(!raw)return;byRef.add(raw);
     const keys=[...new Set(String(raw).split(/[,;/]|s{2,}/).map(refK).filter(Boolean).map(x=>(poByK.get(x)||{}).no||x))];
     keys.forEach(k=>{byRef.add(k);
     if(r.poItemId){byItem.add(k+'|'+r.poItemId);return;}
     const po=poBy.get(k);if(!po||!(po.items||[]).length)return;
     const its=(r.items||[]).filter(it=>it.name||it.code);
     if(!its.length){po.items.forEach(x=>{if(x.id)byItem.add(k+'|'+x.id);});return;}
-    its.forEach(it=>{const m=po.items.find(x=>x.id&&ck(x)&&ck(x)===ck(it))||po.items.find(x=>x.id&&nk(x)&&nk(x)===nk(it));
+    /* PO มีสินค้าเดียวกันหลายแถว (แบ่งส่งหลายงวด): ใบเสร็จแต่ละใบตัดแถวที่ยังไม่ได้ออก — จำนวนตรงกันก่อน แล้วตามลำดับ */
+    its.forEach(it=>{
+      const same=po.items.filter(x=>x.id&&((ck(x)&&ck(x)===ck(it))||(nk(x)&&nk(x)===nk(it))));
+      const open=same.filter(x=>!byItem.has(k+'|'+x.id));
+      const m=open.find(x=>Math.abs((+x.qty||0)-(+it.qty||0))<0.0001)||open[0];
       if(m)byItem.add(k+'|'+m.id);});
     });
   });
