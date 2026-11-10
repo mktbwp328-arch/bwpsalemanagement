@@ -559,7 +559,7 @@ html,body,.sheet,.sheet *{-webkit-text-size-adjust:100% !important;text-size-adj
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.11.10-04';
+const APP_VER='2569.11.10-05';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -7749,6 +7749,7 @@ function nextMonthNo(type,iso){
 const nextSampleNo=iso=>nextMonthNo('sample',iso);
 /* เรียงเลขใหม่ทั้งหมดครั้งเดียวต่อประเภท: แต่ละเดือนเริ่ม 01 ตามลำดับวันที่ (วันเดียวกันใช้ลำดับเลขเดิม) */
 function fixSampleNos(){
+  return false;   /* เลขรันรวมทั้งทีมจากตัวนับกลาง — ไม่เรียงเลขเองในเครื่อง */
   if(readOnly())return false;
   DB.renum=DB.renum||{};if(DB.rdRenum===2)DB.renum.sample=2;
   let any=false;
@@ -7788,7 +7789,14 @@ function nextNo(prefix,type){
    ถ้าต่อคลาวด์ไม่ได้ ก็ใช้เลขที่คำนวณในเครื่องไปก่อน (ยังใช้งานต่อได้) */
 /* ดูเลขถัดไปของทีมโดยไม่จอง — ใช้โชว์ในฟอร์มให้ตรงกับความจริงตั้งแต่เปิด
    คืนเลขที่มากกว่าระหว่างเลขของทีมกับเลขที่คำนวณในเครื่อง */
+/* RD/DR เลขตามเดือน: RD-2569-1101 → ตัวนับกลาง "RD-11" ปี 2569 ลำดับ 1 */
+const monthNoParts=no=>{const m=String(no||'').trim().toUpperCase().match(/^(RD|DR)-(d{4})-(d{2})(d{2,})$/);
+  return m&&+m[3]>=1&&+m[3]<=12?{pre:m[1],yr:+m[2],mm:m[3],seq:+m[4]}:null;};
 async function peekNo(localNo){
+  const mp=monthNoParts(localNo);
+  if(mp&&sbOn()&&sbReady!==false&&authed()){
+    try{const n=await sbRpc('peek_doc_no',{p_prefix:mp.pre+'-'+mp.mm,p_year:mp.yr});
+      return mp.pre+'-'+mp.yr+'-'+mp.mm+String(Math.max((+n||0)+1,mp.seq)).padStart(2,'0');}catch(e){return localNo;}}
   const m=String(localNo||'').trim().toUpperCase().match(NO_PAT);
   if(!m||!sbOn()||sbReady===false||!authed())return localNo;
   try{
@@ -7806,6 +7814,10 @@ async function fillNoField(state){
   i.value=real;state.no=real;
 }
 async function reserveNo(localNo){
+  const mp=monthNoParts(localNo);
+  if(mp){if(!sbOn()||sbReady===false||!authed())return localNo;
+    try{const n=await sbRpc('next_doc_no',{p_prefix:mp.pre+'-'+mp.mm,p_year:mp.yr,p_min:mp.seq});
+      return mp.pre+'-'+mp.yr+'-'+mp.mm+String(n).padStart(2,'0');}catch(e){return localNo;}}
   const m=String(localNo||'').trim().toUpperCase().match(NO_PAT);
   if(!m||!sbOn()||sbReady===false||!authed())return localNo;
   try{
@@ -7965,7 +7977,9 @@ function pgDocuments(v){
   const noState={no:(fields.find(f=>f.key==='no')||{}).def||''};
   actionBtn('สร้าง'+t[1],'plus',()=>{
    openForm('สร้าง'+t[1],fields,{},async d=>{
-    if(d.no===noState.no)d.no=await reserveNo(noState.no);
+    if(d.no===noState.no){
+      if(MONTH_NO[S.docType]&&d.date)d.no=nextMonthNo(S.docType,d.date);   /* เลือกวันที่เดือนอื่น → เลขของเดือนนั้น */
+      d.no=await reserveNo(d.no);}
     const doc=Object.assign({id:uid(),type:S.docType},d);
     if(doc.type==='quotation'){ensureQuote(doc);doc.amount=qtTotal(doc);}
     if(doc.type==='credit'){ensureCredit(doc);doc.amount=doc.approvedAmount||0;}
