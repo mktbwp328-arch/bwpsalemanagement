@@ -559,7 +559,7 @@ html,body,.sheet,.sheet *{-webkit-text-size-adjust:100% !important;text-size-adj
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.11.05-01';
+const APP_VER='2569.11.10-01';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -919,6 +919,7 @@ async function tidyInline(){
 }
 async function autoTidy(){
   if(autoTidyDone||!authed()||readOnly())return;
+  try{if(fixSampleNos()){save(true);render();}}catch(e){}   /* เลขที่ใบขอตัวอย่างให้ตรงเดือน */
   try{await tidyInline();}catch(e){}              /* ลายเซ็น/โลโก้ที่ฝังในข้อมูล */
   try{await resolveVault();await vaultSync();}catch(e){}   /* ลายเซ็น/โลโก้ขึ้นที่เก็บไฟล์ */
   if(storageOK===false)return;
@@ -7728,7 +7729,28 @@ function ensureCredit(d){
 /* เลขเอกสารใบถัดไป — เดินเลขต่อจากใบล่าสุดของเอกสารประเภทเดียวกัน
    ถ้าเคยตั้งรหัสนำหน้าเองต่างจากค่ามาตรฐาน จะใช้รหัสนั้นต่อให้ ไม่ต้องมาพิมพ์เองทุกใบ */
 const NO_PAT=/^([A-Za-z]+)-(\d{4})-(\d+)$/;
+/* ใบขอตัวอย่าง: เลขที่ = RD-ปี-เดือน(2 หลัก)+ลำดับในเดือน เช่น พ.ย. 2569 → RD-2569-1101, RD-2569-1102 */
+function nextSampleNo(iso){
+  const x=iso?new Date(iso):new Date(),dt=isNaN(x)?new Date():x;
+  const yr=dt.getFullYear()+543,mm=String(dt.getMonth()+1).padStart(2,'0');
+  const re=new RegExp('^RD-'+yr+'-'+mm+'(\\d{2,})$');
+  const last=(DB.docs||[]).filter(d=>d.type==='sample').reduce((a,d)=>{const m=String(d.no||'').trim().toUpperCase().match(re);return m?Math.max(a,+m[1]):a;},0);
+  let n=last+1,no;
+  do{no='RD-'+yr+'-'+mm+String(n++).padStart(2,'0');}while((DB.docs||[]).some(d=>String(d.no||'').trim().toUpperCase()===no));
+  return no;
+}
+/* ใบขอตัวอย่างตั้งแต่ พ.ย. 2569 ที่ได้เลขเดือนผิด (เช่น ขอเดือน 11 แต่เลข RD-2569-10xx) → เปลี่ยนเป็นเลขของเดือนนั้น (ครั้งเดียว) */
+function fixSampleNos(){
+  if(readOnly())return false;
+  const bad=(DB.docs||[]).filter(d=>{if(d.type!=='sample'||!d.date||d.date<'2026-11-01'||d.noFixed)return false;
+    const m=String(d.no||'').trim().toUpperCase().match(/^RD-(\d{4})-(\d{2})\d{2,}$/);if(!m)return false;
+    const x=new Date(d.date);return !isNaN(x)&&(+m[1]!==x.getFullYear()+543||+m[2]!==x.getMonth()+1);})
+    .sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.no).localeCompare(String(b.no),'en',{numeric:true}));
+  bad.forEach(d=>{d.noOld=d.no;d.no=nextSampleNo(d.date);d.noFixed=1;});
+  return bad.length>0;
+}
 function nextNo(prefix,type){
+  if(type==='sample')return nextSampleNo();
   const yr=new Date().getFullYear()+543;
   const mine=(DB.docs||[]).filter(d=>!type||d.type===type)
     .map(d=>String(d.no||'').trim().toUpperCase().match(NO_PAT)).filter(Boolean);
