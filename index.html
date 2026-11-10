@@ -559,7 +559,7 @@ html,body,.sheet,.sheet *{-webkit-text-size-adjust:100% !important;text-size-adj
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.11.10-01';
+const APP_VER='2569.11.10-02';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -7739,10 +7739,10 @@ function nextSampleNo(iso){
   do{no='RD-'+yr+'-'+mm+String(n++).padStart(2,'0');}while((DB.docs||[]).some(d=>String(d.no||'').trim().toUpperCase()===no));
   return no;
 }
-/* ใบขอตัวอย่างตั้งแต่ พ.ย. 2569 ที่ได้เลขเดือนผิด (เช่น ขอเดือน 11 แต่เลข RD-2569-10xx) → เปลี่ยนเป็นเลขของเดือนนั้น (ครั้งเดียว) */
+/* ใบขอตัวอย่างทุกเดือนที่ได้เลขเดือนผิด (เช่น ขอเดือน 11 แต่เลข RD-2569-10xx) → เปลี่ยนเป็นเลขของเดือนนั้น (ครั้งเดียว) */
 function fixSampleNos(){
   if(readOnly())return false;
-  const bad=(DB.docs||[]).filter(d=>{if(d.type!=='sample'||!d.date||d.date<'2026-11-01'||d.noFixed)return false;
+  const bad=(DB.docs||[]).filter(d=>{if(d.type!=='sample'||!d.date||d.noFixed)return false;
     const m=String(d.no||'').trim().toUpperCase().match(/^RD-(\d{4})-(\d{2})\d{2,}$/);if(!m)return false;
     const x=new Date(d.date);return !isNaN(x)&&(+m[1]!==x.getFullYear()+543||+m[2]!==x.getMonth()+1);})
     .sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.no).localeCompare(String(b.no),'en',{numeric:true}));
