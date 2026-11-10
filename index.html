@@ -559,7 +559,7 @@ html,body,.sheet,.sheet *{-webkit-text-size-adjust:100% !important;text-size-adj
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.11.10-03';
+const APP_VER='2569.11.10-04';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -7729,39 +7729,44 @@ function ensureCredit(d){
 /* เลขเอกสารใบถัดไป — เดินเลขต่อจากใบล่าสุดของเอกสารประเภทเดียวกัน
    ถ้าเคยตั้งรหัสนำหน้าเองต่างจากค่ามาตรฐาน จะใช้รหัสนั้นต่อให้ ไม่ต้องมาพิมพ์เองทุกใบ */
 const NO_PAT=/^([A-Za-z]+)-(\d{4})-(\d+)$/;
-/* ใบขอตัวอย่าง: เลขที่ = RD-ปี-เดือน(2 หลัก)+ลำดับในเดือน เช่น พ.ย. 2569 → RD-2569-1101, RD-2569-1102 */
-function nextSampleNo(iso){
+/* เอกสารเลขตามเดือน: ใบขอตัวอย่าง (RD) / ใบข้อกำหนดของลูกค้า (DR)
+   เลขที่ = รหัส-ปี-เดือน(2 หลัก)+ลำดับในเดือน เช่น พ.ย. 2569 → RD-2569-1101, DR-2569-1101 — ทุกเดือนเริ่ม 01 */
+const MONTH_NO={sample:'RD',requirement:'DR'};
+function monthPrefix(type){
+  const tally={};(DB.docs||[]).filter(d=>d.type===type).forEach(d=>{const m=String(d.no||'').trim().toUpperCase().match(/^([A-Z]+)-\d{4}-\d+$/);if(m)tally[m[1]]=(tally[m[1]]||0)+1;});
+  return Object.keys(tally).sort((a,b)=>tally[b]-tally[a])[0]||MONTH_NO[type];
+}
+function nextMonthNo(type,iso){
+  const pre=monthPrefix(type);
   const x=iso?new Date(iso):new Date(),dt=isNaN(x)?new Date():x;
   const yr=dt.getFullYear()+543,mm=String(dt.getMonth()+1).padStart(2,'0');
-  const re=new RegExp('^RD-'+yr+'-'+mm+'(\\d{2,})$');
-  const last=(DB.docs||[]).filter(d=>d.type==='sample').reduce((a,d)=>{const m=String(d.no||'').trim().toUpperCase().match(re);return m?Math.max(a,+m[1]):a;},0);
+  const re=new RegExp('^'+pre+'-'+yr+'-'+mm+'(\\d{2,})$');
+  const last=(DB.docs||[]).filter(d=>d.type===type).reduce((a,d)=>{const m=String(d.no||'').trim().toUpperCase().match(re);return m?Math.max(a,+m[1]):a;},0);
   let n=last+1,no;
-  do{no='RD-'+yr+'-'+mm+String(n++).padStart(2,'0');}while((DB.docs||[]).some(d=>String(d.no||'').trim().toUpperCase()===no));
+  do{no=pre+'-'+yr+'-'+mm+String(n++).padStart(2,'0');}while((DB.docs||[]).some(d=>String(d.no||'').trim().toUpperCase()===no));
   return no;
 }
-/* ใบขอตัวอย่างทุกเดือนที่ได้เลขเดือนผิด (เช่น ขอเดือน 11 แต่เลข RD-2569-10xx) → เปลี่ยนเป็นเลขของเดือนนั้น (ครั้งเดียว) */
+const nextSampleNo=iso=>nextMonthNo('sample',iso);
+/* เรียงเลขใหม่ทั้งหมดครั้งเดียวต่อประเภท: แต่ละเดือนเริ่ม 01 ตามลำดับวันที่ (วันเดียวกันใช้ลำดับเลขเดิม) */
 function fixSampleNos(){
   if(readOnly())return false;
-  /* เรียงเลขใหม่ทั้งหมดครั้งเดียว: แต่ละเดือนเริ่ม 01 ตามลำดับวันที่ขอ (วันเดียวกันใช้ลำดับเลขเดิม) */
-  if(DB.rdRenum!==2){
-    const all=(DB.docs||[]).filter(d=>d.type==='sample'&&d.date&&!isNaN(new Date(d.date)));
+  DB.renum=DB.renum||{};if(DB.rdRenum===2)DB.renum.sample=2;
+  let any=false;
+  Object.keys(MONTH_NO).forEach(type=>{
+    if(DB.renum[type]===2)return;
+    const pre=monthPrefix(type);
+    const all=(DB.docs||[]).filter(d=>d.type===type&&d.date&&!isNaN(new Date(d.date)));
     const orig=d=>String(d.noOld||d.no||'');
     const byM={};all.forEach(d=>{const x=new Date(d.date);const k=(x.getFullYear()+543)+'-'+String(x.getMonth()+1).padStart(2,'0');(byM[k]=byM[k]||[]).push(d);});
-    let ch=0;
     Object.keys(byM).forEach(k=>{const [yr,mm]=k.split('-');
       byM[k].sort((a,b)=>String(a.date).localeCompare(String(b.date))||orig(a).localeCompare(orig(b),'en',{numeric:true}))
-        .forEach((d,i)=>{const no='RD-'+yr+'-'+mm+String(i+1).padStart(2,'0');if(d.no!==no){if(!d.noOld)d.noOld=d.no;d.no=no;ch++;}d.noFixed=1;});});
-    DB.rdRenum=2;return true;
-  }
-  const bad=(DB.docs||[]).filter(d=>{if(d.type!=='sample'||!d.date||d.noFixed)return false;
-    const m=String(d.no||'').trim().toUpperCase().match(/^RD-(\d{4})-(\d{2})\d{2,}$/);if(!m)return false;
-    const x=new Date(d.date);return !isNaN(x)&&(+m[1]!==x.getFullYear()+543||+m[2]!==x.getMonth()+1);})
-    .sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.no).localeCompare(String(b.no),'en',{numeric:true}));
-  bad.forEach(d=>{d.noOld=d.no;d.no=nextSampleNo(d.date);d.noFixed=1;});
-  return bad.length>0;
+        .forEach((d,i)=>{const no=pre+'-'+yr+'-'+mm+String(i+1).padStart(2,'0');if(d.no!==no){if(!d.noOld)d.noOld=d.no;d.no=no;}d.noFixed=1;});});
+    DB.renum[type]=2;any=true;
+  });
+  return any;
 }
 function nextNo(prefix,type){
-  if(type==='sample')return nextSampleNo();
+  if(MONTH_NO[type])return nextMonthNo(type);
   const yr=new Date().getFullYear()+543;
   const mine=(DB.docs||[]).filter(d=>!type||d.type===type)
     .map(d=>String(d.no||'').trim().toUpperCase().match(NO_PAT)).filter(Boolean);
