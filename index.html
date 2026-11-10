@@ -559,7 +559,7 @@ html,body,.sheet,.sheet *{-webkit-text-size-adjust:100% !important;text-size-adj
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.11.10-02';
+const APP_VER='2569.11.10-03';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -7742,6 +7742,17 @@ function nextSampleNo(iso){
 /* ใบขอตัวอย่างทุกเดือนที่ได้เลขเดือนผิด (เช่น ขอเดือน 11 แต่เลข RD-2569-10xx) → เปลี่ยนเป็นเลขของเดือนนั้น (ครั้งเดียว) */
 function fixSampleNos(){
   if(readOnly())return false;
+  /* เรียงเลขใหม่ทั้งหมดครั้งเดียว: แต่ละเดือนเริ่ม 01 ตามลำดับวันที่ขอ (วันเดียวกันใช้ลำดับเลขเดิม) */
+  if(DB.rdRenum!==2){
+    const all=(DB.docs||[]).filter(d=>d.type==='sample'&&d.date&&!isNaN(new Date(d.date)));
+    const orig=d=>String(d.noOld||d.no||'');
+    const byM={};all.forEach(d=>{const x=new Date(d.date);const k=(x.getFullYear()+543)+'-'+String(x.getMonth()+1).padStart(2,'0');(byM[k]=byM[k]||[]).push(d);});
+    let ch=0;
+    Object.keys(byM).forEach(k=>{const [yr,mm]=k.split('-');
+      byM[k].sort((a,b)=>String(a.date).localeCompare(String(b.date))||orig(a).localeCompare(orig(b),'en',{numeric:true}))
+        .forEach((d,i)=>{const no='RD-'+yr+'-'+mm+String(i+1).padStart(2,'0');if(d.no!==no){if(!d.noOld)d.noOld=d.no;d.no=no;ch++;}d.noFixed=1;});});
+    DB.rdRenum=2;return true;
+  }
   const bad=(DB.docs||[]).filter(d=>{if(d.type!=='sample'||!d.date||d.noFixed)return false;
     const m=String(d.no||'').trim().toUpperCase().match(/^RD-(\d{4})-(\d{2})\d{2,}$/);if(!m)return false;
     const x=new Date(d.date);return !isNaN(x)&&(+m[1]!==x.getFullYear()+543||+m[2]!==x.getMonth()+1);})
