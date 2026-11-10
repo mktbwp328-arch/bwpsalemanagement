@@ -559,7 +559,7 @@ html,body,.sheet,.sheet *{-webkit-text-size-adjust:100% !important;text-size-adj
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.11.10-06';
+const APP_VER='2569.11.10-07';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -9074,27 +9074,30 @@ function purchaseSummary(c){
     g.lines.sort((a,b)=>(a.free?1:0)-(b.free?1:0)||String(a.date).localeCompare(String(b.date))||noCmp(firstNo(a),firstNo(b))||noCmp(a.no,b.no));
     let rows='',tOrder=0,tDel=0,tLeft=0,sameUnit=true;const u0=(g.lines.find(l=>!l.free)||{}).unit||'';
     /* ใบเสร็จที่แบ่งข้ามแถว PO: ย้ายหัวแถว PO ถัดไปขึ้นไปไว้ก่อนแถวใบเสร็จนั้น ให้เลขใบเสร็จเดียวกันอยู่ติดกัน */
-    let lastPos=-1,lastNo=null;
+    let lastPos=-1,lastNo=null,prev=null;
     g.lines.forEach(l=>{
       let left=l.order;
       if(!l.free){tOrder+=l.order;if(l.unit!==u0)sameUnit=false;
         const join=lastPos>=0&&l.dels.length&&l.dels[0].no&&l.dels[0].no===lastNo;
         const h='<tr data-d="'+esc(l.date)+'" data-t="'+esc(l.no.toLowerCase())+'" style="background:#f8fbff"><td style="'+td+';color:#b91c1c">'+esc(fmtDate(l.date))+'</td><td style="'+td+';font-weight:600">'+esc(l.no)+'</td><td style="'+td+'"></td><td style="'+td+';text-align:right">'+fmtQ(l.order,l.unit)
           +'</td><td style="'+td+';text-align:right">-</td><td style="'+td+';text-align:right">'+fmtQ(l.order,l.unit)+'</td><td style="'+td+';text-align:right">'+(l.price?num(l.price):'')+'</td><td style="'+td+'"></td></tr>';
-        rows=join?rows.slice(0,lastPos)+h+rows.slice(lastPos):rows+h;}
+        if(join){rows=rows.slice(0,lastPos)+h+rows.slice(lastPos);lastPos+=h.length;}else{rows+=h;prev=null;}}
       else rows+='<tr><td colspan="8" style="'+td+';color:var(--mut)">ใบเสร็จที่ไม่ได้อ้างอิง PO</td></tr>';
-      l.dels.forEach(d=>{
+      l.dels.forEach((d,di)=>{
         /* ส่งแล้วในหน่วยของ PO */
         let sent=d.qty,ok=true;
         if(!l.free&&d.unit!==l.unit){const a=amt(d.qty,d.unit,d.it),b=amt(l.order,l.unit,l.it||d.it);
           if(a.kg!=null&&b.kg!=null&&b.kg>0&&isKgUnit(l.unit))sent=a.kg;else ok=false;}
         if(!l.free&&ok)left=Math.max(0,left-sent);
         if(!l.free)tDel+=ok?sent:0;
-        lastPos=l.free?-1:rows.length;lastNo=d.no;
+        /* ใบเสร็จเดียวกันที่แบ่งข้ามแถว PO → รวมเป็นแถวเดียว (ยอดส่งรวม, คงเหลือรวมของแถว PO ที่เกี่ยวข้อง) */
+        let shSent=sent,shLeft=left,merged=false;
+        if(!l.free&&di===0&&prev&&lastPos>=0&&d.no&&d.no===lastNo&&ok&&prev.ok&&prev.unit===l.unit){rows=rows.slice(0,lastPos);shSent=prev.sent+sent;shLeft=prev.left+left;merged=true;}
+        lastPos=l.free?-1:rows.length;lastNo=d.no;prev=l.free?null:{sent:shSent,left:shLeft,ok,unit:l.unit};
         rows+='<tr data-d="'+esc(d.date)+'" data-t="'+esc((d.no+' '+d.inv).toLowerCase())+'"><td style="'+td+'">'+esc(fmtDate(d.date))+'</td><td style="'+td+'"></td><td style="'+td+'">'+esc(d.no)+'</td><td style="'+td+';text-align:right">'
-          +(d.unit!==l.unit&&!l.free?fmtQ(d.qty,d.unit):'')+'</td><td style="'+td+';text-align:right">'+(ok?fmtQ(sent,l.free?d.unit:l.unit):fmtQ(d.qty,d.unit))
-          +'</td><td style="'+td+';text-align:right">'+(l.free?'':(ok?fmtL(left,l.unit):'-'))+'</td><td style="'+td+';text-align:right">'+(d.price?num(d.price):'')
-          +'</td><td style="'+td+';font-weight:600">'+esc(d.inv&&d.inv!==d.no?d.inv:'')+(d.splitOf?'<span class="tiny" style="font-weight:400;margin-left:6px">(แบ่งจากใบเสร็จนี้ '+num(d.splitOf)+' '+esc(d.unit||'')+')</span>':'')+(d.refMiss?'<span class="tiny" style="font-weight:400;margin-left:6px;color:#b45309">(อ้างอิง '+esc(d.refMiss)+' ไม่พบ PO นี้'+(d.auto?' — จับคู่ให้อัตโนมัติ':'')+')</span>'
+          +(d.unit!==l.unit&&!l.free?fmtQ(d.qty,d.unit):'')+'</td><td style="'+td+';text-align:right">'+(ok?fmtQ(shSent,l.free?d.unit:l.unit):fmtQ(d.qty,d.unit))
+          +'</td><td style="'+td+';text-align:right">'+(l.free?'':(ok?fmtL(shLeft,l.unit):'-'))+'</td><td style="'+td+';text-align:right">'+(d.price?num(d.price):'')
+          +'</td><td style="'+td+';font-weight:600">'+esc(d.inv&&d.inv!==d.no?d.inv:'')+(d.splitOf&&!merged?'<span class="tiny" style="font-weight:400;margin-left:6px">(แบ่งจากใบเสร็จนี้ '+num(d.splitOf)+' '+esc(d.unit||'')+')</span>':'')+(d.refMiss?'<span class="tiny" style="font-weight:400;margin-left:6px;color:#b45309">(อ้างอิง '+esc(d.refMiss)+' ไม่พบ PO นี้'+(d.auto?' — จับคู่ให้อัตโนมัติ':'')+')</span>'
   :d.auto?'<span class="tiny" style="font-weight:400;margin-left:6px">(ใบเสร็จไม่ได้อ้างอิง PO — จับคู่ให้อัตโนมัติ)</span>':'')+'</td></tr>';
       });
       if(!l.free)tLeft+=left;
