@@ -559,7 +559,7 @@ html,body,.sheet,.sheet *{-webkit-text-size-adjust:100% !important;text-size-adj
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.11.19-03';
+const APP_VER='2569.11.19-04';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -2115,7 +2115,12 @@ new MutationObserver(ms=>{
 window.addEventListener('beforeprint',fitSheetsToPage);
 window.addEventListener('afterprint',unfitSheets);
 /* เผื่อเบราว์เซอร์ที่ไม่รองรับ beforeprint (Safari รุ่นเก่า) ให้ย่อก่อนเรียกพิมพ์เลย */
-function doPrint(){fitSheetsToPage();setTimeout(()=>{window.print();setTimeout(unfitSheets,400);},60);}
+function doPrint(){
+  /* มือถือ/ไอแพด: หน้าพิมพ์มักใช้ไม่ได้ → สร้างไฟล์ PDF ให้เลย */
+  if(typeof isTouchDev==='function'&&isTouchDev()){const sh=[...document.querySelectorAll('.sheet')].filter(x=>x.offsetParent);
+    if(sh.length){const t=(sh[0].querySelector('[data-docno]')||{}).textContent||('เอกสาร_'+today());
+      saveSheetsFile(sh,String(t).trim().replace(/[\\/:*?"<>|]/g,'-').slice(0,60)||'เอกสาร',true);return;}}
+  fitSheetsToPage();setTimeout(()=>{window.print();setTimeout(unfitSheets,400);},60);}
 function loadPrintFonts(){
   if(printFontsLoaded)return;printFontsLoaded=true;
   const l=document.createElement('link');l.rel='stylesheet';
@@ -5594,9 +5599,15 @@ function jpegPdf(pages){
   return new Blob(parts,{type:'application/pdf'});
 }
 /* แผ่นเดียว -> JPG · หลายแผ่น -> PDF */
+let H2C=null;
+function loadH2c(){return H2C||(H2C=new Promise((res,rej)=>{if(window.html2canvas)return res();const sc=document.createElement('script');sc.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';sc.onload=res;sc.onerror=()=>{H2C=null;rej(new Error('โหลดตัวสร้างไฟล์ไม่ได้'));};document.head.append(sc);}));}
 async function sheetsToFile(sheets,pdf){
   const scale=Math.min(2,Math.max(1.5,window.devicePixelRatio||1));
-  const cs=[];for(const s of sheets)cs.push(await sheetToCanvas(s,scale));
+  const cs=[];
+  /* Safari (iPhone/iPad) ห้ามดึงรูปจาก SVG foreignObject ออกจากแคนวาส → ใช้ html2canvas แทน */
+  let useH2c=/iPhone|iPad|iPod/.test(navigator.userAgent)||(/Macintosh/.test(navigator.userAgent)&&navigator.maxTouchPoints>1)||(/Safari/.test(navigator.userAgent)&&!/Chrome|Chromium|Android/.test(navigator.userAgent));
+  if(!useH2c){try{for(const s of sheets){const c=await sheetToCanvas(s,scale);c.toDataURL('image/jpeg',0.1);cs.push(c);}}catch(e){cs.length=0;useH2c=true;}}
+  if(useH2c){await loadH2c();for(const s of sheets){const z=s.style.zoom;s.style.zoom='';try{cs.push(await window.html2canvas(s,{scale,backgroundColor:'#fff',useCORS:true,logging:false}));}finally{s.style.zoom=z;}}}
   if(cs.length===1&&!pdf)return {blob:await canvasJpeg(cs[0]),ext:'jpg'};
   const pages=[];
   for(const c of cs)pages.push({w:c.width,h:c.height,bytes:new Uint8Array(await (await canvasJpeg(c)).arrayBuffer())});
