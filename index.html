@@ -559,7 +559,7 @@ html,body,.sheet,.sheet *{-webkit-text-size-adjust:100% !important;text-size-adj
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.11.19-02';
+const APP_VER='2569.11.19-03';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -5613,7 +5613,7 @@ async function saveBlobAs(blob,fname){
       /* สร้างไฟล์นานจนเบราว์เซอร์ไม่นับว่าเป็นการกดของผู้ใช้ → ให้แตะอีกครั้งเพื่อแชร์/บันทึก */
       return mobileSaveSheet(file,blob,fname);}
   }
-  if(/Android|iPhone|iPad|iPod|Line\/|FBAN|FBAV/i.test(navigator.userAgent))return mobileSaveSheet(file,blob,fname);
+  if(isTouchDev()||/Line\/|FBAN|FBAV/i.test(navigator.userAgent))return mobileSaveSheet(file,blob,fname);
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;
   document.body.append(a);a.click();
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},2000);
