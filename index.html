@@ -559,7 +559,7 @@ html,body,.sheet,.sheet *{-webkit-text-size-adjust:100% !important;text-size-adj
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.11.11-01';
+const APP_VER='2569.11.19-01';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -2128,6 +2128,7 @@ function printDocSheet(d){
   const bar=el('<div class="prevbar"></div>');
   const mk=(t,c,fn)=>{const b=el(`<button class="btn ${c}">${esc(t)}</button>`);b.onclick=fn;bar.append(b);};
   mk('🖨  พิมพ์ / บันทึกเป็น PDF','',()=>doPrint());
+  mk('💾 บันทึกไฟล์ PDF','gh',()=>saveSheetsFile([...ov.querySelectorAll('.sheet')],String(d.no||'เอกสาร').replace(/[\\/:*?"<>|]/g,'-'),true));
   mk('แก้ไขหัวกระดาษ','gh',companyForm);
   mk('ปิด','gh',()=>ov.remove());
   ov.append(bar);
@@ -5593,10 +5594,10 @@ function jpegPdf(pages){
   return new Blob(parts,{type:'application/pdf'});
 }
 /* แผ่นเดียว -> JPG · หลายแผ่น -> PDF */
-async function sheetsToFile(sheets){
+async function sheetsToFile(sheets,pdf){
   const scale=Math.min(2,Math.max(1.5,window.devicePixelRatio||1));
   const cs=[];for(const s of sheets)cs.push(await sheetToCanvas(s,scale));
-  if(cs.length===1)return {blob:await canvasJpeg(cs[0]),ext:'jpg'};
+  if(cs.length===1&&!pdf)return {blob:await canvasJpeg(cs[0]),ext:'jpg'};
   const pages=[];
   for(const c of cs)pages.push({w:c.width,h:c.height,bytes:new Uint8Array(await (await canvasJpeg(c)).arrayBuffer())});
   return {blob:jpegPdf(pages),ext:'pdf'};
@@ -5606,15 +5607,32 @@ async function saveBlobAs(blob,fname){
   /* มือถือ: เมนูแชร์มีปุ่ม "บันทึกรูปภาพ" / "บันทึกลงไฟล์" ได้ตรง ๆ */
   if(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)&&navigator.canShare&&navigator.canShare({files:[file]})){
     try{await navigator.share({files:[file],title:fname});return 'share';}
-    catch(e){if(e&&e.name==='AbortError')return 'cancel';}
+    catch(e){if(e&&e.name==='AbortError')return 'cancel';
+      /* สร้างไฟล์นานจนเบราว์เซอร์ไม่นับว่าเป็นการกดของผู้ใช้ → ให้แตะอีกครั้งเพื่อแชร์/บันทึก */
+      return mobileSaveSheet(file,blob,fname);}
   }
+  if(/Android|iPhone|iPad|iPod|Line\/|FBAN|FBAV/i.test(navigator.userAgent))return mobileSaveSheet(file,blob,fname);
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;
   document.body.append(a);a.click();
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},2000);
   return 'download';
 }
+function mobileSaveSheet(file,blob,fname){
+  const url=URL.createObjectURL(blob);
+  const ov=el('<div class="ov"></div>');
+  const m=el('<div class="modal" style="max-width:420px"><header><b>ไฟล์พร้อมแล้ว</b><button class="close">✕</button></header><div class="mb"><div class="tiny" style="margin-bottom:10px">'+esc(fname)+'</div><div style="display:flex;flex-direction:column;gap:8px"></div><div class="tiny" style="margin-top:10px">ถ้าเปิดจากแอป LINE/Facebook แล้วบันทึกไม่ได้ ให้กดเมนู ⋮ เลือก "เปิดในเบราว์เซอร์" (Chrome/Safari) แล้วลองใหม่</div></div></div>');
+  const box=m.querySelector('.mb>div:nth-child(2)');
+  const close=()=>{ov.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);};
+  m.querySelector('.close').onclick=close;
+  if(navigator.canShare&&navigator.canShare({files:[file]})){const b=el('<button class="btn">📤 แชร์ / บันทึกลงเครื่อง</button>');
+    b.onclick=async()=>{try{await navigator.share({files:[file],title:fname});close();}catch(e){if(!(e&&e.name==='AbortError'))toast('แชร์ไม่ได้ — ลองปุ่มเปิดไฟล์');}};box.append(b);}
+  const dl=el('<a class="btn gh" style="text-align:center">⬇️ ดาวน์โหลดไฟล์</a>');dl.href=url;dl.download=fname;box.append(dl);
+  const op=el('<a class="btn gh" target="_blank" rel="noopener" style="text-align:center">📄 เปิดไฟล์ (แล้วกดแชร์/บันทึกจากหน้านั้น)</a>');op.href=url;box.append(op);
+  ov.append(m);$('#layer').append(ov);
+  return 'sheet';
+}
 /* แผ่นที่ยังไม่ได้อยู่บนจอ (เช่น หลังเซ็นเสร็จ) ต้องวางไว้นอกจอชั่วคราวเพื่อวัดขนาด */
-async function saveSheetsFile(sheets,base){
+async function saveSheetsFile(sheets,base,pdf){
   const stage=el('<div style="position:fixed;left:-10000px;top:0;width:220mm;background:#fff"></div>');
   const tmp=sheets.filter(s=>!s.isConnected);
   tmp.forEach(s=>stage.append(s));
@@ -5622,7 +5640,7 @@ async function saveSheetsFile(sheets,base){
   try{
     toast(sheets.length>1?'กำลังสร้างไฟล์ PDF…':'กำลังสร้างรูปเอกสาร…');
     if(document.fonts&&document.fonts.ready)await document.fonts.ready;
-    const f=await sheetsToFile(sheets),fname=base+'.'+f.ext;
+    const f=await sheetsToFile(sheets,pdf),fname=base+'.'+f.ext;
     const how=await saveBlobAs(f.blob,fname);
     if(how==='download')toast('บันทึกลงเครื่องแล้ว ('+fname+')');
   }catch(e){
