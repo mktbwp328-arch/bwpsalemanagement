@@ -559,7 +559,7 @@ html,body,.sheet,.sheet *{-webkit-text-size-adjust:100% !important;text-size-adj
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.11.19-01';
+const APP_VER='2569.11.19-02';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -5602,10 +5602,12 @@ async function sheetsToFile(sheets,pdf){
   for(const c of cs)pages.push({w:c.width,h:c.height,bytes:new Uint8Array(await (await canvasJpeg(c)).arrayBuffer())});
   return {blob:jpegPdf(pages),ext:'pdf'};
 }
+/* มือถือ/แท็บเล็ต (iPad รุ่นใหม่แจ้งตัวเป็น Mac — ดูจากจอสัมผัสแทน) */
+const isTouchDev=()=>/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)||(/Macintosh/.test(navigator.userAgent)&&navigator.maxTouchPoints>1);
 async function saveBlobAs(blob,fname){
   const file=new File([blob],fname,{type:blob.type});
   /* มือถือ: เมนูแชร์มีปุ่ม "บันทึกรูปภาพ" / "บันทึกลงไฟล์" ได้ตรง ๆ */
-  if(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)&&navigator.canShare&&navigator.canShare({files:[file]})){
+  if(isTouchDev()&&navigator.canShare&&navigator.canShare({files:[file]})){
     try{await navigator.share({files:[file],title:fname});return 'share';}
     catch(e){if(e&&e.name==='AbortError')return 'cancel';
       /* สร้างไฟล์นานจนเบราว์เซอร์ไม่นับว่าเป็นการกดของผู้ใช้ → ให้แตะอีกครั้งเพื่อแชร์/บันทึก */
