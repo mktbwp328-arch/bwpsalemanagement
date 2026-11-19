@@ -559,7 +559,7 @@ html,body,.sheet,.sheet *{-webkit-text-size-adjust:100% !important;text-size-adj
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.11.19-04';
+const APP_VER='2569.11.19-05';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -5607,7 +5607,11 @@ async function sheetsToFile(sheets,pdf){
   /* Safari (iPhone/iPad) ห้ามดึงรูปจาก SVG foreignObject ออกจากแคนวาส → ใช้ html2canvas แทน */
   let useH2c=/iPhone|iPad|iPod/.test(navigator.userAgent)||(/Macintosh/.test(navigator.userAgent)&&navigator.maxTouchPoints>1)||(/Safari/.test(navigator.userAgent)&&!/Chrome|Chromium|Android/.test(navigator.userAgent));
   if(!useH2c){try{for(const s of sheets){const c=await sheetToCanvas(s,scale);c.toDataURL('image/jpeg',0.1);cs.push(c);}}catch(e){cs.length=0;useH2c=true;}}
-  if(useH2c){await loadH2c();for(const s of sheets){const z=s.style.zoom;s.style.zoom='';try{cs.push(await window.html2canvas(s,{scale,backgroundColor:'#fff',useCORS:true,logging:false}));}finally{s.style.zoom=z;}}}
+  if(useH2c){await loadH2c();for(const s of sheets){const z=s.style.zoom;s.style.zoom='';/* ลายเซ็น/รูปจากที่เก็บไฟล์ต้องฝังเป็นข้อมูลก่อน ไม่งั้นไม่ขึ้นในไฟล์ */
+      const ims=[...s.querySelectorAll('img')],old=ims.map(im=>im.getAttribute('src'));
+      await Promise.all(ims.map(async im=>{const src=im.currentSrc||im.getAttribute('src');const du=await urlToDataUrl(src);if(du&&du!==src){im.setAttribute('src',du);im.removeAttribute('loading');}
+        if(!im.complete||!im.naturalWidth)await new Promise(r=>{im.onload=im.onerror=r;setTimeout(r,4000);});}));
+      try{cs.push(await window.html2canvas(s,{scale,backgroundColor:'#fff',useCORS:true,allowTaint:false,imageTimeout:15000,logging:false}));}finally{s.style.zoom=z;ims.forEach((im,i)=>{if(old[i]!=null&&im.getAttribute('src')!==old[i])im.setAttribute('src',old[i]);});}}}
   if(cs.length===1&&!pdf)return {blob:await canvasJpeg(cs[0]),ext:'jpg'};
   const pages=[];
   for(const c of cs)pages.push({w:c.width,h:c.height,bytes:new Uint8Array(await (await canvasJpeg(c)).arrayBuffer())});
