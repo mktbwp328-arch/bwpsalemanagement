@@ -250,6 +250,7 @@ a{color:var(--blue);text-decoration:none}
   .top{padding:10px 14px}
 }
 /* ---------- แบบฟอร์มพิมพ์ใบเสนอราคา (A4) ---------- */
+.prevov ~ .ov{z-index:160}
 .prevov{position:fixed;inset:0;background:#59647a;z-index:150;overflow:auto;padding:24px}
 @media (max-width:820px){.prevov{padding:10px}}
 .prevbar{position:sticky;top:0;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:20px;z-index:2}
@@ -455,7 +456,7 @@ a{color:var(--blue);text-decoration:none}
   .prevov{position:static!important;inset:auto!important;padding:0!important;margin:0!important;
     background:#fff!important;overflow:visible!important;display:block!important}
   /* ถ้ามีหน้าพรีวิวค้างอยู่หลายชั้น ให้พิมพ์เฉพาะชั้นบนสุด */
-  .prevov:not(:last-of-type){display:none!important}
+  .prevov:has(~ .prevov){display:none!important}
   /* บังคับ 1 แผ่น = 1 หน้ากระดาษพอดี กันหน้าว่างเกินตอนบันทึกเป็น PDF
      ใช้ 296.6mm แทน 297mm เพราะบางเบราว์เซอร์ปัดเศษขึ้นแล้วดันไปหน้าใหม่ */
   .sheet{box-shadow:none!important;margin:0!important;height:296.6mm!important;min-height:0!important;
@@ -559,7 +560,7 @@ html,body,.sheet,.sheet *{-webkit-text-size-adjust:100% !important;text-size-adj
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.11.21-04';
+const APP_VER='2569.11.21-05';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -1030,7 +1031,7 @@ document.addEventListener('visibilitychange',()=>{
 let pullBusy=false;
 async function cloudPull(){
   if(pullBusy||!booted||!authed()||readOnly()||saveBusy||syncPending||LINK_MODE)return;
-  if(document.querySelector('.ov input:focus,.ov textarea:focus'))return;
+  if(document.querySelector('.ov'))return;   /* เปิดฟอร์มอยู่ → ไม่ดึงมาทับ (กดบันทึกแล้วค่อยรวม) */
   pullBusy=true;
   try{const own=dataOwner();const t=await cloudStamp(own);
     if(t&&t!==cloudSeen&&dataOwner()===own&&!syncPending&&!saveBusy){
@@ -2123,10 +2124,10 @@ new MutationObserver(ms=>{
 window.addEventListener('beforeprint',fitSheetsToPage);
 window.addEventListener('afterprint',unfitSheets);
 /* เผื่อเบราว์เซอร์ที่ไม่รองรับ beforeprint (Safari รุ่นเก่า) ให้ย่อก่อนเรียกพิมพ์เลย */
-function doPrint(){
+function doPrint(name){
   /* มือถือ/ไอแพด: หน้าพิมพ์มักใช้ไม่ได้ → สร้างไฟล์ PDF ให้เลย */
-  if(typeof isTouchDev==='function'&&isTouchDev()){const sh=[...document.querySelectorAll('.sheet')].filter(x=>x.offsetParent);
-    if(sh.length){const t=(sh[0].querySelector('[data-docno]')||{}).textContent||('เอกสาร_'+today());
+  if(typeof isTouchDev==='function'&&isTouchDev()){const top=[...document.querySelectorAll('.prevov')].pop();const sh=[...(top||document).querySelectorAll('.sheet')].filter(x=>x.offsetParent);
+    if(sh.length){const t=name||('เอกสาร_'+today());
       saveSheetsFile(sh,String(t).trim().replace(/[\\/:*?"<>|]/g,'-').slice(0,60)||'เอกสาร',true);return;}}
   fitSheetsToPage();setTimeout(()=>{window.print();setTimeout(unfitSheets,400);},60);}
 function loadPrintFonts(){
@@ -2140,7 +2141,7 @@ function printDocSheet(d){
   const ov=el('<div class="prevov"></div>');
   const bar=el('<div class="prevbar"></div>');
   const mk=(t,c,fn)=>{const b=el(`<button class="btn ${c}">${esc(t)}</button>`);b.onclick=fn;bar.append(b);};
-  mk('🖨  พิมพ์ / บันทึกเป็น PDF','',()=>doPrint());
+  mk('🖨  พิมพ์ / บันทึกเป็น PDF','',()=>doPrint(d.no));
   mk('💾 บันทึกไฟล์ PDF','gh',()=>saveSheetsFile([...ov.querySelectorAll('.sheet')],String(d.no||'เอกสาร').replace(/[\\/:*?"<>|]/g,'-'),true));
   mk('แก้ไขหัวกระดาษ','gh',companyForm);
   mk('ปิด','gh',()=>ov.remove());
@@ -5644,7 +5645,7 @@ async function saveBlobAs(blob,fname){
 }
 function mobileSaveSheet(file,blob,fname){
   const url=URL.createObjectURL(blob);
-  const ov=el('<div class="ov"></div>');
+  const ov=el('<div class="ov" style="z-index:1000"></div>');
   const m=el('<div class="modal" style="max-width:420px"><header><b>ไฟล์พร้อมแล้ว</b><button class="close">✕</button></header><div class="mb"><div class="tiny" style="margin-bottom:10px">'+esc(fname)+'</div><div style="display:flex;flex-direction:column;gap:8px"></div><div class="tiny" style="margin-top:10px">ถ้าเปิดจากแอป LINE/Facebook แล้วบันทึกไม่ได้ ให้กดเมนู ⋮ เลือก "เปิดในเบราว์เซอร์" (Chrome/Safari) แล้วลองใหม่</div></div></div>');
   const box=m.querySelector('.mb>div:nth-child(2)');
   const close=()=>{ov.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);};
@@ -6116,12 +6117,12 @@ function rcIndex(){
   const live=DB.receipts.filter(r=>r.status!=='ยกเลิก');
   const byRef=new Set(),byItem=new Set();
   /* อ้างอิง PO: เทียบได้ทั้งเลขที่ในระบบและเลขที่ PO ลูกค้า ใส่หลายเลขคั่นด้วย , ; / ได้ (ตรงกับหน้าสรุปการสั่งซื้อ) */
-  const refK=s=>String(s||'').toUpperCase().replace(/[s.]/g,'');
+  const refK=s=>String(s||'').toUpperCase().replace(/[\s.]/g,'');
   const poBy=new Map(),poByK=new Map();(DB.pos||[]).forEach(p=>{if(p.no){poBy.set(p.no,p);poByK.set(refK(p.no),p);}if(p.custPoNo&&!poByK.has(refK(p.custPoNo)))poByK.set(refK(p.custPoNo),p);});
   const nk=it=>String(it.name||'').split('\n')[0].toLowerCase().replace(/plastic|พลาสติก/g,'').replace(/[\s.,()\-]/g,'');
   const ck=it=>String(it.code||'').trim().toUpperCase();
   live.slice().sort((a,b)=>(b.poItemId?1:0)-(a.poItemId?1:0)||String(a.date||'').localeCompare(String(b.date||''))||String(a.no||'').localeCompare(String(b.no||''),'en',{numeric:true})).forEach(r=>{const raw=rcRef(r);if(!raw)return;byRef.add(raw);
-    const keys=[...new Set(String(raw).split(/[,;/]|s{2,}/).map(refK).filter(Boolean).map(x=>(poByK.get(x)||{}).no||x))];
+    const keys=[...new Set(String(raw).split(/[,;/]|\s{2,}/).map(refK).filter(Boolean).map(x=>(poByK.get(x)||{}).no||x))];
     keys.forEach(k=>{byRef.add(k);
     if(r.poItemId){byItem.add(k+'|'+r.poItemId);return;}
     const po=poBy.get(k);if(!po||!(po.items||[]).length)return;
@@ -7536,7 +7537,8 @@ function timelineEdit(c,t,after){
     save();render();toast(changed?'แก้ไขบันทึก และเปลี่ยนสถานะเป็น "'+st+'" แล้ว':'แก้ไขบันทึกแล้ว');
     if(after)after();},
   {okLabel:'บันทึกการแก้ไข',extra:{label:'ลบบันทึกนี้',cls:'gh dg',fn:()=>{
-    const i=c.timeline.indexOf(t);if(i<0)return;
+    {const cc=(c.id&&(DB.customers||[]).find(x=>x.id===c.id))||c;if(cc!==c||!(cc.timeline||[]).includes(t)){const tt=(cc.timeline||[]).find(x=>x.title===t.title&&x.date===t.date&&x.note===t.note);if(tt)t=tt;c=cc;}}
+    const i=(c.timeline||[]).indexOf(t);if(i<0){toast('ไม่พบบันทึกนี้ (ข้อมูลเพิ่งถูกโหลดใหม่) — เปิดอีกครั้ง');return;}
     const g=c.timeline.splice(i,1)[0];save();render();
     toast('ลบบันทึกแล้ว',()=>{c.timeline.splice(i,0,g);save();render();});
     if(after)after();}}});
@@ -7836,7 +7838,7 @@ function nextNo(prefix,type){
 /* ดูเลขถัดไปของทีมโดยไม่จอง — ใช้โชว์ในฟอร์มให้ตรงกับความจริงตั้งแต่เปิด
    คืนเลขที่มากกว่าระหว่างเลขของทีมกับเลขที่คำนวณในเครื่อง */
 /* RD/DR เลขตามเดือน: RD-2569-1101 → ตัวนับกลาง "RD-11" ปี 2569 ลำดับ 1 */
-const monthNoParts=no=>{const m=String(no||'').trim().toUpperCase().match(/^(RD|DR)-(d{4})-(d{2})(d{2,})$/);
+const monthNoParts=no=>{const m=String(no||'').trim().toUpperCase().match(/^(RD|DR)-(\d{4})-(\d{2})(\d{2,})$/);
   return m&&+m[3]>=1&&+m[3]<=12?{pre:m[1],yr:+m[2],mm:m[3],seq:+m[4]}:null;};
 async function peekNo(localNo){
   const mp=monthNoParts(localNo);
@@ -8499,11 +8501,11 @@ const normName=s=>String(s||'').replace(/\s+/g,' ').trim().toLowerCase();
 const SC_F=['name','contact','contactPos','phone','email','address','shipTo','taxId','biz','website','creditTerm','creditLimit'];
 const SC_COL={contactPos:'contact_pos',shipTo:'ship_to',taxId:'tax_id',creditTerm:'credit_term',creditLimit:'credit_limit'};
 const SHARED_CUST=new Map();          /* name_key -> ข้อมูลกลาง (ชื่อช่องแบบในแอป) */
-let scLast='',scBusy=false,scOff=false,SC_NOTE=false;
+let scAgain=false,scLast='',scBusy=false,scOff=false,SC_NOTE=false;
 const scHash=c=>SC_F.map(f=>String(c[f]??'')).join('|');
 /* จำค่าที่ตรงกับทะเบียนกลางล่าสุด ไว้ดูว่าเราแก้ช่องไหนจริง (ตอนส่งขึ้นจะส่งเฉพาะช่องที่แก้ ช่องอื่นใช้ของกลาง ไม่ทับงานคนอื่น) */
 const scMark=(c,at)=>{c._scHash=scHash(c);c._scAt=at;c._scBase={};SC_F.forEach(f=>{c._scBase[f]=String(c[f]??'');});};
-const scMine=(c,f)=>!c._scBase||String(c[f]??'')!==String(c._scBase[f]??'');
+const scMine=(c,f)=>{const b=c._scBase||c._scT;return !b||String(c[f]??'')!==String(b[f]??'');};
 const scFromRow=r=>{const o={_key:r.name_key,_at:r.updated_at,_by:r.updated_by_name||'',_old:!!r.is_old,_code:r.cust_code||'',_first:r.first_buy||''};
   SC_F.forEach(f=>{const v=r[SC_COL[f]||f];o[f]=f==='creditLimit'?(+v||0):(v??'');});
   if('note' in r){SC_NOTE=true;o.note=r.note||'';}return o;};
@@ -8538,7 +8540,7 @@ async function scMergeDups(){
     const keep=l[0],row=scToRow(keep,keep);
     l.slice(1).forEach(s=>{SC_F.forEach(f=>{const col=SC_COL[f]||f;if(f==='name')return;
       if(!row[col]||(f==='creditLimit'&&!+row[col]))row[col]=f==='creditLimit'?(+s[f]||0):String(s[f]??'');});
-      if(s._old)row.is_old=true;if(!row.cust_code&&s._code)row.cust_code=s._code;});
+      if(s._old)row.is_old=true;if(!row.cust_code&&s._code)row.cust_code=s._code;if(SC_NOTE&&!row.note&&s.note)row.note=s.note;});
     if(keep._old)row.is_old=true;if(keep._code&&!row.cust_code)row.cust_code=keep._code;
     try{
       const res=await sbFetch('customers_shared?on_conflict=name_key',{method:'POST',
@@ -8556,7 +8558,8 @@ async function scMergeDups(){
 }
 let scFullAt=0;
 async function custSharedSync(){
-  if(scBusy||scOff||!authed()||!sbOn()||!DB||readOnly()||LINK_MODE)return;
+  if(scBusy){scAgain=true;return;}
+  if(scOff||!authed()||!sbOn()||!DB||readOnly()||LINK_MODE)return;
   scBusy=true;const db=DB;
   try{
     /* 1) ดึงรายการที่เปลี่ยนตั้งแต่ครั้งก่อน */
@@ -8593,18 +8596,21 @@ async function custSharedSync(){
     const send=async(list,mode)=>{
       if(!list.length)return;
       const res=await sbFetch('customers_shared?on_conflict=name_key',{method:'POST',
-        headers:Object.assign(sbHeaders(),{Prefer:'resolution='+mode+',return=representation'}),body:JSON.stringify(list.map(c=>scToRow(c,c._scT)))});
+        headers:Object.assign(sbHeaders(),{Prefer:'resolution='+mode+',return=representation'}),body:JSON.stringify(list.map(c=>{const r=scToRow(c,c._scT);c._scSent=r;return r;}))});
       (res||[]).forEach(r=>{SHARED_CUST.set(r.name_key,scFromRow(r));if(r.updated_at>scLast)scLast=r.updated_at;});
       SC_LOOSE=null;const lm=scLoose();
       list.forEach(c=>{const s=lm.get(custKey(c.name));
         if(s)SC_F.forEach(f=>{if(f!=='name'&&!scMine(c,f))c[f]=s[f];});   /* ช่องที่คนอื่นแก้ → รับของเขามา */
-        scMark(c,s?s._at:'');});
+        scMark(c,s?s._at:'');
+        /* ค่าที่ส่งจริงเป็นฐาน: ถ้าแก้เพิ่มระหว่างรอ ช่องนั้นยังนับว่าเราแก้ แล้วส่งรอบถัดไป */
+        const r=c._scSent;delete c._scSent;if(r)SC_F.forEach(f=>{const v=r[SC_COL[f]||f];if(v!==undefined&&f!=='name')c._scBase[f]=String(v??'');});
+        if(r&&SC_F.some(f=>f==='name'?false:f==='creditLimit'?(+c[f]||0)!==(+c._scBase[f]||0):String(c[f]??'')!==c._scBase[f]))c._scHash='';});
       changed=true;
     };
     try{await send(pushNew,'ignore-duplicates');await send(push,'merge-duplicates');}catch(e){}
     (db.customers||[]).forEach(c=>{delete c._scT;});
     if(changed&&DB===db){save();if(!document.querySelector('.ov'))render();}
-  }finally{scBusy=false;}
+  }finally{scBusy=false;if(scAgain){scAgain=false;setTimeout(custSharedSync,1500);}}
 }
 /* ดึงรายชื่อที่คนอื่นเพิ่ม/แก้ทุก 1 นาที (ถามแค่รายการที่เปลี่ยน ปกติได้คำตอบว่าง ไม่เปลือง)
    ถ้าเปิดโปรแกรมก่อนติดตั้งทะเบียนกลาง ให้ลองใหม่ทุก 10 นาที ไม่ต้องรีเฟรชเอง */
@@ -9152,7 +9158,7 @@ function purchaseSummary(c){
     ents.forEach(e=>{if(e.d&&!e.l.free&&e.ok&&e.d.no){const k=e.d.no+'|'+e.l.unit;if(!grp.has(k))grp.set(k,[]);grp.get(k).push(e);}});
     grp.forEach(list=>{if(list.length<2)return;const last=list[list.length-1];
       list.forEach(e=>{if(e!==last)e.skip=true;});
-      last.mSent=list.reduce((s,e)=>s+e.sent,0);last.mLeft=list.reduce((s,e)=>s+e.left,0);
+      last.mSent=list.reduce((s,e)=>s+e.sent,0);{const lm=new Map();list.forEach(e=>lm.set(e.l,e.left));last.mLeft=[...lm.values()].reduce((s,v)=>s+v,0);}   /* คงเหลือ: นับแถว PO ละครั้ง (ค่าหลังรายการสุดท้าย) */
       last.mNote=list.map(e=>esc(e.l.no)+' '+num(e.sent)).join(' · ');});
     ents.forEach(e=>{
       if(e.h){rows+=e.h;return;}if(e.skip)return;
