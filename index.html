@@ -559,7 +559,7 @@ html,body,.sheet,.sheet *{-webkit-text-size-adjust:100% !important;text-size-adj
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.11.21-01';
+const APP_VER='2569.11.21-02';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -696,7 +696,8 @@ function stampChanges(seedOnly){
   let map=REC_H.get(DB);const fresh=!map;if(fresh){map=new Map();REC_H.set(DB,map);}
   const now=Date.now();
   MERGE_KEYS.forEach(k=>(DB[k]||[]).forEach(x=>{if(!x||!x.id)return;
-    const {_m,...rest}=x;const hh=strHash(JSON.stringify(rest));const p=map.get(x.id);
+    /* ไม่นับช่องภายใน (_scHash/_scAt ที่ระบบเปลี่ยนเอง) ไม่งั้นเครื่องที่ไม่ได้แก้อะไรจะได้เวลาแก้ใหม่กว่า แล้วไปทับงานที่เพิ่งพิมพ์ในอีกเครื่อง */
+    const rest={};for(const k in x)if(k[0]!=='_')rest[k]=x[k];const hh=strHash(JSON.stringify(rest));const p=map.get(x.id);
     if(!seedOnly&&!fresh&&p!==undefined&&p!==hh)x._m=now;
     map.set(x.id,hh);}));
 }
@@ -7518,6 +7519,9 @@ function timelineEdit(c,t,after){
     {key:'status',label:'อัปเดตสถานะลูกค้าเป็น',type:'combo',options:custStatuses,full:true,
      hint:'สถานะปัจจุบันของลูกค้ารายนี้ · เลือกจากรายการ หรือพิมพ์สถานะใหม่ได้เลย'}
   ],Object.assign({},t,{status:c.status}),d=>{
+    /* ระหว่างเปิดฟอร์ม ข้อมูลอาจถูกโหลดใหม่จากคลาวด์ → หาลูกค้า/บันทึกตัวจริงก่อนแก้ */
+    const ti=(c.timeline||[]).indexOf(t),cc=(c.id&&(DB.customers||[]).find(x=>x.id===c.id))||c;
+    if(cc!==c||!(cc.timeline||[]).includes(t)){const tt=(cc.timeline||[]).find(x=>x.title===t.title&&x.date===t.date)||(cc.timeline||[])[ti];if(tt)t=tt;c=cc;}
     const st=String(d.status||'').trim();delete d.status;
     const changed=!!st&&st!==c.status;
     Object.assign(t,d);
