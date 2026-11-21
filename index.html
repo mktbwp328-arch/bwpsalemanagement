@@ -559,7 +559,7 @@ html,body,.sheet,.sheet *{-webkit-text-size-adjust:100% !important;text-size-adj
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.11.21-02';
+const APP_VER='2569.11.21-03';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -954,7 +954,10 @@ async function cloudSave(tries){
     if(saveAgain&&!retryArmed){saveAgain=false;clearTimeout(syncTimer);syncTimer=setTimeout(()=>cloudSave(),800);}}
 }
 let retryArmed=false,saveAgain=false;
-async function cloudSaveRun(tries,owner){
+/* หลายแท็บ/หลายหน้าต่างในเครื่องเดียว: บันทึกขึ้นคลาวด์ทีละแท็บ (กันสองแท็บเช็คแล้วเขียนทับกันพร้อมกัน) */
+async function cloudSaveRun(tries,owner,locked){
+  if(!locked&&navigator.locks&&navigator.locks.request)
+    return navigator.locks.request('bwp-save-'+(owner||''),()=>cloudSaveRun(tries,owner,true));
   retryArmed=false;
   if(!authed()&&AUTH.refresh&&await refreshSession()){}   /* ต่ออายุเซสชันให้เองก่อน */
   if(!authed()){                      /* เซสชันหลุด: บอกให้เข้าระบบใหม่ ข้อมูลในเครื่องยังอยู่ */
@@ -991,6 +994,7 @@ async function cloudSaveRun(tries,owner){
     await sbFetch('user_data?on_conflict=user_id',{method:'POST',
       headers:Object.assign(sbHeaders(),{Prefer:'resolution=merge-duplicates,return=minimal'}),body});
     cloudSeen=Date.parse(stamp)||Date.now();   /* จำไว้ว่านี่คือรุ่นล่าสุดที่เครื่องนี้เขียนเอง */
+    try{TAB_BC&&TAB_BC.postMessage({owner:dataOwner(),t:cloudSeen});}catch(e){}   /* บอกแท็บอื่นให้ดึงของใหม่ */
     lastSyncErr='';syncErrShown=false;
     setTimeout(vaultSync,3000);                  /* รูปใหม่ขึ้นที่เก็บไฟล์ ข้อมูลรอบหน้าจะเล็กลง */
     setSync('saved');setTimeout(()=>{if(syncState==='saved'&&!syncPending)setSync('idle');},2500);
@@ -1040,6 +1044,9 @@ async function cloudPull(){
   }catch(e){}finally{pullBusy=false;}
 }
 setInterval(cloudPull,60000);
+/* แท็บอื่นบันทึกแล้ว → แท็บนี้ดึงของใหม่ทันที (ไม่ต้องรอ 1 นาที) */
+const TAB_BC=(()=>{try{const b=new BroadcastChannel('bwp-sync');
+  b.onmessage=e=>{const m=e.data||{};if(m.owner&&m.owner===dataOwner()&&m.t!==cloudSeen)setTimeout(cloudPull,400);};return b;}catch(e){return null;}})();
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')setTimeout(cloudPull,1200);});
 window.addEventListener('pagehide',()=>{
   if(syncPending&&authed()&&!readOnly()){clearTimeout(syncTimer);cloudSave();}
