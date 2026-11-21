@@ -559,7 +559,7 @@ html,body,.sheet,.sheet *{-webkit-text-size-adjust:100% !important;text-size-adj
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.11.19-05';
+const APP_VER='2569.11.21-01';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -8488,13 +8488,15 @@ const normName=s=>String(s||'').replace(/\s+/g,' ').trim().toLowerCase();
 const SC_F=['name','contact','contactPos','phone','email','address','shipTo','taxId','biz','website','creditTerm','creditLimit'];
 const SC_COL={contactPos:'contact_pos',shipTo:'ship_to',taxId:'tax_id',creditTerm:'credit_term',creditLimit:'credit_limit'};
 const SHARED_CUST=new Map();          /* name_key -> ข้อมูลกลาง (ชื่อช่องแบบในแอป) */
-let scLast='',scBusy=false,scOff=false;
+let scLast='',scBusy=false,scOff=false,SC_NOTE=false;
 const scHash=c=>SC_F.map(f=>String(c[f]??'')).join('|');
 const scFromRow=r=>{const o={_key:r.name_key,_at:r.updated_at,_by:r.updated_by_name||'',_old:!!r.is_old,_code:r.cust_code||'',_first:r.first_buy||''};
-  SC_F.forEach(f=>{const v=r[SC_COL[f]||f];o[f]=f==='creditLimit'?(+v||0):(v??'');});return o;};
+  SC_F.forEach(f=>{const v=r[SC_COL[f]||f];o[f]=f==='creditLimit'?(+v||0):(v??'');});
+  if('note' in r){SC_NOTE=true;o.note=r.note||'';}return o;};
 const scToRow=(c,t)=>{const o={name_key:t?t._key:normName(c.name),updated_by:AUTH.user&&AUTH.user.id,updated_by_name:meName()};
   SC_F.forEach(f=>{o[SC_COL[f]||f]=f==='creditLimit'?(+c[f]||0):String(c[f]??'');});
   if(t)o.name=t.name;
+  if(SC_NOTE)o.note=String((t&&t.note)||c.note||'');   /* หมายเหตุ: ของกลางมีแล้วคงไว้ ยังว่างใช้ของเรา */
   if((c.oldFlag||[]).length)o.is_old=true;                 /* ติ๊กลูกค้าเก่าเอง → ทุกคนเห็นเป็นลูกค้าเก่าด้วย */
   return o;};
 /* ชื่อเดียวกันที่เขียนต่างกัน (บจก./บริษัท…จำกัด/(สำนักงานใหญ่)) ถือเป็นลูกค้ารายเดียว
@@ -8558,6 +8560,9 @@ async function custSharedSync(){
       const k=custKey(c.name);if(!k)return;
       const s=loose.get(k),edited=c._scHash!==undefined&&scHash(c)!==c._scHash;
       if(s)c._scT=s;else delete c._scT;
+      /* หมายเหตุลูกค้า: ของเราว่าง → ใช้ของกลาง · ของกลางว่าง → ส่งของเราขึ้นไป */
+      if(s&&!c.note&&s.note){c.note=s.note;changed=true;}
+      if(s&&SC_NOTE&&c.note&&!s.note&&!edited&&c._scHash!==undefined){push.push(c);return;}
       if(!s){if(c._scHash===undefined||edited)pushNew.push(c);return;}
       if(edited){push.push(c);return;}                                   /* เราแก้ → ส่งทับของกลาง */
       if(c._scHash===undefined){                                           /* ครั้งแรก: รวมช่องที่ของกลางยังว่าง */
@@ -8606,7 +8611,7 @@ function adoptShared(name,how){
   const s=scLoose().get(k);if(!s)return null;
   const c={id:uid(),status:'ใหม่',channel:'ทะเบียนกลาง',date:today(),owner:meName(),note:'',logo:null,photos:[],files:[],
     timeline:[{date:today(),title:how||'เพิ่มจากทะเบียนลูกค้ากลาง',note:s._by?'ข้อมูลโดย '+s._by:'',by:meName()}]};
-  SC_F.forEach(f=>{c[f]=s[f];});c._scHash=scHash(c);c._scAt=s._at;
+  SC_F.forEach(f=>{c[f]=s[f];});c.note=s.note||'';c._scHash=scHash(c);c._scAt=s._at;
   DB.customers.unshift(c);
   return c;
 }
