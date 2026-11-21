@@ -560,7 +560,7 @@ html,body,.sheet,.sheet *{-webkit-text-size-adjust:100% !important;text-size-adj
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.11.21-06';
+const APP_VER='2569.11.21-07';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -701,6 +701,14 @@ function stampChanges(seedOnly){
     const rest={};for(const k in x)if(k[0]!=='_')rest[k]=x[k];const hh=strHash(JSON.stringify(rest));const p=map.get(x.id);
     if(!seedOnly&&!fresh&&p!==undefined&&p!==hh)x._m=now;
     map.set(x.id,hh);}));
+  /* ป้ายลบ (DB.del = {id: เวลาที่ลบ}): รายการที่เครื่องนี้เคยเห็นแล้วหายไป = ผู้ใช้ลบ
+     จดไว้ให้เครื่อง/แท็บอื่นลบตาม ไม่งั้นเครื่องที่ยังมีจะส่งกลับขึ้นคลาวด์ */
+  const cur=new Set();MERGE_KEYS.forEach(k=>(DB[k]||[]).forEach(x=>{if(x&&x.id)cur.add(x.id);}));
+  if(DB.del)for(const id of cur)if(DB.del[id]){const x=MERGE_KEYS.map(k=>(DB[k]||[]).find(r=>r&&r.id===id)).find(Boolean);
+    if(!seedOnly||(x&&(+x._m||0)>DB.del[id]))delete DB.del[id];}            /* กดเลิกทำ/แก้ทีหลัง = เอากลับมา */
+  for(const id of [...map.keys()])if(!cur.has(id)){map.delete(id);
+    if(!seedOnly&&!fresh){DB.del=DB.del||{};DB.del[id]=now;}}
+  if(DB.del){const old=now-120*864e5;for(const id in DB.del)if(DB.del[id]<old)delete DB.del[id];}   /* เก็บ 120 วัน */
 }
 function save(now){
   /* โหมดดูข้อมูลของคนอื่น: ห้ามเขียนทับข้อมูลตัวเองในเครื่อง และไม่ส่งขึ้นคลาวด์
@@ -843,6 +851,14 @@ function mergeCloud(remote){
     const r=mergeList(DB[k],remote&&remote[k],known);
     DB[k]=r.list;total+=r.added;
   });
+  /* รวมป้ายลบของอีกฝั่ง แล้วลบรายการที่ถูกลบที่อื่น (ยกเว้นเครื่องนี้แก้ทีหลังเวลาที่ลบ) */
+  if(remote&&remote.del&&typeof remote.del==='object'){
+    DB.del=DB.del||{};
+    for(const id in remote.del){const t=+remote.del[id]||0;if(t>(+DB.del[id]||0))DB.del[id]=t;}
+  }
+  if(DB.del)MERGE_KEYS.forEach(k=>{const before=(DB[k]||[]).length;
+    DB[k]=(DB[k]||[]).filter(x=>!(x&&x.id&&DB.del[x.id]&&(+x._m||0)<=DB.del[x.id]));
+    total+=before-DB[k].length;});
   try{stampChanges(true);}catch(e){}   /* ของที่รับมาจากอีกเครื่อง ไม่นับเป็นการแก้ของเครื่องนี้ */
   /* รับรู้ id ที่อีกเครื่องเคยมีด้วย ของที่เขาลบไปแล้วเราจะได้ไม่เอากลับมา */
   if(remote&&remote.ids&&remote.ids.length){
