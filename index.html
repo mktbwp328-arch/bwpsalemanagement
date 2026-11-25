@@ -560,7 +560,7 @@ html,body,.sheet,.sheet *{-webkit-text-size-adjust:100% !important;text-size-adj
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.11.21-07';
+const APP_VER='2569.11.25-01';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -1976,7 +1976,8 @@ function requirementSheet(d){
         ${sgBox('ฝ่ายผลิตส่วนงานพิมพ์',s.print)}${sgBox('ฝ่ายคลังสินค้า',s.store)}<div style="flex:1"></div></div>
       <div style="display:flex;gap:8px;margin-top:10px">
         ${sgBox('ฝ่ายวางแผน',s.plan)}${sgBox('ฝ่ายขนส่ง',s.logistics)}<div style="flex:1"></div></div>
-    </div></div>`);
+    </div>
+    <div class="sh-foot">SD-MKT-03</div></div>`);
 }
 /* ---------- แบบพิมพ์ใบกำกับภาษี/ใบส่งของ/ใบแจ้งหนี้ ---------- */
 function bahtText(n){
