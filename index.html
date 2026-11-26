@@ -560,7 +560,7 @@ html,body,.sheet,.sheet *{-webkit-text-size-adjust:100% !important;text-size-adj
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.11.26-02';
+const APP_VER='2569.11.26-03';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -8863,10 +8863,13 @@ function poDetail(v,p){
         <div class="lmain"><div class="lt">${esc(it.name)}</div>
         <div class="lm" style="white-space:normal;overflow:visible">${esc(it.code||'-')} · ${num0(it.qty)} ${esc(it.unit)} × ${num(it.price)} ฿${it.due?' · ส่ง '+fmtDate(it.due):''}${done?' · ออกใบเสร็จแล้ว'+((rcIndex().byItem.get(p.no+'|'+it.id))?' ('+esc(rcIndex().byItem.get(p.no+'|'+it.id))+')':''):''}</div></div>
         <div class="lright"><div class="lamt">${num(it.qty*it.price)} ฿</div>
-        ${done?'<span class="pill" style="background:#dcfce7;color:#15803d">ออกใบเสร็จแล้ว</span>'
+        ${done?'<span class="pill opn" style="background:#dcfce7;color:#15803d;cursor:pointer" title="เปิดดูใบเสร็จ">ออกใบเสร็จแล้ว</span><button class="btn gh sm iss" title="ออกใบเสร็จใหม่สำหรับรายการนี้">ออกใหม่</button>'
                :'<button class="btn sm iss">ออกใบเสร็จ</button>'}
         <button class="btn gh sm rm">ลบ</button></div></div>`);
       if(r.querySelector('.iss'))r.querySelector('.iss').onclick=()=>issuePoReceipt(p,it);
+      /* กดป้าย "ออกใบเสร็จแล้ว" → เปิดใบเสร็จที่ตัดรายการนี้ (ดู/ลบ/ยกเลิกได้) */
+      if(r.querySelector('.opn'))r.querySelector('.opn').onclick=()=>{const no=rcIndex().byItem.get(p.no+'|'+it.id);
+        const rc=(DB.receipts||[]).find(x=>x.no===no&&x.status!=='ยกเลิก');if(rc)go('receipts',{rcOpen:rc.id,rcFilter:'ทั้งหมด',rcQ:'',rcY:'',rcM:'',rcFrom:'',rcTo:''});else toast('ไม่พบใบเสร็จ '+(no||''));};
       r.querySelector('.rm').onclick=()=>{const g=p.items.splice(i,1)[0];save();render();
         toast('ลบรายการแล้ว',()=>{p.items.splice(i,0,g);save();render();});};
       list.append(r);});
