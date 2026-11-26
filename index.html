@@ -560,7 +560,7 @@ html,body,.sheet,.sheet *{-webkit-text-size-adjust:100% !important;text-size-adj
    แก้โปรแกรมทุกครั้งให้เปลี่ยนเลขนี้ — เครื่องที่เปิดเวอร์ชันเก่าค้างไว้จะอัปเดตเองอัตโนมัติ
    อัปเดตเฉพาะตอนที่ปลอดภัย: ไม่มีหน้าต่าง/ฟอร์มเปิดอยู่ ไม่ได้พิมพ์อะไรค้าง และบันทึกขึ้นคลาวด์ครบแล้ว
    (ถ้ายังไม่ปลอดภัย จะรอแล้วลองใหม่เรื่อย ๆ — งานที่กำลังทำไม่หาย) */
-const APP_VER='2569.11.26-01';
+const APP_VER='2569.11.26-02';
 let NEW_VER=null,updTimer=null;
 function safeToReload(){
   if(typeof saveBusy!=='undefined'&&saveBusy)return false;
@@ -8861,7 +8861,7 @@ function poDetail(v,p){
       const r=el(`<div class="lrow" style="cursor:default">
         <div class="lav" ${done?'style="background:#dcfce7;color:#15803d"':''}>${done?'✓':i+1}</div>
         <div class="lmain"><div class="lt">${esc(it.name)}</div>
-        <div class="lm">${esc(it.code||'-')} · ${num0(it.qty)} ${esc(it.unit)} × ${num(it.price)} ฿${it.due?' · ส่ง '+fmtDate(it.due):''}${done?' · ออกใบเสร็จแล้ว'+((rcIndex().byItem.get(p.no+'|'+it.id))?' ('+esc(rcIndex().byItem.get(p.no+'|'+it.id))+')':''):''}</div></div>
+        <div class="lm" style="white-space:normal;overflow:visible">${esc(it.code||'-')} · ${num0(it.qty)} ${esc(it.unit)} × ${num(it.price)} ฿${it.due?' · ส่ง '+fmtDate(it.due):''}${done?' · ออกใบเสร็จแล้ว'+((rcIndex().byItem.get(p.no+'|'+it.id))?' ('+esc(rcIndex().byItem.get(p.no+'|'+it.id))+')':''):''}</div></div>
         <div class="lright"><div class="lamt">${num(it.qty*it.price)} ฿</div>
         ${done?'<span class="pill" style="background:#dcfce7;color:#15803d">ออกใบเสร็จแล้ว</span>'
                :'<button class="btn sm iss">ออกใบเสร็จ</button>'}
